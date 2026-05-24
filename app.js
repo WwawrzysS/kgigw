@@ -147,12 +147,14 @@ render();
 function handleLogin(event) {
   event.preventDefault();
   const data = formData(event.target);
-  if (PASSWORDS[data.role] !== data.password) {
+  const role = String(data.role || "").trim();
+  const password = String(data.password || "").trim();
+  if (PASSWORDS[role] !== password) {
     elements.loginError.textContent = "Nieprawidłowe hasło.";
     return;
   }
 
-  currentRole = data.role;
+  currentRole = role;
   sessionStorage.setItem(AUTH_KEY, currentRole);
   elements.currentRole.textContent = roleName(currentRole);
   elements.loginError.textContent = "";
