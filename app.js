@@ -1,5 +1,5 @@
 const STORAGE_KEY = "kgw-panel-data-v1";
-const AUTH_KEY = "kgwiw-active-role";
+const AUTH_KEY = "kgigw-active-role";
 const PASSWORDS = {
   admin: "admin123",
   user: "user123"
@@ -349,6 +349,8 @@ function removeItem(collection, id) {
     alert("Usuwanie wpisów jest dostępne tylko dla administratora.");
     return;
   }
+  const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
+  if (!confirmed) return;
   state[collection] = state[collection].filter((item) => item.id !== id);
   saveState();
   render();

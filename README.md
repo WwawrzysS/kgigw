@@ -1,4 +1,4 @@
-# Panel KGWIW
+# Panel KGiGW
 
 Prosta lokalna strona do porządkowania pracy Koła Gospodyń i Gospodarzy Wiejskich.
 
@@ -27,4 +27,4 @@ Administrator ma pełny dostęp, w tym usuwanie wpisów oraz import i eksport da
 
 ## Ważne
 
-Dane zapisują się w przeglądarce na tym komputerze. Na kolejnym etapie można zrobić wersję z logowaniem, wspólną bazą danych i prawdziwym połączeniem z pocztą Gmail/Outlook.
+Dane w tej wersji zapisują się w przeglądarce na tym komputerze. Na kolejnym etapie można zrobić wersję z logowaniem, wspólną bazą danych i prawdziwym połączeniem z pocztą Gmail/Outlook, żeby działała na różnych urządzeniach.
