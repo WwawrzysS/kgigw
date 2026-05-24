@@ -1,4 +1,9 @@
 const STORAGE_KEY = "kgw-panel-data-v1";
+const AUTH_KEY = "kgwiw-active-role";
+const PASSWORDS = {
+  admin: "admin123",
+  user: "user123"
+};
 
 const starterData = {
   members: [
@@ -18,6 +23,7 @@ const starterData = {
 let state = loadState();
 let activeView = "dashboard";
 let query = "";
+let currentRole = sessionStorage.getItem(AUTH_KEY);
 
 const titles = {
   dashboard: "Pulpit",
@@ -30,6 +36,10 @@ const titles = {
 };
 
 const elements = {
+  loginScreen: document.querySelector("#loginScreen"),
+  loginForm: document.querySelector("#loginForm"),
+  loginError: document.querySelector("#loginError"),
+  currentRole: document.querySelector("#currentRole"),
   viewTitle: document.querySelector("#viewTitle"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
@@ -50,6 +60,11 @@ const elements = {
   mailboxInfo: document.querySelector("#mailboxInfo")
 };
 
+document.body.classList.toggle("locked", !currentRole);
+document.querySelectorAll("#exportData, .import-button").forEach((item) => item.classList.add("admin-only"));
+elements.currentRole.textContent = roleName(currentRole);
+elements.loginForm.addEventListener("submit", handleLogin);
+document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
@@ -75,7 +90,50 @@ document.querySelector('input[name="date"]').valueAsDate = new Date();
 document.querySelector('#eventForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#docForm input[name="date"]').valueAsDate = new Date();
 
+applyRole();
 render();
+
+function handleLogin(event) {
+  event.preventDefault();
+  const data = formData(event.target);
+  if (PASSWORDS[data.role] !== data.password) {
+    elements.loginError.textContent = "Nieprawidłowe hasło.";
+    return;
+  }
+
+  currentRole = data.role;
+  sessionStorage.setItem(AUTH_KEY, currentRole);
+  elements.currentRole.textContent = roleName(currentRole);
+  elements.loginError.textContent = "";
+  event.target.reset();
+  document.body.classList.remove("locked");
+  applyRole();
+  render();
+}
+
+function logout() {
+  currentRole = null;
+  sessionStorage.removeItem(AUTH_KEY);
+  elements.currentRole.textContent = "-";
+  document.body.classList.add("locked");
+  applyRole();
+}
+
+function roleName(role) {
+  if (role === "admin") return "Administrator";
+  if (role === "user") return "Użytkownik";
+  return "-";
+}
+
+function isAdmin() {
+  return currentRole === "admin";
+}
+
+function applyRole() {
+  document.querySelectorAll(".admin-only").forEach((item) => {
+    item.classList.toggle("hidden-role", !isAdmin());
+  });
+}
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -282,10 +340,15 @@ function eventRow(item) {
 }
 
 function deleteAction(collection, id) {
+  if (!isAdmin()) return "";
   return `<div class="row-actions"><button class="delete-button" onclick="removeItem('${collection}', '${id}')">Usuń</button></div>`;
 }
 
 function removeItem(collection, id) {
+  if (!isAdmin()) {
+    alert("Usuwanie wpisów jest dostępne tylko dla administratora.");
+    return;
+  }
   state[collection] = state[collection].filter((item) => item.id !== id);
   saveState();
   render();
@@ -297,6 +360,7 @@ function filterItems(items) {
 }
 
 function exportData() {
+  if (!isAdmin()) return;
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
@@ -306,6 +370,7 @@ function exportData() {
 }
 
 function importData(event) {
+  if (!isAdmin()) return;
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();

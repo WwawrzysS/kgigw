@@ -3,16 +3,31 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Panel KGW</title>
+    <title>Panel KGWIW</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <aside class="sidebar">
+    <section id="loginScreen" class="login-screen">
+      <form id="loginForm" class="login-box">
+        <span class="brand-mark">K</span>
+        <h1>KGWIW</h1>
+        <p>Podaj hasło, aby wejść do panelu.</p>
+        <select name="role" required>
+          <option value="admin">Administrator</option>
+          <option value="user">Użytkownik</option>
+        </select>
+        <input name="password" type="password" required placeholder="Hasło" autocomplete="current-password" />
+        <button type="submit">Zaloguj</button>
+        <small id="loginError" class="login-error"></small>
+      </form>
+    </section>
+
+    <aside class="sidebar app-shell">
       <div class="brand">
         <span class="brand-mark">K</span>
         <div>
-          <strong>Panel Koła</strong>
-          <small>KGW i Gospodarze</small>
+          <strong>KGWIW</strong>
+          <small>Panel koła</small>
         </div>
       </div>
       <nav class="nav" aria-label="Główne działy">
@@ -25,15 +40,20 @@
         <button class="nav-item" data-view="board">Zarząd</button>
       </nav>
       <div class="sidebar-actions">
+        <div class="user-badge">
+          <span>Zalogowano jako</span>
+          <strong id="currentRole">-</strong>
+        </div>
         <button id="exportData" class="ghost-button">Eksport danych</button>
         <label class="ghost-button import-button">
           Import danych
           <input id="importData" type="file" accept="application/json" />
         </label>
+        <button id="logoutButton" class="ghost-button">Wyloguj</button>
       </div>
     </aside>
 
-    <main class="app">
+    <main class="app app-shell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Wspólny porządek dokumentów, kasy i członków</p>

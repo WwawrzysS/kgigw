@@ -26,6 +26,14 @@ body {
   grid-template-columns: 280px 1fr;
 }
 
+body.locked {
+  display: block;
+}
+
+body.locked .app-shell {
+  display: none;
+}
+
 button,
 input,
 select,
@@ -35,6 +43,54 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(47, 111, 78, 0.12), rgba(195, 139, 43, 0.18)),
+    var(--bg);
+}
+
+.login-box {
+  width: min(380px, 100%);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 28px;
+  display: grid;
+  gap: 14px;
+}
+
+.login-box h1 {
+  font-size: 34px;
+}
+
+.login-box p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.login-box button {
+  border: 0;
+  background: var(--green);
+  color: #fff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
+.login-error {
+  min-height: 18px;
+  color: var(--red);
+}
+
+body:not(.locked) .login-screen {
+  display: none;
 }
 
 .sidebar {
@@ -97,6 +153,27 @@ button {
   margin-top: auto;
   display: grid;
   gap: 8px;
+}
+
+.user-badge {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.user-badge span,
+.user-badge strong {
+  display: block;
+}
+
+.user-badge span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+.admin-only.hidden-role {
+  display: none;
 }
 
 .import-button {

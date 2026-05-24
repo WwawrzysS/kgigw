@@ -1,10 +1,17 @@
-# Panel KGW
+# Panel KGWIW
 
 Prosta lokalna strona do porządkowania pracy Koła Gospodyń i Gospodarzy Wiejskich.
 
 ## Jak uruchomić
 
 Otwórz plik `index.html` w przeglądarce.
+
+## Hasła startowe
+
+- Administrator: `admin123`
+- Użytkownik: `user123`
+
+Administrator ma pełny dostęp, w tym usuwanie wpisów oraz import i eksport danych. Użytkownik może korzystać z panelu i dopisywać informacje, ale bez usuwania oraz importu/eksportu.
 
 ## Co jest w pierwszej wersji
 
