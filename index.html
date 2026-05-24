@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Panel KGW</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">K</span>
+        <div>
+          <strong>Panel Koła</strong>
+          <small>KGW i Gospodarze</small>
+        </div>
+      </div>
+      <nav class="nav" aria-label="Główne działy">
+        <button class="nav-item active" data-view="dashboard">Pulpit</button>
+        <button class="nav-item" data-view="members">Członkowie</button>
+        <button class="nav-item" data-view="fees">Składki</button>
+        <button class="nav-item" data-view="money">Kasa</button>
+        <button class="nav-item" data-view="events">Wydarzenia</button>
+        <button class="nav-item" data-view="docs">Dokumenty i poczta</button>
+        <button class="nav-item" data-view="board">Zarząd</button>
+      </nav>
+      <div class="sidebar-actions">
+        <button id="exportData" class="ghost-button">Eksport danych</button>
+        <label class="ghost-button import-button">
+          Import danych
+          <input id="importData" type="file" accept="application/json" />
+        </label>
+      </div>
+    </aside>
+
+    <main class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Wspólny porządek dokumentów, kasy i członków</p>
+          <h1 id="viewTitle">Pulpit</h1>
+        </div>
+        <div class="search-wrap">
+          <input id="globalSearch" type="search" placeholder="Szukaj w całym kole..." />
+        </div>
+      </header>
+
+      <section id="dashboard" class="view active-view">
+        <div class="stats-grid">
+          <article class="stat"><span>Stan kasy</span><strong id="cashBalance">0 zł</strong></article>
+          <article class="stat"><span>Członkowie</span><strong id="memberCount">0</strong></article>
+          <article class="stat"><span>Zaległe składki</span><strong id="lateFees">0 zł</strong></article>
+          <article class="stat"><span>Dokumenty</span><strong id="docCount">0</strong></article>
+        </div>
+        <div class="split">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Ostatnie operacje</h2>
+            </div>
+            <div id="recentMoney" class="list empty-list">Brak wpisów.</div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Najbliższe sprawy</h2>
+            </div>
+            <div id="upcomingEvents" class="list empty-list">Brak wydarzeń.</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="members" class="view">
+        <div class="workspace">
+          <form id="memberForm" class="form-panel">
+            <h2>Dodaj członka</h2>
+            <input name="name" required placeholder="Imię i nazwisko" />
+            <input name="phone" placeholder="Telefon" />
+            <input name="email" type="email" placeholder="E-mail" />
+            <select name="status">
+              <option>Aktywny</option>
+              <option>Nieaktywny</option>
+            </select>
+            <button type="submit">Dodaj</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Lista członków</h2>
+            </div>
+            <div id="membersList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="fees" class="view">
+        <div class="workspace">
+          <form id="feeForm" class="form-panel">
+            <h2>Wpisz składkę</h2>
+            <select name="member" id="feeMember" required></select>
+            <input name="period" required placeholder="Okres, np. 2026 lub maj 2026" />
+            <input name="amount" type="number" min="0" step="0.01" required placeholder="Kwota" />
+            <select name="status">
+              <option>Zapłacona</option>
+              <option>Do zapłaty</option>
+            </select>
+            <button type="submit">Zapisz składkę</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Składki członkowskie</h2>
+            </div>
+            <div id="feesList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="money" class="view">
+        <div class="workspace">
+          <form id="moneyForm" class="form-panel">
+            <h2>Dodaj wpływ lub wydatek</h2>
+            <select name="type">
+              <option value="income">Wpływ</option>
+              <option value="expense">Wydatek</option>
+            </select>
+            <input name="title" required placeholder="Opis, np. Zakup mąki" />
+            <input name="category" placeholder="Kategoria, np. zakupy, kiermasz" />
+            <input name="amount" type="number" min="0" step="0.01" required placeholder="Kwota" />
+            <input name="date" type="date" required />
+            <button type="submit">Zapisz</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Zakupy, wydatki i wpływy</h2>
+            </div>
+            <div id="moneyList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="events" class="view">
+        <div class="workspace">
+          <form id="eventForm" class="form-panel">
+            <h2>Dodaj wydarzenie</h2>
+            <input name="name" required placeholder="Nazwa, np. Kiermasz świąteczny" />
+            <input name="date" type="date" required />
+            <input name="place" placeholder="Miejsce" />
+            <textarea name="notes" placeholder="Notatki"></textarea>
+            <button type="submit">Dodaj wydarzenie</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Wydarzenia i kiermasze</h2>
+            </div>
+            <div id="eventsList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="docs" class="view">
+        <div class="workspace">
+          <form id="docForm" class="form-panel">
+            <h2>Dodaj dokument lub wiadomość</h2>
+            <input name="title" required placeholder="Tytuł pisma lub wiadomości" />
+            <input name="sender" placeholder="Nadawca, np. Urząd Gminy" />
+            <select name="category">
+              <option>Pismo</option>
+              <option>Faktura</option>
+              <option>Paragon</option>
+              <option>Dotacja</option>
+              <option>Korespondencja</option>
+            </select>
+            <input name="date" type="date" required />
+            <textarea name="notes" placeholder="Krótka treść lub notatka"></textarea>
+            <button type="submit">Zapisz dokument</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Dokumenty i poczta</h2>
+              <button id="showMailboxInfo" class="small-button">Połączenie poczty</button>
+            </div>
+            <div id="mailboxInfo" class="notice hidden">
+              Docelowo można tu podłączyć Gmail, Outlook albo pocztę koła. Bezpieczna wersja używa logowania u dostawcy poczty albo jednorazowego hasła aplikacji.
+            </div>
+            <div id="docsList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="board" class="view">
+        <div class="workspace">
+          <form id="boardForm" class="form-panel">
+            <h2>Dodaj osobę z zarządu</h2>
+            <input name="role" required placeholder="Funkcja, np. Skarbnik" />
+            <input name="name" required placeholder="Imię i nazwisko" />
+            <input name="term" placeholder="Kadencja, np. 2026-2028" />
+            <button type="submit">Zapisz</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Zarząd koła</h2>
+            </div>
+            <div id="boardList" class="table"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
