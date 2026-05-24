@@ -9,12 +9,14 @@
   <body>
     <section id="loginScreen" class="login-screen">
       <form id="loginForm" class="login-box">
-        <span class="brand-mark">K</span>
+        <span class="brand-mark"><img src="KGiGW.jpg" alt="Logo KGiGW" /></span>
         <h1>KGiGW</h1>
         <p>Podaj hasło, aby wejść do panelu.</p>
         <select name="role" required>
           <option value="admin">Administrator</option>
           <option value="user">Użytkownik</option>
+          <option value="agata">Agata</option>
+          <option value="tomek">Tomek</option>
         </select>
         <input name="password" type="password" required placeholder="Hasło" autocomplete="current-password" />
         <button type="submit">Zaloguj</button>
@@ -24,7 +26,7 @@
 
     <aside class="sidebar app-shell">
       <div class="brand">
-        <span class="brand-mark">K</span>
+        <span class="brand-mark"><img src="KGiGW.jpg" alt="Logo KGiGW" /></span>
         <div>
           <strong>KGiGW</strong>
           <small>Panel koła</small>
@@ -36,6 +38,8 @@
         <button class="nav-item" data-view="fees">Składki</button>
         <button class="nav-item" data-view="money">Kasa</button>
         <button class="nav-item" data-view="events">Wydarzenia</button>
+        <button class="nav-item" data-view="rentals">Wypożyczalnia</button>
+        <button class="nav-item" data-view="invoices">Faktury</button>
         <button class="nav-item" data-view="docs">Dokumenty i poczta</button>
         <button class="nav-item" data-view="board">Zarząd</button>
       </nav>
@@ -45,6 +49,7 @@
           <strong id="currentRole">-</strong>
         </div>
         <button id="exportData" class="ghost-button">Eksport danych</button>
+        <button id="undoButton" class="ghost-button">Cofnij ostatnią zmianę</button>
         <label class="ghost-button import-button">
           Import danych
           <input id="importData" type="file" accept="application/json" />
@@ -69,7 +74,7 @@
           <article class="stat"><span>Stan kasy</span><strong id="cashBalance">0 zł</strong></article>
           <article class="stat"><span>Członkowie</span><strong id="memberCount">0</strong></article>
           <article class="stat"><span>Zaległe składki</span><strong id="lateFees">0 zł</strong></article>
-          <article class="stat"><span>Dokumenty</span><strong id="docCount">0</strong></article>
+          <article class="stat"><span>Aktywne wypożyczenia</span><strong id="rentalCount">0</strong></article>
         </div>
         <div class="split">
           <section class="panel">
@@ -80,7 +85,7 @@
           </section>
           <section class="panel">
             <div class="panel-head">
-              <h2>Najbliższe sprawy</h2>
+              <h2>Ostatnie informacje o wydarzeniach</h2>
             </div>
             <div id="upcomingEvents" class="list empty-list">Brak wydarzeń.</div>
           </section>
@@ -114,17 +119,16 @@
           <form id="feeForm" class="form-panel">
             <h2>Wpisz składkę</h2>
             <select name="member" id="feeMember" required></select>
-            <input name="period" required placeholder="Okres, np. 2026 lub maj 2026" />
-            <input name="amount" type="number" min="0" step="0.01" required placeholder="Kwota" />
-            <select name="status">
-              <option>Zapłacona</option>
-              <option>Do zapłaty</option>
-            </select>
+            <input name="period" required placeholder="Rok składkowy, np. 2026" />
+            <input name="dueAmount" type="number" min="0" step="0.01" required value="120" readonly placeholder="Składka roczna 120" />
+            <input name="amount" type="number" min="0" step="0.01" required placeholder="Wpłata, np. 30 lub 120" />
+            <div class="notice compact-notice">Składka roczna 120 zł: 4 kwartały po 30 zł. Wpłaty sumują się w roku.</div>
             <button type="submit">Zapisz składkę</button>
           </form>
           <section class="panel">
             <div class="panel-head">
-              <h2>Składki członkowskie</h2>
+              <h2>Składki członkowskie - zaległości u góry</h2>
+              <button id="sendFeeSms" class="small-button">SMS do zaległych</button>
             </div>
             <div id="feesList" class="table"></div>
           </section>
@@ -137,10 +141,14 @@
             <h2>Dodaj wpływ lub wydatek</h2>
             <select name="type">
               <option value="income">Wpływ</option>
+              <option value="donation">Darowizna</option>
               <option value="expense">Wydatek</option>
             </select>
             <input name="title" required placeholder="Opis, np. Zakup mąki" />
             <input name="category" placeholder="Kategoria, np. zakupy, kiermasz" />
+            <select name="eventId" id="moneyEvent">
+              <option value="">Bez wydarzenia</option>
+            </select>
             <input name="amount" type="number" min="0" step="0.01" required placeholder="Kwota" />
             <input name="date" type="date" required />
             <button type="submit">Zapisz</button>
@@ -148,6 +156,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Zakupy, wydatki i wpływy</h2>
+              <button id="printMoneyReport" class="small-button">Druk</button>
             </div>
             <div id="moneyList" class="table"></div>
           </section>
@@ -161,14 +170,58 @@
             <input name="name" required placeholder="Nazwa, np. Kiermasz świąteczny" />
             <input name="date" type="date" required />
             <input name="place" placeholder="Miejsce" />
-            <textarea name="notes" placeholder="Notatki"></textarea>
+            <textarea name="notes" placeholder="Notatki związane z wydarzeniem, np. zadania, ustalenia, wydatki do rozliczenia"></textarea>
             <button type="submit">Dodaj wydarzenie</button>
           </form>
           <section class="panel">
             <div class="panel-head">
-              <h2>Wydarzenia i kiermasze</h2>
+              <h2>Wydarzenia</h2>
             </div>
             <div id="eventsList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="rentals" class="view">
+        <div class="rentals-layout">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Magazyn</h2>
+            </div>
+            <div id="rentalInventory" class="inventory-grid"></div>
+          </section>
+
+          <form id="rentalForm" class="form-panel">
+            <h2>Nowe wypożyczenie</h2>
+            <div class="form-grid">
+              <input name="firstName" required placeholder="Imię" />
+              <input name="lastName" required placeholder="Nazwisko" />
+            </div>
+            <input name="phone" required placeholder="Telefon" />
+            <div class="form-grid">
+              <label>
+                Od
+                <input name="dateFrom" type="date" required />
+              </label>
+              <label>
+                Do
+                <input name="dateTo" type="date" required />
+              </label>
+            </div>
+            <div id="rentalItemsForm" class="rental-items-form"></div>
+            <textarea name="notes" placeholder="Uwagi, np. kaucja, uszkodzenia przed wydaniem"></textarea>
+            <div class="rental-summary">
+              <span>Dni: <strong id="rentalDays">1</strong></span>
+              <span>Razem: <strong id="rentalTotal">0 zł</strong></span>
+            </div>
+            <button type="submit">Zapisz wypożyczenie</button>
+          </form>
+
+          <section class="panel rentals-list-panel">
+            <div class="panel-head">
+              <h2>Historia</h2>
+            </div>
+            <div id="rentalsList" class="table"></div>
           </section>
         </div>
       </section>
@@ -187,6 +240,7 @@
               <option>Korespondencja</option>
             </select>
             <input name="date" type="date" required />
+            <input name="file" type="file" accept="application/pdf" />
             <textarea name="notes" placeholder="Krótka treść lub notatka"></textarea>
             <button type="submit">Zapisz dokument</button>
           </form>
@@ -199,6 +253,48 @@
               Docelowo można tu podłączyć Gmail, Outlook albo pocztę koła. Bezpieczna wersja używa logowania u dostawcy poczty albo jednorazowego hasła aplikacji.
             </div>
             <div id="docsList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="invoices" class="view">
+        <div class="workspace">
+          <form id="invoiceForm" class="form-panel">
+            <h2>Wystaw fakturę</h2>
+            <select name="rentalId" id="invoiceRental">
+              <option value="">Bez wypożyczenia</option>
+            </select>
+            <input name="number" required placeholder="Numer faktury, np. 1/2026" />
+            <input name="date" type="date" required />
+            <input name="buyerName" required placeholder="Nabywca" />
+            <input name="buyerAddress" placeholder="Adres nabywcy" />
+            <input name="buyerNip" placeholder="NIP nabywcy" />
+            <select name="source">
+              <option>Wypożyczenie</option>
+              <option>Sprzedaż</option>
+              <option>Usługa</option>
+              <option>Inne</option>
+            </select>
+            <input name="itemName" required placeholder="Pozycja, np. Wypożyczenie naczyń" />
+            <div class="form-grid">
+              <input name="quantity" type="number" min="1" step="1" required placeholder="Ilość" />
+              <input name="unitPrice" type="number" min="0" step="0.01" required placeholder="Cena netto" />
+            </div>
+            <select name="vatRate">
+              <option value="23">VAT 23%</option>
+              <option value="8">VAT 8%</option>
+              <option value="5">VAT 5%</option>
+              <option value="0">VAT 0%</option>
+              <option value="zw">ZW</option>
+            </select>
+            <textarea name="notes" placeholder="Uwagi"></textarea>
+            <button type="submit">Zapisz fakturę</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Lista faktur</h2>
+            </div>
+            <div id="invoicesList" class="table"></div>
           </section>
         </div>
       </section>
@@ -221,6 +317,8 @@
         </div>
       </section>
     </main>
+
+    <section id="printSheet" class="print-sheet"></section>
 
     <script src="app.js"></script>
   </body>
