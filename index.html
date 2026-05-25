@@ -42,6 +42,7 @@
         <button class="nav-item" data-view="invoices">Faktury</button>
         <button class="nav-item" data-view="docs">Dokumenty i poczta</button>
         <button class="nav-item" data-view="board">Zarząd</button>
+        <button class="nav-item" data-view="administration">Administracja</button>
       </nav>
       <div class="sidebar-actions">
         <div class="user-badge">
@@ -330,12 +331,64 @@
           </section>
         </div>
       </section>
+
+      <section id="administration" class="view">
+        <div class="workspace">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Kopie bezpieczeństwa</h2>
+            </div>
+            <div class="notice">
+              Dane programu są w Supabase. Kopie bazy rób w panelu Supabase, a pliki strony trzymaj na GitHubie.
+            </div>
+            <div class="table">
+              <div class="row">
+                <div>
+                  <strong>Program</strong>
+                  <small>Kopia kodu strony jest w repozytorium GitHub.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>Dane</strong>
+                  <small>Kopie członków, składek, kasy, wypożyczalni i dokumentów wykonuj z Supabase.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>PDF</strong>
+                  <small>Pliki dokumentów są w Supabase Storage w folderze documents.</small>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Uprawnienia</h2>
+            </div>
+            <div class="table">
+              <div class="row">
+                <div>
+                  <strong>Administrator, Agata, Tomek</strong>
+                  <small>Mogą dodawać, poprawiać i usuwać wpisy robocze.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>Potwierdzenie usuwania</strong>
+                  <small>Przy usuwaniu program nadal pyta o potwierdzenie.</small>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
     </main>
 
     <section id="printSheet" class="print-sheet"></section>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-docs-money"></script>
+    <script src="app.js?v=20260525-administration"></script>
   </body>
 </html>

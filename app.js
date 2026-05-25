@@ -63,7 +63,8 @@ const titles = {
   rentals: "Wypożyczalnia",
   invoices: "Faktury",
   docs: "Dokumenty i poczta",
-  board: "Zarząd"
+  board: "Zarząd",
+  administration: "Administracja"
 };
 
 setupRentalShell();
@@ -244,7 +245,7 @@ function roleName(role) {
 }
 
 function isAdmin() {
-  return currentRole === "admin";
+  return currentRole === "admin" || currentRole === "staff";
 }
 
 function applyRole() {
