@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260525-sidebar-refresh" />
+    <link rel="stylesheet" href="styles.css?v=20260525-member-board-role" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -111,6 +111,17 @@
               <option>Nieaktywny</option>
               <option>Zarchiwizowany</option>
             </select>
+            <label>
+              Funkcja w kole
+              <select name="boardRole">
+                <option>Brak</option>
+                <option>Przewodnicząca</option>
+                <option>Wiceprzewodnicząca</option>
+                <option>Skarbnik</option>
+                <option>Sekretarz</option>
+                <option>Członek zarządu</option>
+              </select>
+            </label>
             <button type="submit">Dodaj</button>
             <button id="cancelMemberEdit" type="button" class="secondary-button hidden">Anuluj edycję</button>
           </form>
@@ -364,13 +375,6 @@
 
       <section id="board" class="view">
         <div class="workspace">
-          <form id="boardForm" class="form-panel">
-            <h2>Dodaj osobę z zarządu</h2>
-            <input name="role" required placeholder="Funkcja, np. Skarbnik" />
-            <input name="name" required placeholder="Imię i nazwisko" />
-            <input name="term" placeholder="Kadencja, np. 2026-2028" />
-            <button type="submit">Zapisz</button>
-          </form>
           <section class="panel">
             <div class="panel-head">
               <h2>Zarząd koła</h2>
@@ -468,6 +472,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-sidebar-refresh"></script>
+    <script src="app.js?v=20260525-member-board-role"></script>
   </body>
 </html>

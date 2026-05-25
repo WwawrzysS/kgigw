@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-12";
+const APP_VERSION = "2026.05.25-13";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -145,7 +145,6 @@ document.querySelector("#rentalForm").addEventListener("input", updateRentalSumm
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
-document.querySelector("#boardForm").addEventListener("submit", handleBoard);
 document.querySelector("#exportData").addEventListener("click", exportData);
 document.querySelector("#undoButton").addEventListener("click", undoLastChange);
 document.querySelector("#importData").addEventListener("change", importData);
@@ -313,7 +312,7 @@ async function refreshSupabaseData() {
   const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
     supabaseClient
       .from("members")
-      .select("id, name, phone, email, status, created_at")
+      .select("id, name, phone, email, status, board_role, created_at")
       .order("name", { ascending: true }),
     supabaseClient
       .from("fees")
@@ -386,7 +385,8 @@ async function refreshSupabaseData() {
     name: member.name,
     phone: member.phone || "",
     email: member.email || "",
-    status: member.status || "Aktywny"
+    status: member.status || "Aktywny",
+    boardRole: member.board_role || "Brak"
   }));
 
   state.fees = (feesResult.data || []).map((fee) => {
@@ -678,7 +678,8 @@ async function handleMember(event) {
       name: data.name,
       phone: data.phone || null,
       email: data.email || null,
-      status: data.status || "Aktywny"
+      status: data.status || "Aktywny",
+      board_role: data.boardRole || "Brak"
     };
     const { error } = memberId
       ? await supabaseClient.from("members").update(payload).eq("id", memberId)
@@ -1058,12 +1059,6 @@ async function handleInvoice(event) {
   event.target.date.valueAsDate = new Date();
 }
 
-function handleBoard(event) {
-  event.preventDefault();
-  state.board.push({ id: makeId(), ...formData(event.target) });
-  finishForm(event.target);
-}
-
 function finishForm(form) {
   rememberUndo();
   saveState();
@@ -1114,7 +1109,7 @@ function renderMembers() {
   elements.membersList.innerHTML = rows(filterItems(visibleMembers), (item) => `
     <div>
       <strong>${escapeHtml(item.name)}</strong>
-      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}</small>
+      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}${memberBoardRoleText(item)}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editMember('${item.id}')">Edytuj</button>` : ""}
@@ -1133,6 +1128,7 @@ function editMember(id) {
   form.phone.value = member.phone || "";
   form.email.value = member.email || "";
   form.status.value = member.status || "Aktywny";
+  form.boardRole.value = member.boardRole || "Brak";
   elements.memberFormTitle.textContent = "Edytuj członka";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   elements.cancelMemberEdit.classList.remove("hidden");
@@ -1147,9 +1143,15 @@ function resetMemberForm(form) {
   if (!form) return;
   form.reset();
   form.id.value = "";
+  form.boardRole.value = "Brak";
   elements.memberFormTitle.textContent = "Dodaj członka";
   form.querySelector('button[type="submit"]').textContent = "Dodaj";
   elements.cancelMemberEdit.classList.add("hidden");
+}
+
+function memberBoardRoleText(member) {
+  const role = member.boardRole || "Brak";
+  return role === "Brak" ? "" : ` · Funkcja: ${escapeHtml(role)}`;
 }
 
 function renderFees() {
@@ -1361,12 +1363,12 @@ function renderInvoices() {
 }
 
 function renderBoard() {
-  elements.boardList.innerHTML = rows(filterItems(state.board), (item) => `
+  const boardMembers = state.members.filter((member) => (member.boardRole || "Brak") !== "Brak");
+  elements.boardList.innerHTML = rows(filterItems(boardMembers), (item) => `
     <div>
-      <strong>${escapeHtml(item.role)}: ${escapeHtml(item.name)}</strong>
-      <small>${escapeHtml(item.term || "Bez kadencji")}</small>
+      <strong>${escapeHtml(item.boardRole)}: ${escapeHtml(item.name)}</strong>
+      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status || "Aktywny")}</small>
     </div>
-    ${deleteAction("board", item.id)}
   `);
 }
 
