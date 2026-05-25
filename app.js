@@ -9,6 +9,11 @@ const PASSWORDS = {
   agata: "AgatA3539",
   tomek: "SołtyS2025"
 };
+const ACCOUNT_EMAILS = {
+  admin: "wawrzysdom@gmail.com",
+  agata: "agatawawrzysnek@go2.pl",
+  tomek: "tomasztynski@gmail.com"
+};
 const ORGANIZATION = {
   name: "Koło Gospodyń i Gospodarzy Wiejskich we Włosani",
   street: "Królowej Polski 49",
@@ -42,7 +47,9 @@ let state = loadState();
 let activeView = "dashboard";
 let query = "";
 let currentRole = sessionStorage.getItem(AUTH_KEY);
+let currentUserName = sessionStorage.getItem("kgigw-user-name") || "";
 let undoSnapshot = null;
+let supabaseClient = null;
 
 const titles = {
   dashboard: "Pulpit",
@@ -57,6 +64,7 @@ const titles = {
 };
 
 setupRentalShell();
+setupSupabaseClient();
 
 const elements = {
   loginScreen: document.querySelector("#loginScreen"),
@@ -98,7 +106,7 @@ const elements = {
 
 document.body.classList.toggle("locked", !currentRole);
 document.querySelectorAll("#exportData, .import-button").forEach((item) => item.classList.add("admin-only"));
-elements.currentRole.textContent = roleName(currentRole);
+elements.currentRole.textContent = currentUserName ? `${currentUserName} (${roleName(currentRole)})` : roleName(currentRole);
 elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
@@ -144,19 +152,58 @@ document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Dat
 applyRole();
 render();
 
-function handleLogin(event) {
+async function handleLogin(event) {
   event.preventDefault();
   const data = formData(event.target);
   const role = String(data.role || "").trim();
   const password = String(data.password || "").trim();
+
+  if (supabaseClient && ACCOUNT_EMAILS[role]) {
+    elements.loginError.textContent = "Sprawdzam konto...";
+    const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
+      email: ACCOUNT_EMAILS[role],
+      password
+    });
+
+    if (error) {
+      elements.loginError.textContent = "Nieprawidłowe hasło albo konto nie jest aktywne w Supabase.";
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabaseClient
+      .from("profiles")
+      .select("display_name, role")
+      .eq("id", authData.user.id)
+      .single();
+
+    if (profileError || !profile) {
+      elements.loginError.textContent = "Konto działa, ale brakuje profilu w tabeli profiles.";
+      return;
+    }
+
+    currentRole = profile.role;
+    currentUserName = profile.display_name || roleName(profile.role);
+    sessionStorage.setItem(AUTH_KEY, currentRole);
+    sessionStorage.setItem("kgigw-user-name", currentUserName);
+    elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
+    elements.loginError.textContent = "";
+    event.target.reset();
+    document.body.classList.remove("locked");
+    applyRole();
+    render();
+    return;
+  }
+
   if (PASSWORDS[role] !== password) {
     elements.loginError.textContent = "Nieprawidłowe hasło.";
     return;
   }
 
   currentRole = role;
+  currentUserName = roleName(role);
   sessionStorage.setItem(AUTH_KEY, currentRole);
-  elements.currentRole.textContent = roleName(currentRole);
+  sessionStorage.setItem("kgigw-user-name", currentUserName);
+  elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
   elements.loginError.textContent = "";
   event.target.reset();
   document.body.classList.remove("locked");
@@ -164,9 +211,14 @@ function handleLogin(event) {
   render();
 }
 
-function logout() {
+async function logout() {
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
   currentRole = null;
+  currentUserName = "";
   sessionStorage.removeItem(AUTH_KEY);
+  sessionStorage.removeItem("kgigw-user-name");
   elements.currentRole.textContent = "-";
   document.body.classList.add("locked");
   applyRole();
@@ -174,6 +226,8 @@ function logout() {
 
 function roleName(role) {
   if (role === "admin") return "Administrator";
+  if (role === "staff") return "Pracownik";
+  if (role === "readonly") return "Tylko odczyt";
   if (role === "user") return "Użytkownik";
   if (role === "agata") return "Agata";
   if (role === "tomek") return "Tomek";
@@ -188,6 +242,12 @@ function applyRole() {
   document.querySelectorAll(".admin-only").forEach((item) => {
     item.classList.toggle("hidden-role", !isAdmin());
   });
+}
+
+function setupSupabaseClient() {
+  const config = window.KGIGW_SUPABASE;
+  if (!window.supabase || !config?.url || !config?.anonKey) return;
+  supabaseClient = window.supabase.createClient(config.url, config.anonKey);
 }
 
 function setupRentalShell() {
