@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-8";
+const APP_VERSION = "2026.05.25-9";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -61,7 +61,7 @@ const titles = {
   dashboard: "Pulpit",
   members: "Członkowie",
   fees: "Składki",
-  money: "Kasa",
+  money: "Finanse",
   events: "Wydarzenia",
   rentals: "Wypożyczalnia",
   invoices: "Faktury",
@@ -791,7 +791,7 @@ async function handleMoney(event) {
       ? await supabaseClient.from("transactions").update(payload).eq("id", moneyId)
       : await supabaseClient.from("transactions").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać operacji w kasie: ${error.message}`);
+      alert(`Nie udało się zapisać operacji w Finansach: ${error.message}`);
       return;
     }
     resetMoneyForm(event.target);
@@ -984,7 +984,7 @@ async function handleDoc(event) {
     if (moneyEntries.length) {
       const { error: moneyError } = await supabaseClient.from("transactions").insert(moneyEntries);
       if (moneyError) {
-        alert(`Dokument zapisany, ale nie udało się dopisać pozycji w kasie: ${moneyError.message}`);
+        alert(`Dokument zapisany, ale nie udało się dopisać pozycji w Finansach: ${moneyError.message}`);
         return;
       }
     }
@@ -1862,7 +1862,7 @@ async function removeItem(collection, id) {
     return;
   }
   if (collection === "money") {
-    const confirmed = confirm("Anulować ten wpis w Kasie? Wpis zostanie w historii, ale nie będzie liczony do salda.");
+    const confirmed = confirm("Anulować ten wpis w Finansach? Wpis zostanie w historii, ale nie będzie liczony do salda.");
     if (!confirmed) return;
     if (supabaseClient && currentRole) {
       const { error } = await supabaseClient
@@ -2202,7 +2202,7 @@ function moneyReportHtml() {
 
   return `
     ${organizationHeaderHtml()}
-    <h2>Zestawienie kasy</h2>
+    <h2>Zestawienie Finansów</h2>
     <p><strong>Wpływy:</strong> ${money(income)} &nbsp; <strong>Wydatki:</strong> ${money(expenses)} &nbsp; <strong>Stan:</strong> ${money(income - expenses)}</p>
     <table>
       <thead>
