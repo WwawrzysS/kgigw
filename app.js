@@ -3,6 +3,8 @@ const AUTH_KEY = "kgigw-active-role";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
 const FEE_YEAR = new Date().getFullYear();
+const DOCUMENT_BUCKET = "documents";
+const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 const PASSWORDS = {
   admin: "admin123",
   user: "user123",
@@ -100,6 +102,8 @@ const elements = {
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
+  storageText: document.querySelector("#storageText"),
+  storageBar: document.querySelector("#storageBar"),
   boardList: document.querySelector("#boardList"),
   feeMember: document.querySelector("#feeMember"),
   mailboxInfo: document.querySelector("#mailboxInfo")
@@ -256,7 +260,7 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
-  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult] = await Promise.all([
+  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult] = await Promise.all([
     supabaseClient
       .from("members")
       .select("id, name, phone, email, status, created_at")
@@ -282,6 +286,11 @@ async function refreshSupabaseData() {
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id")
       .order("transaction_date", { ascending: false })
+    ,
+    supabaseClient
+      .from("documents")
+      .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id")
+      .order("document_date", { ascending: false })
   ]);
 
   if (membersResult.error) {
@@ -306,6 +315,10 @@ async function refreshSupabaseData() {
   }
   if (moneyResult.error) {
     alert(`Nie udało się pobrać kasy z Supabase: ${moneyResult.error.message}`);
+    return;
+  }
+  if (docsResult.error) {
+    alert(`Nie udało się pobrać dokumentów z Supabase: ${docsResult.error.message}`);
     return;
   }
 
@@ -398,6 +411,20 @@ async function refreshSupabaseData() {
       eventName: linkedEvent?.name || ""
     };
   });
+
+  state.docs = (docsResult.data || []).map((doc) => ({
+    id: doc.id,
+    title: doc.title,
+    sender: doc.sender || "",
+    category: doc.category,
+    date: doc.document_date,
+    notes: doc.notes || "",
+    filePath: doc.file_path || "",
+    fileName: doc.file_name || "",
+    fileSize: Number(doc.file_size || 0),
+    mimeType: doc.mime_type || "",
+    eventId: doc.event_id || ""
+  }));
 
   supabaseDataReady = true;
   saveState();
@@ -708,6 +735,49 @@ async function handleDoc(event) {
   event.preventDefault();
   const data = formData(event.target);
   const file = event.target.file.files[0];
+  if (file && file.type !== "application/pdf") {
+    alert("Można dodać tylko plik PDF.");
+    return;
+  }
+  if (supabaseClient && currentRole) {
+    let filePath = "";
+    let fileName = "";
+    let fileSize = 0;
+    let mimeType = "";
+    if (file) {
+      fileName = file.name;
+      fileSize = file.size;
+      mimeType = file.type;
+      filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(filePath, file, { contentType: file.type, upsert: false });
+      if (uploadError) {
+        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        return;
+      }
+    }
+
+    const { error } = await supabaseClient.from("documents").insert({
+      title: data.title,
+      sender: data.sender || null,
+      category: data.category,
+      document_date: data.date,
+      notes: data.notes || null,
+      file_path: filePath || null,
+      file_name: fileName || null,
+      file_size: fileSize || null,
+      mime_type: mimeType || null
+    });
+    if (error) {
+      alert(`PDF mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    event.target.date.valueAsDate = new Date();
+    await refreshSupabaseData();
+    return;
+  }
   const attachment = file ? await readPdfAttachment(file) : null;
   delete data.file;
   state.docs.push({ id: makeId(), ...data, attachment });
@@ -963,16 +1033,26 @@ function renderRentalItemInputs() {
 }
 
 function renderDocs() {
+  renderStorageInfo();
   elements.docsList.innerHTML = rows(filterItems(state.docs), (item) => `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${item.attachment ? `<br>PDF: ${escapeHtml(item.attachment.name)}` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
-      ${item.attachment ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz PDF</button>` : ""}
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz PDF</button>` : ""}
       ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
   `);
+}
+
+function renderStorageInfo() {
+  if (!elements.storageText || !elements.storageBar) return;
+  const used = state.docs.reduce((sum, doc) => sum + docFileSize(doc), 0);
+  const percent = Math.min(100, Math.round((used / STORAGE_LIMIT_BYTES) * 100));
+  elements.storageText.textContent = `${formatBytes(used)} / ${formatBytes(STORAGE_LIMIT_BYTES)} (${percent}%)`;
+  elements.storageBar.style.width = `${percent}%`;
+  elements.storageBar.className = percent >= 90 ? "danger" : percent >= 70 ? "warning" : "";
 }
 
 function renderInvoices() {
@@ -1339,15 +1419,26 @@ function printInvoice(id) {
   window.print();
 }
 
-function openDocumentAttachment(id) {
+async function openDocumentAttachment(id) {
   const doc = state.docs.find((entry) => entry.id === id);
-  if (!doc?.attachment?.dataUrl) return;
+  if (!docHasFile(doc)) return;
+  let url = doc.attachment?.dataUrl || "";
+  if (!url && supabaseClient && doc.filePath) {
+    const { data, error } = await supabaseClient.storage
+      .from(DOCUMENT_BUCKET)
+      .createSignedUrl(doc.filePath, 60);
+    if (error) {
+      alert(`Nie udało się otworzyć PDF: ${error.message}`);
+      return;
+    }
+    url = data.signedUrl;
+  }
   const win = window.open();
   if (!win) {
     alert("Przeglądarka zablokowała otwarcie PDF. Zezwól na wyskakujące okna dla tej strony.");
     return;
   }
-  win.document.write(`<iframe src="${doc.attachment.dataUrl}" title="${escapeHtml(doc.attachment.name)}" style="border:0;width:100%;height:100vh"></iframe>`);
+  win.document.write(`<iframe src="${url}" title="${escapeHtml(docFileName(doc))}" style="border:0;width:100%;height:100vh"></iframe>`);
 }
 
 async function removeItem(collection, id) {
@@ -1403,6 +1494,19 @@ async function removeItem(collection, id) {
     await refreshSupabaseData();
     return;
   }
+  if (supabaseClient && currentRole && collection === "docs") {
+    const doc = state.docs.find((entry) => entry.id === id);
+    if (doc?.filePath) {
+      await supabaseClient.storage.from(DOCUMENT_BUCKET).remove([doc.filePath]);
+    }
+    const { error } = await supabaseClient.from("documents").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć dokumentu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
   rememberUndo();
   state[collection] = state[collection].filter((item) => item.id !== id);
   saveState();
@@ -1453,6 +1557,35 @@ function rentalDays(dateFrom, dateTo) {
 
 function rentalTotal(items, days) {
   return items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0) * days, 0);
+}
+
+function safeFileName(name) {
+  return String(name || "dokument.pdf")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "dokument.pdf";
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024 * 1024) return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function docFileName(doc) {
+  return doc?.fileName || doc?.attachment?.name || "";
+}
+
+function docFileSize(doc) {
+  return Number(doc?.fileSize || doc?.attachment?.size || 0);
+}
+
+function docHasFile(doc) {
+  return Boolean(doc?.filePath || doc?.attachment?.dataUrl);
 }
 
 function readPdfAttachment(file) {
