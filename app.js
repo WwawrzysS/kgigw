@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-5";
+const APP_VERSION = "2026.05.25-6";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -709,15 +709,28 @@ async function handleFee(event) {
   const year = feeYear(data.period);
   const dueAmount = ANNUAL_FEE;
   const paidAmount = Number(data.amount || 0);
+  const paidAt = new Date().toISOString().slice(0, 10);
+  const moneyTitle = `Składka członkowska ${year} - ${member.name}`;
   if (supabaseClient && currentRole) {
-    const { error } = await supabaseClient.from("fees").insert({
+    const { data: savedFee, error } = await supabaseClient.from("fees").insert({
       member_id: member.id,
       year,
       amount: paidAmount,
-      paid_at: new Date().toISOString().slice(0, 10)
-    });
+      paid_at: paidAt
+    }).select("id").single();
     if (error) {
       alert(`Nie udało się zapisać składki w Supabase: ${error.message}`);
+      return;
+    }
+    const { error: moneyError } = await supabaseClient.from("transactions").insert({
+      type: "income",
+      title: moneyTitle,
+      category: "Składka członkowska",
+      amount: paidAmount,
+      transaction_date: paidAt
+    });
+    if (moneyError) {
+      alert(`Składka została zapisana, ale nie udało się dopisać wpływu do Kasy: ${moneyError.message}`);
       return;
     }
     event.target.reset();
@@ -727,7 +740,7 @@ async function handleFee(event) {
     return;
   }
   state.fees.push({
-    id: makeId(),
+    id: data.id || makeId(),
     ...data,
     memberId: member.id,
     member: member.name,
@@ -735,6 +748,17 @@ async function handleFee(event) {
     dueAmount,
     amount: paidAmount,
     status: "Wpłata"
+  });
+  const savedLocalFee = state.fees.at(-1);
+  state.money.push({
+    id: makeId(),
+    type: "income",
+    title: moneyTitle,
+    category: "Składka członkowska",
+    amount: paidAmount,
+    date: paidAt,
+    sourceType: "fee",
+    sourceId: savedLocalFee.id
   });
   finishForm(event.target);
   event.target.period.value = FEE_YEAR;
