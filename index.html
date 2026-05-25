@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260525-member-board-role" />
+    <link rel="stylesheet" href="styles.css?v=20260525-members-csv" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -134,6 +134,28 @@
               </label>
             </div>
             <div id="membersList" class="table"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Eksport członków</h2>
+            </div>
+            <div class="notice compact-notice">
+              <strong>Dane podstawowe</strong>
+              <label><input type="checkbox" class="member-export-field" value="name" checked /> Imię i nazwisko</label>
+              <label><input type="checkbox" class="member-export-field" value="phone" checked /> Telefon</label>
+              <label><input type="checkbox" class="member-export-field" value="email" checked /> E-mail</label>
+              <label><input type="checkbox" class="member-export-field" value="status" checked /> Status</label>
+              <label><input type="checkbox" class="member-export-field" value="boardRole" checked /> Funkcja w kole</label>
+              <strong>Dane składek</strong>
+              <label><input type="checkbox" class="member-export-field" value="feePaid" /> Suma wpłat w bieżącym roku</label>
+              <label><input type="checkbox" class="member-export-field" value="feeStatus" /> Status składek</label>
+              <label><input type="checkbox" class="member-export-field" value="paidUntil" /> Opłacone do</label>
+              <label><input type="checkbox" class="member-export-field" value="currentDue" /> Zaległość</label>
+              <strong>Zakres</strong>
+              <label><input type="radio" name="memberExportScope" value="active" checked /> Eksportuj tylko aktywnych</label>
+              <label><input type="radio" name="memberExportScope" value="all" /> Eksportuj aktywnych i nieaktywnych</label>
+              <button id="downloadMembersCsv" class="small-button" type="button">Pobierz CSV</button>
+            </div>
           </section>
         </div>
       </section>
@@ -472,6 +494,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-member-board-role"></script>
+    <script src="app.js?v=20260525-members-csv"></script>
   </body>
 </html>

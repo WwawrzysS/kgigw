@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-13";
+const APP_VERSION = "2026.05.25-14";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -92,6 +92,7 @@ const elements = {
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
   showInactiveMembers: document.querySelector("#showInactiveMembers"),
+  downloadMembersCsv: document.querySelector("#downloadMembersCsv"),
   memberFormTitle: document.querySelector("#memberFormTitle"),
   cancelMemberEdit: document.querySelector("#cancelMemberEdit"),
   feesList: document.querySelector("#feesList"),
@@ -133,6 +134,7 @@ document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
 document.querySelector("#showInactiveMembers").addEventListener("change", renderMembers);
+document.querySelector("#downloadMembersCsv").addEventListener("click", exportMembersCsv);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
@@ -2384,6 +2386,50 @@ function importData(event) {
     }
   };
   reader.readAsText(file);
+}
+
+function exportMembersCsv() {
+  const selectedFields = [...document.querySelectorAll(".member-export-field:checked")].map((input) => input.value);
+  if (!selectedFields.length) {
+    alert("Zaznacz przynajmniej jedną kolumnę do eksportu.");
+    return;
+  }
+
+  const includeInactive = document.querySelector('input[name="memberExportScope"]:checked')?.value === "all";
+  const feeRowsByName = new Map(feeMemberRows().map((row) => [row.name, row]));
+  const columns = memberCsvColumns().filter((column) => selectedFields.includes(column.key));
+  const members = state.members
+    .filter((member) => includeInactive || (member.status || "Aktywny") === "Aktywny")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const rows = members.map((member) => {
+    const feeRow = feeRowsByName.get(member.name);
+    return columns.map((column) => csvValue(column.value(member, feeRow))).join(";");
+  });
+  const csv = "\uFEFF" + [columns.map((column) => csvValue(column.label)).join(";"), ...rows].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "czlonkowie-kgigw.csv";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function memberCsvColumns() {
+  return [
+    { key: "name", label: "Imię i nazwisko", value: (member) => member.name },
+    { key: "phone", label: "Telefon", value: (member) => member.phone },
+    { key: "email", label: "E-mail", value: (member) => member.email },
+    { key: "status", label: "Status", value: (member) => member.status || "Aktywny" },
+    { key: "boardRole", label: "Funkcja w kole", value: (member) => member.boardRole || "Brak" },
+    { key: "feePaid", label: "Suma wpłat w bieżącym roku", value: (member, feeRow) => money(feeRow?.paid || 0) },
+    { key: "feeStatus", label: "Status składek", value: (member, feeRow) => feeRow?.isLate ? "Zaległość" : "Opłacone" },
+    { key: "paidUntil", label: "Opłacone do", value: (member, feeRow) => feeRow?.paid >= ANNUAL_FEE ? "Końca roku" : feeRow?.paidUntil || "Brak wpłat" },
+    { key: "currentDue", label: "Zaległość", value: (member, feeRow) => money(feeRow?.currentDue || 0) }
+  ];
+}
+
+function csvValue(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
 function money(value) {
