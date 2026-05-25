@@ -49,12 +49,6 @@
           <span>Zalogowano jako</span>
           <strong id="currentRole">-</strong>
         </div>
-        <button id="exportData" class="ghost-button">Eksport danych</button>
-        <button id="undoButton" class="ghost-button">Cofnij ostatnią zmianę</button>
-        <label class="ghost-button import-button">
-          Import danych
-          <input id="importData" type="file" accept="application/json" />
-        </label>
         <button id="logoutButton" class="ghost-button">Wyloguj</button>
       </div>
     </aside>
@@ -344,6 +338,30 @@
             <div class="table">
               <div class="row">
                 <div>
+                  <strong>Eksport danych</strong>
+                  <small>Pobierz dodatkową kopię danych do pliku JSON.</small>
+                </div>
+                <button id="exportData" class="small-button">Eksport danych</button>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>Import danych</strong>
+                  <small>Wczytaj dane z wcześniej pobranego pliku JSON.</small>
+                </div>
+                <label class="small-button import-button admin-import">
+                  Import danych
+                  <input id="importData" type="file" accept="application/json" />
+                </label>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>Cofnij ostatnią zmianę</strong>
+                  <small>Przydatne, gdy wpis został dodany omyłkowo.</small>
+                </div>
+                <button id="undoButton" class="small-button">Cofnij ostatnią zmianę</button>
+              </div>
+              <div class="row">
+                <div>
                   <strong>Program</strong>
                   <small>Kopia kodu strony jest w repozytorium GitHub.</small>
                 </div>
@@ -389,6 +407,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-docs-invoices-admin-delete"></script>
+    <script src="app.js?v=20260525-admin-tools"></script>
   </body>
 </html>
