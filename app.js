@@ -256,7 +256,7 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
-  const [membersResult, feesResult] = await Promise.all([
+  const [membersResult, feesResult, inventoryResult, rentalsResult] = await Promise.all([
     supabaseClient
       .from("members")
       .select("id, name, phone, email, status, created_at")
@@ -264,7 +264,15 @@ async function refreshSupabaseData() {
     supabaseClient
       .from("fees")
       .select("id, member_id, year, amount, note, paid_at, created_at")
-      .order("paid_at", { ascending: false })
+      .order("paid_at", { ascending: false }),
+    supabaseClient
+      .from("rental_inventory")
+      .select("id, name, quantity, price_per_day")
+      .order("name", { ascending: true }),
+    supabaseClient
+      .from("rentals")
+      .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
+      .order("date_from", { ascending: false })
   ]);
 
   if (membersResult.error) {
@@ -273,6 +281,14 @@ async function refreshSupabaseData() {
   }
   if (feesResult.error) {
     alert(`Nie udało się pobrać składek z Supabase: ${feesResult.error.message}`);
+    return;
+  }
+  if (inventoryResult.error) {
+    alert(`Nie udało się pobrać magazynu z Supabase: ${inventoryResult.error.message}`);
+    return;
+  }
+  if (rentalsResult.error) {
+    alert(`Nie udało się pobrać wypożyczeń z Supabase: ${rentalsResult.error.message}`);
     return;
   }
 
@@ -297,6 +313,50 @@ async function refreshSupabaseData() {
       status: "Wpłata",
       paidAt: fee.paid_at,
       note: fee.note || ""
+    };
+  });
+
+  state.rentalInventory = (inventoryResult.data || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    quantity: Number(item.quantity || 0),
+    price: Number(item.price_per_day || 0)
+  }));
+
+  state.rentalLoans = (rentalsResult.data || []).map((rental) => {
+    const lines = rental.rental_lines || [];
+    const items = lines.map((line) => ({
+      lineId: line.id,
+      id: line.inventory_id,
+      name: line.item_name,
+      quantity: Number(line.quantity || 0),
+      price: Number(line.price_per_day || 0)
+    }));
+    const returnItems = lines.map((line) => ({
+      lineId: line.id,
+      id: line.inventory_id,
+      name: line.item_name,
+      issued: Number(line.quantity || 0),
+      returned: Number(line.returned || 0),
+      damaged: Number(line.damaged || 0),
+      missing: Number(line.missing || 0)
+    }));
+    return {
+      id: rental.id,
+      firstName: rental.first_name,
+      lastName: rental.last_name,
+      phone: rental.phone || "",
+      dateFrom: rental.date_from,
+      dateTo: rental.date_to,
+      days: Number(rental.days || 1),
+      total: Number(rental.total || 0),
+      status: rental.status || "Wypożyczone",
+      notes: rental.notes || "",
+      returnedAt: rental.returned_at,
+      returnNotes: rental.return_notes || "",
+      damageCost: Number(rental.damage_cost || 0),
+      items,
+      returnItems
     };
   });
 
@@ -482,7 +542,7 @@ function handleEvent(event) {
   renderEventOptions();
 }
 
-function handleRental(event) {
+async function handleRental(event) {
   event.preventDefault();
   const form = event.target;
   const data = formData(form);
@@ -507,6 +567,48 @@ function handleRental(event) {
   }
 
   const days = rentalDays(data.dateFrom, data.dateTo);
+  const total = rentalTotal(items, days);
+  if (supabaseClient && currentRole) {
+    const { data: rental, error: rentalError } = await supabaseClient
+      .from("rentals")
+      .insert({
+        first_name: data.firstName,
+        last_name: data.lastName,
+        phone: data.phone || null,
+        date_from: data.dateFrom,
+        date_to: data.dateTo,
+        days,
+        total,
+        status: "Wypożyczone",
+        notes: data.notes || null
+      })
+      .select("id")
+      .single();
+
+    if (rentalError) {
+      alert(`Nie udało się zapisać wypożyczenia w Supabase: ${rentalError.message}`);
+      return;
+    }
+
+    const rentalLines = items.map((item) => ({
+      rental_id: rental.id,
+      inventory_id: item.id,
+      item_name: item.name,
+      quantity: item.quantity,
+      price_per_day: item.price
+    }));
+    const { error: linesError } = await supabaseClient.from("rental_lines").insert(rentalLines);
+    if (linesError) {
+      alert(`Wypożyczenie zapisane, ale nie udało się zapisać pozycji: ${linesError.message}`);
+      return;
+    }
+
+    form.reset();
+    form.dateFrom.valueAsDate = new Date();
+    form.dateTo.valueAsDate = new Date();
+    await refreshSupabaseData();
+    return;
+  }
   state.rentalLoans.push({
     id: makeId(),
     firstName: data.firstName,
@@ -517,7 +619,7 @@ function handleRental(event) {
     notes: data.notes,
     days,
     items,
-    total: rentalTotal(items, days),
+    total,
     status: "Wypożyczone"
   });
 
@@ -1040,25 +1142,39 @@ function deleteAction(collection, id) {
   return `<div class="row-actions"><button class="delete-button" onclick="removeItem('${collection}', '${id}')">Usuń</button></div>`;
 }
 
-function updateInventory(id, field, value) {
+async function updateInventory(id, field, value) {
   if (!isAdmin()) return;
   const item = state.rentalInventory.find((entry) => entry.id === id);
   if (!item) return;
+  const normalizedValue = field === "quantity" ? Math.max(0, Math.round(Number(value) || 0)) : Math.max(0, Number(value) || 0);
+  if (supabaseClient && currentRole) {
+    const column = field === "quantity" ? "quantity" : "price_per_day";
+    const { error } = await supabaseClient
+      .from("rental_inventory")
+      .update({ [column]: normalizedValue })
+      .eq("id", id);
+    if (error) {
+      alert(`Nie udało się zmienić magazynu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
   rememberUndo();
-  item[field] = field === "quantity" ? Math.max(0, Math.round(Number(value) || 0)) : Math.max(0, Number(value) || 0);
+  item[field] = normalizedValue;
   saveState();
   renderRentals();
 }
 
-function returnRental(id) {
+async function returnRental(id) {
   const loan = state.rentalLoans.find((entry) => entry.id === id);
   if (!loan) return;
   const confirmed = confirm("Oznaczyc to wypozyczenie jako zwrocone?");
   if (!confirmed) return;
-  rememberUndo();
   const notes = document.querySelector(`#returnNotes-${id}`)?.value || "";
   const damageCost = Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
   const returnItems = loan.items.map((item, index) => ({
+    lineId: item.lineId,
     id: item.id,
     name: item.name,
     issued: item.quantity,
@@ -1066,6 +1182,41 @@ function returnRental(id) {
     damaged: Number(document.querySelector(`#returnDamaged-${id}-${index}`)?.value || 0),
     missing: Number(document.querySelector(`#returnMissing-${id}-${index}`)?.value || 0)
   }));
+  if (supabaseClient && currentRole) {
+    const { error: rentalError } = await supabaseClient
+      .from("rentals")
+      .update({
+        status: "Zwrócone",
+        returned_at: new Date().toISOString().slice(0, 10),
+        return_notes: notes || null,
+        damage_cost: damageCost
+      })
+      .eq("id", id);
+    if (rentalError) {
+      alert(`Nie udało się zapisać zwrotu w Supabase: ${rentalError.message}`);
+      return;
+    }
+
+    for (const item of returnItems) {
+      if (!item.lineId) continue;
+      const { error: lineError } = await supabaseClient
+        .from("rental_lines")
+        .update({
+          returned: item.returned,
+          damaged: item.damaged,
+          missing: item.missing
+        })
+        .eq("id", item.lineId);
+      if (lineError) {
+        alert(`Zwrot zapisany częściowo, ale jedna pozycja ma błąd: ${lineError.message}`);
+        return;
+      }
+    }
+
+    await refreshSupabaseData();
+    return;
+  }
+  rememberUndo();
   loan.status = "Zwrócone";
   loan.returnedAt = new Date().toISOString().slice(0, 10);
   loan.returnNotes = notes;
@@ -1124,6 +1275,24 @@ async function removeItem(collection, id) {
     const { error } = await supabaseClient.from(table).delete().eq("id", id);
     if (error) {
       alert(`Nie udało się usunąć wpisu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  if (supabaseClient && currentRole && collection === "rentalLoans") {
+    const { error } = await supabaseClient.from("rentals").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć wypożyczenia w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  if (supabaseClient && currentRole && collection === "rentalInventory") {
+    const { error } = await supabaseClient.from("rental_inventory").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć przedmiotu z magazynu w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
