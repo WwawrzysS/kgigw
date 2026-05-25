@@ -256,6 +256,12 @@ function applyRole() {
   document.querySelectorAll(".admin-only").forEach((item) => {
     item.classList.toggle("hidden-role", !canCorrect());
   });
+  document.querySelectorAll(".admin-role-only").forEach((item) => {
+    item.classList.toggle("hidden-role", !isAdmin());
+  });
+  if (!isAdmin() && activeView === "administration") {
+    switchView("dashboard");
+  }
 }
 
 function setupSupabaseClient() {
