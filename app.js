@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-14";
+const APP_VERSION = "2026.05.25-15";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -77,7 +77,9 @@ const elements = {
   loginScreen: document.querySelector("#loginScreen"),
   loginForm: document.querySelector("#loginForm"),
   loginError: document.querySelector("#loginError"),
+  sidebar: document.querySelector(".sidebar"),
   currentRole: document.querySelector("#currentRole"),
+  mobileMenuButton: document.querySelector("#mobileMenuButton"),
   viewTitle: document.querySelector("#viewTitle"),
   navItems: document.querySelectorAll(".nav-item"),
   navSubitems: document.querySelectorAll(".nav-subitem"),
@@ -131,6 +133,7 @@ elements.currentRole.textContent = currentUserName ? `${currentUserName} (${role
 if (elements.appVersion) elements.appVersion.textContent = APP_VERSION;
 elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
+document.querySelector("#mobileMenuButton").addEventListener("click", toggleMobileMenu);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
 document.querySelector("#showInactiveMembers").addEventListener("change", renderMembers);
@@ -156,6 +159,7 @@ document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
 document.querySelector("#openMailboxWindow").addEventListener("click", openMailboxConfig);
+document.addEventListener("click", closeMobileMenuFromPage);
 
 elements.navItems.forEach((button) => {
   button.addEventListener("click", () => {
@@ -164,6 +168,7 @@ elements.navItems.forEach((button) => {
       return;
     }
     switchView(button.dataset.view);
+    closeMobileMenu();
   });
 });
 
@@ -172,6 +177,7 @@ elements.navSubitems.forEach((button) => {
     switchView(button.dataset.view);
     if (button.dataset.rentalTab) switchRentalTab(button.dataset.rentalTab);
     if (button.dataset.docTab) switchDocTab(button.dataset.docTab);
+    closeMobileMenu();
   });
 });
 
@@ -267,6 +273,7 @@ async function logout() {
   sessionStorage.removeItem("kgigw-user-name");
   elements.currentRole.textContent = "-";
   document.body.classList.add("locked");
+  closeMobileMenu();
   applyRole();
 }
 
@@ -584,6 +591,22 @@ function refreshProgram() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.setItem(VERSION_KEY, APP_VERSION);
   window.location.reload();
+}
+
+function toggleMobileMenu() {
+  const open = document.body.classList.toggle("mobile-menu-open");
+  elements.mobileMenuButton.setAttribute("aria-label", open ? "Zamknij menu" : "Otwórz menu");
+}
+
+function closeMobileMenu() {
+  document.body.classList.remove("mobile-menu-open");
+  elements.mobileMenuButton.setAttribute("aria-label", "Otwórz menu");
+}
+
+function closeMobileMenuFromPage(event) {
+  if (!document.body.classList.contains("mobile-menu-open")) return;
+  if (elements.sidebar.contains(event.target) || elements.mobileMenuButton.contains(event.target)) return;
+  closeMobileMenu();
 }
 
 function openMailboxConfig() {
