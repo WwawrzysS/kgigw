@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260525-refresh-program" />
+    <link rel="stylesheet" href="styles.css?v=20260525-submenus-invoices" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -38,9 +38,19 @@
         <button class="nav-item" data-view="fees">Składki</button>
         <button class="nav-item" data-view="money">Kasa</button>
         <button class="nav-item" data-view="events">Wydarzenia</button>
-        <button class="nav-item" data-view="rentals">Wypożyczalnia</button>
+        <button class="nav-item nav-parent" data-view="rentals" data-subnav="rentalsSubnav">Wypożyczalnia</button>
+        <div id="rentalsSubnav" class="nav-submenu">
+          <button class="nav-subitem" data-view="rentals" data-rental-tab="new">Nowe wypożyczenie</button>
+          <button class="nav-subitem" data-view="rentals" data-rental-tab="returns">Zwroty</button>
+          <button class="nav-subitem" data-view="rentals" data-rental-tab="inventory">Magazyn</button>
+          <button class="nav-subitem" data-view="rentals" data-rental-tab="history">Historia</button>
+        </div>
         <button class="nav-item" data-view="invoices">Faktury</button>
-        <button class="nav-item" data-view="docs">Dokumenty i poczta</button>
+        <button class="nav-item nav-parent" data-view="docs" data-subnav="docsSubnav">Dokumenty</button>
+        <div id="docsSubnav" class="nav-submenu">
+          <button class="nav-subitem" data-view="docs" data-doc-tab="documents">Dokumenty</button>
+          <button class="nav-subitem" data-view="docs" data-doc-tab="mail">Poczta</button>
+        </div>
         <button class="nav-item" data-view="board">Zarząd</button>
         <button class="nav-item admin-role-only hidden-role" data-view="administration" hidden>Administracja</button>
       </nav>
@@ -227,7 +237,7 @@
 
       <section id="docs" class="view">
         <div class="workspace">
-          <form id="docForm" class="form-panel">
+          <form id="docForm" class="form-panel doc-tab-panel active-doc-panel" data-doc-panel="documents">
             <h2>Dodaj dokument lub wiadomość</h2>
             <input name="title" required placeholder="Tytuł pisma lub wiadomości" />
             <input name="sender" placeholder="Nadawca, np. Urząd Gminy" />
@@ -250,7 +260,7 @@
             <textarea name="notes" placeholder="Krótka treść lub notatka"></textarea>
             <button type="submit">Zapisz dokument</button>
           </form>
-          <section class="panel">
+          <section class="panel doc-tab-panel active-doc-panel" data-doc-panel="documents">
             <div class="panel-head">
               <h2>Dokumenty i poczta</h2>
               <button id="showMailboxInfo" class="small-button">Połączenie poczty</button>
@@ -266,6 +276,29 @@
               <div class="storage-bar"><span id="storageBar"></span></div>
             </div>
             <div id="docsList" class="table"></div>
+          </section>
+          <section class="panel doc-tab-panel" data-doc-panel="mail">
+            <div class="panel-head">
+              <h2>Poczta</h2>
+              <button id="openMailboxWindow" class="small-button" type="button">Otwórz konfigurację</button>
+            </div>
+            <div class="notice">
+              Konfiguracja poczty powinna działać w osobnym oknie. Najbezpieczniej użyć Gmail/Outlook albo poczty koła z hasłem aplikacji, bez zapisywania głównego hasła poczty w stronie.
+            </div>
+            <div class="table">
+              <div class="row">
+                <div>
+                  <strong>Status</strong>
+                  <small>Połączenie poczty nie jest jeszcze skonfigurowane.</small>
+                </div>
+              </div>
+              <div class="row">
+                <div>
+                  <strong>Docelowo</strong>
+                  <small>Tu będzie odbiór pism, faktur i wiadomości z możliwością zapisania ich w Dokumentach.</small>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </section>
@@ -418,6 +451,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-refresh-program"></script>
+    <script src="app.js?v=20260525-submenus-invoices"></script>
   </body>
 </html>

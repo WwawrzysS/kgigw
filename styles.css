@@ -152,8 +152,32 @@ body:not(.locked) .login-screen {
 
 .nav-item.active,
 .nav-item:hover,
+.nav-subitem.active,
+.nav-subitem:hover,
 .ghost-button:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.nav-submenu {
+  display: none;
+  gap: 6px;
+  padding-left: 12px;
+}
+
+.nav-submenu.open {
+  display: grid;
+}
+
+.nav-subitem {
+  width: 100%;
+  border: 0;
+  border-left: 2px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 9px 10px;
+  cursor: pointer;
 }
 
 .sidebar-actions {
@@ -341,6 +365,18 @@ textarea {
 }
 
 .form-panel.rental-tab-panel.active-rental-panel {
+  display: grid;
+}
+
+.doc-tab-panel {
+  display: none;
+}
+
+.doc-tab-panel.active-doc-panel {
+  display: block;
+}
+
+.form-panel.doc-tab-panel.active-doc-panel {
   display: grid;
 }
 

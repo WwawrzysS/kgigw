@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-1";
+const APP_VERSION = "2026.05.25-2";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -80,6 +80,8 @@ const elements = {
   currentRole: document.querySelector("#currentRole"),
   viewTitle: document.querySelector("#viewTitle"),
   navItems: document.querySelectorAll(".nav-item"),
+  navSubitems: document.querySelectorAll(".nav-subitem"),
+  navSubmenus: document.querySelectorAll(".nav-submenu"),
   views: document.querySelectorAll(".view"),
   globalSearch: document.querySelector("#globalSearch"),
   cashBalance: document.querySelector("#cashBalance"),
@@ -109,6 +111,7 @@ const elements = {
   rentalReturnsList: document.querySelector("#rentalReturnsList"),
   rentalSubtabs: document.querySelectorAll("[data-rental-tab]"),
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
+  docPanels: document.querySelectorAll("[data-doc-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
   storageText: document.querySelector("#storageText"),
@@ -146,9 +149,23 @@ document.querySelector("#refreshProgram").addEventListener("click", refreshProgr
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
+document.querySelector("#openMailboxWindow").addEventListener("click", openMailboxConfig);
 
 elements.navItems.forEach((button) => {
-  button.addEventListener("click", () => switchView(button.dataset.view));
+  button.addEventListener("click", () => {
+    toggleSubnav(button.dataset.subnav);
+    switchView(button.dataset.view);
+    if (button.dataset.view === "rentals") switchRentalTab("new");
+    if (button.dataset.view === "docs") switchDocTab("documents");
+  });
+});
+
+elements.navSubitems.forEach((button) => {
+  button.addEventListener("click", () => {
+    switchView(button.dataset.view);
+    if (button.dataset.rentalTab) switchRentalTab(button.dataset.rentalTab);
+    if (button.dataset.docTab) switchDocTab(button.dataset.docTab);
+  });
 });
 
 elements.rentalSubtabs.forEach((button) => {
@@ -496,10 +513,11 @@ function setupRentalShell() {
   if (!rentalSection || !layout || rentalSection.querySelector(".subtabs")) return;
 
   const tabs = document.createElement("div");
-  tabs.className = "subtabs";
+  tabs.className = "subtabs hidden";
   tabs.setAttribute("aria-label", "Działy wypożyczalni");
   tabs.innerHTML = `
-    <button class="subtab active" data-rental-tab="returns">Zwroty</button>
+    <button class="subtab active" data-rental-tab="new">Nowe wypożyczenie</button>
+    <button class="subtab" data-rental-tab="returns">Zwroty</button>
     <button class="subtab" data-rental-tab="inventory">Magazyn</button>
     <button class="subtab" data-rental-tab="history">Historia</button>
   `;
@@ -511,6 +529,8 @@ function setupRentalShell() {
   inventoryPanel?.setAttribute("data-rental-panel", "inventory");
   historyPanel?.classList.add("rental-tab-panel");
   historyPanel?.setAttribute("data-rental-panel", "history");
+  rentalForm?.classList.add("rental-tab-panel", "active-rental-panel");
+  rentalForm?.setAttribute("data-rental-panel", "new");
 
   const returnsPanel = document.createElement("section");
   returnsPanel.className = "panel rentals-list-panel rental-tab-panel";
@@ -555,6 +575,27 @@ function refreshProgram() {
   window.location.reload();
 }
 
+function openMailboxConfig() {
+  const win = window.open("", "kgigw-mail-config", "width=760,height=620");
+  if (!win) {
+    alert("Przeglądarka zablokowała nowe okno. Zezwól na wyskakujące okna dla tej strony.");
+    return;
+  }
+  win.document.write(`
+    <title>Konfiguracja poczty KGiGW</title>
+    <body style="font-family:Arial,sans-serif;max-width:720px;margin:24px auto;line-height:1.5;color:#202124">
+      <h1>Konfiguracja poczty</h1>
+      <p>Najbezpieczniejszy wariant to osobne hasło aplikacji do poczty koła, a nie główne hasło do skrzynki.</p>
+      <ol>
+        <li>Utwórz adres poczty koła albo wybierz istniejącą skrzynkę.</li>
+        <li>Włącz hasło aplikacji u dostawcy poczty, jeśli jest dostępne.</li>
+        <li>Dopiero potem podłączymy odbieranie dokumentów do panelu KGiGW.</li>
+      </ol>
+      <p>Ta część jest przygotowana jako osobne okno, żeby konfiguracja poczty nie mieszała się z codzienną pracą w panelu.</p>
+    </body>
+  `);
+}
+
 function rememberUndo() {
   undoSnapshot = JSON.stringify(state);
 }
@@ -583,14 +624,31 @@ function switchView(view) {
   activeView = view;
   elements.viewTitle.textContent = titles[view];
   elements.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
+  elements.navSubitems.forEach((item) => item.classList.toggle("active", item.dataset.view === view && (item.dataset.rentalTab || item.dataset.docTab)));
   elements.views.forEach((section) => section.classList.toggle("active-view", section.id === view));
-  if (view === "rentals") switchRentalTab("returns");
+  if (view === "rentals") switchRentalTab("new");
+  if (view === "docs") switchDocTab("documents");
   render();
+}
+
+function toggleSubnav(id) {
+  if (!id) return;
+  elements.navSubmenus.forEach((menu) => menu.classList.toggle("open", menu.id === id ? !menu.classList.contains("open") : menu.classList.contains("open")));
 }
 
 function switchRentalTab(tabName) {
   elements.rentalSubtabs.forEach((item) => item.classList.toggle("active", item.dataset.rentalTab === tabName));
   elements.rentalPanels.forEach((panel) => panel.classList.toggle("active-rental-panel", panel.dataset.rentalPanel === tabName));
+  elements.navSubitems.forEach((item) => {
+    if (item.dataset.rentalTab) item.classList.toggle("active", item.dataset.rentalTab === tabName);
+  });
+}
+
+function switchDocTab(tabName) {
+  elements.docPanels.forEach((panel) => panel.classList.toggle("active-doc-panel", panel.dataset.docPanel === tabName));
+  elements.navSubitems.forEach((item) => {
+    if (item.dataset.docTab) item.classList.toggle("active", item.dataset.docTab === tabName);
+  });
 }
 
 async function handleMember(event) {
@@ -1251,6 +1309,7 @@ function renderInvoices() {
     </div>
     <div class="row-actions">
       <button class="small-button" onclick="printInvoice('${invoice.id}')">Druk</button>
+      <button class="small-button" onclick="downloadInvoicePdf('${invoice.id}')">Pobierz PDF</button>
       ${deleteAction("invoices", invoice.id)}
     </div>
   `);
@@ -1646,8 +1705,13 @@ function printMoneyReport() {
 function printInvoice(id) {
   const invoice = state.invoices.find((entry) => entry.id === id);
   if (!invoice) return;
+  document.title = `Faktura nr ${invoice.number}`;
   elements.printSheet.innerHTML = invoicePrintHtml(invoice);
   window.print();
+}
+
+function downloadInvoicePdf(id) {
+  printInvoice(id);
 }
 
 async function openDocumentAttachment(id) {
@@ -2054,9 +2118,24 @@ function makeInvoice(data) {
 }
 
 function invoicePrintHtml(invoice) {
+  const invoiceItems = invoiceLineItems(invoice);
+  const rowsHtml = invoiceItems.map((item, index) => {
+    const vatLabel = invoice.vatRate === "zw" ? "ZW" : `${invoice.vatRate}%`;
+    return `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(item.name)}<br><small>${escapeHtml(invoice.source)}</small></td>
+        <td>${item.quantity}</td>
+        <td>${money(item.unitPrice)}</td>
+        <td>${money(item.net)}</td>
+        <td>${vatLabel} / ${money(item.vat)}</td>
+        <td>${money(item.gross)}</td>
+      </tr>
+    `;
+  }).join("");
   return `
     <img class="print-logo" src="${escapeHtml(ORGANIZATION.logo)}" alt="Logo KGiGW">
-    <h1>Faktura VAT ${escapeHtml(invoice.number)}</h1>
+    <h1>Faktura nr ${escapeHtml(invoice.number)}</h1>
     <p><strong>Data wystawienia:</strong> ${formatDate(invoice.date)}</p>
     <table>
       <tbody>
@@ -2091,17 +2170,7 @@ function invoicePrintHtml(invoice) {
           <th>Brutto</th>
         </tr>
       </thead>
-      <tbody>
-        <tr>
-          <td>1</td>
-          <td>${escapeHtml(invoice.itemName)}<br><small>${escapeHtml(invoice.source)}</small></td>
-          <td>${invoice.quantity}</td>
-          <td>${money(invoice.unitPrice)}</td>
-          <td>${money(invoice.net)}</td>
-          <td>${invoice.vatRate === "zw" ? "ZW" : `${invoice.vatRate}%`} / ${money(invoice.vat)}</td>
-          <td>${money(invoice.gross)}</td>
-        </tr>
-      </tbody>
+      <tbody>${rowsHtml}</tbody>
     </table>
     <p><strong>Razem netto:</strong> ${money(invoice.net)} &nbsp; <strong>VAT:</strong> ${money(invoice.vat)} &nbsp; <strong>Razem brutto:</strong> ${money(invoice.gross)}</p>
     ${invoice.rentalLabel ? `<p><strong>Powiązane wypożyczenie:</strong> ${escapeHtml(invoice.rentalLabel)}</p>` : ""}
@@ -2111,6 +2180,35 @@ function invoicePrintHtml(invoice) {
       <div class="signature-line">Odebrał/a</div>
     </div>
   `;
+}
+
+function invoiceLineItems(invoice) {
+  const rental = state.rentalLoans.find((loan) => loan.id === invoice.rentalId);
+  const vatRate = invoice.vatRate === "zw" ? 0 : Number(invoice.vatRate);
+  if (rental?.items?.length) {
+    return rental.items.map((item) => {
+      const quantity = Number(item.quantity || 0);
+      const unitPrice = Number(item.price || 0) * Number(rental.days || 1);
+      const net = quantity * unitPrice;
+      const vat = invoice.vatRate === "zw" ? 0 : net * vatRate / 100;
+      return {
+        name: item.name,
+        quantity,
+        unitPrice,
+        net,
+        vat,
+        gross: net + vat
+      };
+    });
+  }
+  return [{
+    name: invoice.itemName,
+    quantity: Number(invoice.quantity || 1),
+    unitPrice: Number(invoice.unitPrice || 0),
+    net: Number(invoice.net || 0),
+    vat: Number(invoice.vat || 0),
+    gross: Number(invoice.gross || 0)
+  }];
 }
 
 function filterItems(items) {
