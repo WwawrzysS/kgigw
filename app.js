@@ -86,6 +86,8 @@ const elements = {
   recentMoney: document.querySelector("#recentMoney"),
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
+  memberFormTitle: document.querySelector("#memberFormTitle"),
+  cancelMemberEdit: document.querySelector("#cancelMemberEdit"),
   feesList: document.querySelector("#feesList"),
   sendFeeSms: document.querySelector("#sendFeeSms"),
   moneyEvent: document.querySelector("#moneyEvent"),
@@ -117,6 +119,7 @@ elements.currentRole.textContent = currentUserName ? `${currentUserName} (${role
 elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
+document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
@@ -565,21 +568,34 @@ function switchRentalTab(tabName) {
 async function handleMember(event) {
   event.preventDefault();
   const data = formData(event.target);
+  const memberId = data.id || "";
   if (supabaseClient && currentRole) {
-    const { error } = await supabaseClient.from("members").insert({
+    const payload = {
       name: data.name,
       phone: data.phone || null,
       email: data.email || null,
       status: data.status || "Aktywny"
-    });
+    };
+    const { error } = memberId
+      ? await supabaseClient.from("members").update(payload).eq("id", memberId)
+      : await supabaseClient.from("members").insert(payload);
     if (error) {
       alert(`Nie udało się zapisać członka w Supabase: ${error.message}`);
       return;
     }
-    event.target.reset();
+    resetMemberForm(event.target);
     await refreshSupabaseData();
     return;
   }
+  if (memberId) {
+    const member = state.members.find((entry) => entry.id === memberId);
+    if (member) Object.assign(member, data, { id: memberId });
+    resetMemberForm(event.target);
+    saveState();
+    render();
+    return;
+  }
+  delete data.id;
   state.members.push({ id: makeId(), ...data });
   finishForm(event.target);
 }
@@ -950,8 +966,40 @@ function renderMembers() {
       <strong>${escapeHtml(item.name)}</strong>
       <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}</small>
     </div>
-    ${deleteAction("members", item.id)}
+    <div class="row-actions">
+      ${canCorrect() ? `<button class="small-button" onclick="editMember('${item.id}')">Edytuj</button>` : ""}
+      ${canCorrect() ? `<button class="delete-button" onclick="removeItem('members', '${item.id}')">Usuń</button>` : ""}
+    </div>
   `);
+}
+
+function editMember(id) {
+  if (!canCorrect()) return;
+  const member = state.members.find((entry) => entry.id === id);
+  const form = document.querySelector("#memberForm");
+  if (!member || !form) return;
+  form.id.value = member.id;
+  form.name.value = member.name || "";
+  form.phone.value = member.phone || "";
+  form.email.value = member.email || "";
+  form.status.value = member.status || "Aktywny";
+  elements.memberFormTitle.textContent = "Edytuj członka";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  elements.cancelMemberEdit.classList.remove("hidden");
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelMemberEdit() {
+  resetMemberForm(document.querySelector("#memberForm"));
+}
+
+function resetMemberForm(form) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  elements.memberFormTitle.textContent = "Dodaj członka";
+  form.querySelector('button[type="submit"]').textContent = "Dodaj";
+  elements.cancelMemberEdit.classList.add("hidden");
 }
 
 function renderFees() {

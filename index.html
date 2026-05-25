@@ -90,7 +90,8 @@
       <section id="members" class="view">
         <div class="workspace">
           <form id="memberForm" class="form-panel">
-            <h2>Dodaj członka</h2>
+            <h2 id="memberFormTitle">Dodaj członka</h2>
+            <input name="id" type="hidden" />
             <input name="name" required placeholder="Imię i nazwisko" />
             <input name="phone" placeholder="Telefon" />
             <input name="email" type="email" placeholder="E-mail" />
@@ -99,6 +100,7 @@
               <option>Nieaktywny</option>
             </select>
             <button type="submit">Dodaj</button>
+            <button id="cancelMemberEdit" type="button" class="secondary-button hidden">Anuluj edycję</button>
           </form>
           <section class="panel">
             <div class="panel-head">
@@ -407,6 +409,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-admin-only-panel"></script>
+    <script src="app.js?v=20260525-edit-members"></script>
   </body>
 </html>

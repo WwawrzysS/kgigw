@@ -187,6 +187,11 @@ body:not(.locked) .login-screen {
   display: block;
 }
 
+.admin-import {
+  text-align: center;
+  cursor: pointer;
+}
+
 .import-button input {
   display: none;
 }
@@ -385,6 +390,15 @@ textarea {
 .form-panel button:hover,
 .small-button:hover {
   background: var(--green-dark);
+}
+
+.form-panel .secondary-button {
+  background: #ece7df;
+  color: var(--ink);
+}
+
+.form-panel .secondary-button:hover {
+  background: #ded8cf;
 }
 
 .small-button {
