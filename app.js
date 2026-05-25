@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-2";
+const APP_VERSION = "2026.05.25-3";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -153,10 +153,11 @@ document.querySelector("#openMailboxWindow").addEventListener("click", openMailb
 
 elements.navItems.forEach((button) => {
   button.addEventListener("click", () => {
-    toggleSubnav(button.dataset.subnav);
+    if (button.dataset.subnav) {
+      toggleSubnav(button.dataset.subnav);
+      return;
+    }
     switchView(button.dataset.view);
-    if (button.dataset.view === "rentals") switchRentalTab("new");
-    if (button.dataset.view === "docs") switchDocTab("documents");
   });
 });
 
@@ -633,7 +634,11 @@ function switchView(view) {
 
 function toggleSubnav(id) {
   if (!id) return;
-  elements.navSubmenus.forEach((menu) => menu.classList.toggle("open", menu.id === id ? !menu.classList.contains("open") : menu.classList.contains("open")));
+  const selected = document.querySelector(`#${id}`);
+  const shouldOpen = !selected?.classList.contains("open");
+  elements.navSubmenus.forEach((menu) => {
+    menu.classList.toggle("open", menu.id === id && shouldOpen);
+  });
 }
 
 function switchRentalTab(tabName) {
