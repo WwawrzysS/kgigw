@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-11";
+const APP_VERSION = "2026.05.25-12";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -150,6 +150,7 @@ document.querySelector("#exportData").addEventListener("click", exportData);
 document.querySelector("#undoButton").addEventListener("click", undoLastChange);
 document.querySelector("#importData").addEventListener("change", importData);
 document.querySelector("#refreshProgram").addEventListener("click", refreshProgram);
+document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgram);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
