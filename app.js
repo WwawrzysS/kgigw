@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-3";
+const APP_VERSION = "2026.05.25-4";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -519,7 +519,7 @@ function setupRentalShell() {
   tabs.innerHTML = `
     <button class="subtab active" data-rental-tab="new">Nowe wypożyczenie</button>
     <button class="subtab" data-rental-tab="returns">Zwroty</button>
-    <button class="subtab" data-rental-tab="inventory">Magazyn</button>
+    <button class="subtab" data-rental-tab="storage">Magazyn</button>
     <button class="subtab" data-rental-tab="history">Historia</button>
   `;
 
@@ -527,7 +527,7 @@ function setupRentalShell() {
   const rentalForm = layout.querySelector("#rentalForm");
   const historyPanel = layout.querySelector(".rentals-list-panel");
   inventoryPanel?.classList.add("rental-tab-panel");
-  inventoryPanel?.setAttribute("data-rental-panel", "inventory");
+  inventoryPanel?.setAttribute("data-rental-panel", "storage");
   historyPanel?.classList.add("rental-tab-panel");
   historyPanel?.setAttribute("data-rental-panel", "history");
   rentalForm?.classList.add("rental-tab-panel", "active-rental-panel");
@@ -643,7 +643,12 @@ function toggleSubnav(id) {
 
 function switchRentalTab(tabName) {
   elements.rentalSubtabs.forEach((item) => item.classList.toggle("active", item.dataset.rentalTab === tabName));
-  elements.rentalPanels.forEach((panel) => panel.classList.toggle("active-rental-panel", panel.dataset.rentalPanel === tabName));
+  elements.rentalPanels.forEach((panel) => {
+    const active = panel.dataset.rentalPanel === tabName;
+    panel.classList.toggle("active-rental-panel", active);
+    panel.hidden = !active;
+    panel.style.display = active ? "" : "none";
+  });
   elements.navSubitems.forEach((item) => {
     if (item.dataset.rentalTab) item.classList.toggle("active", item.dataset.rentalTab === tabName);
   });

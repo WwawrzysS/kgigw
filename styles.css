@@ -402,6 +402,11 @@ textarea {
   gap: 12px;
 }
 
+.rental-tab-panel:not(.active-rental-panel),
+.form-panel.rental-tab-panel:not(.active-rental-panel) {
+  display: none;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
