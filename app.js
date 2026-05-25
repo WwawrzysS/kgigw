@@ -11,7 +11,7 @@ const PASSWORDS = {
 };
 const ACCOUNT_EMAILS = {
   admin: "wawrzysdom@gmail.com",
-  agata: "agatawawrzysnek@go2.pl",
+  agata: "agatawawrzynek@go2.pl",
   tomek: "tomasztynski@gmail.com"
 };
 const ORGANIZATION = {
