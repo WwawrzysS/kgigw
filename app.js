@@ -166,7 +166,7 @@ async function handleLogin(event) {
     });
 
     if (error) {
-      elements.loginError.textContent = "Nieprawidłowe hasło albo konto nie jest aktywne w Supabase.";
+      elements.loginError.textContent = `Supabase: ${error.message || "nie udało się zalogować."}`;
       return;
     }
 
