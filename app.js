@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-6";
+const APP_VERSION = "2026.05.25-7";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -91,6 +91,7 @@ const elements = {
   recentMoney: document.querySelector("#recentMoney"),
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
+  showInactiveMembers: document.querySelector("#showInactiveMembers"),
   memberFormTitle: document.querySelector("#memberFormTitle"),
   cancelMemberEdit: document.querySelector("#cancelMemberEdit"),
   feesList: document.querySelector("#feesList"),
@@ -131,6 +132,7 @@ elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
+document.querySelector("#showInactiveMembers").addEventListener("change", renderMembers);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
@@ -1101,7 +1103,9 @@ function renderDashboard() {
 }
 
 function renderMembers() {
-  elements.membersList.innerHTML = rows(filterItems(state.members), (item) => `
+  const showInactive = elements.showInactiveMembers?.checked;
+  const visibleMembers = state.members.filter((item) => showInactive || (item.status || "Aktywny") === "Aktywny");
+  elements.membersList.innerHTML = rows(filterItems(visibleMembers), (item) => `
     <div>
       <strong>${escapeHtml(item.name)}</strong>
       <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}</small>
@@ -1818,15 +1822,38 @@ async function removeItem(collection, id) {
     alert("Usuwanie wpisów jest dostępne tylko dla osób z uprawnieniami.");
     return;
   }
+  if (collection === "members") {
+    const member = state.members.find((entry) => entry.id === id);
+    const confirmed = confirm(`Archiwizować członka: ${member?.name || "wybrany członek"}? Rekord zostanie w bazie, a historia składek nie zostanie usunięta.`);
+    if (!confirmed) return;
+    if (supabaseClient && currentRole) {
+      const { error } = await supabaseClient
+        .from("members")
+        .update({ status: "Nieaktywny" })
+        .eq("id", id);
+      if (error) {
+        alert(`Nie udało się zarchiwizować członka w Supabase: ${error.message}`);
+        return;
+      }
+      await refreshSupabaseData();
+      return;
+    }
+    if (member) {
+      rememberUndo();
+      member.status = "Nieaktywny";
+      saveState();
+      render();
+    }
+    return;
+  }
   if (["docs", "invoices"].includes(collection) && !isAdmin()) {
     alert("Dokumenty PDF i faktury może usuwać tylko Administrator.");
     return;
   }
   const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
   if (!confirmed) return;
-  if (supabaseClient && currentRole && ["members", "fees"].includes(collection)) {
-    const table = collection === "members" ? "members" : "fees";
-    const { error } = await supabaseClient.from(table).delete().eq("id", id);
+  if (supabaseClient && currentRole && collection === "fees") {
+    const { error } = await supabaseClient.from("fees").delete().eq("id", id);
     if (error) {
       alert(`Nie udało się usunąć wpisu w Supabase: ${error.message}`);
       return;
