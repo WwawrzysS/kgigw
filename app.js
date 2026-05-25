@@ -91,6 +91,8 @@ const elements = {
   feesList: document.querySelector("#feesList"),
   sendFeeSms: document.querySelector("#sendFeeSms"),
   moneyEvent: document.querySelector("#moneyEvent"),
+  moneyFormTitle: document.querySelector("#moneyFormTitle"),
+  cancelMoneyEdit: document.querySelector("#cancelMoneyEdit"),
   docEvent: document.querySelector("#docEvent"),
   moneyList: document.querySelector("#moneyList"),
   eventsList: document.querySelector("#eventsList"),
@@ -123,6 +125,7 @@ document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemb
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
+document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
 document.querySelector("#printMoneyReport").addEventListener("click", printMoneyReport);
 document.querySelector("#eventForm").addEventListener("submit", handleEvent);
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
@@ -649,28 +652,46 @@ async function handleFee(event) {
 async function handleMoney(event) {
   event.preventDefault();
   const data = formData(event.target);
+  const moneyId = data.id || "";
   const linkedEvent = state.events.find((item) => item.id === data.eventId);
   if (data.type === "donation" && !data.category) {
     data.category = "Darowizny";
   }
   if (supabaseClient && currentRole) {
-    const { error } = await supabaseClient.from("transactions").insert({
+    const payload = {
       type: data.type,
       title: data.title,
       category: data.category || null,
       amount: Number(data.amount || 0),
       transaction_date: data.date,
       event_id: data.eventId || null
-    });
+    };
+    const { error } = moneyId
+      ? await supabaseClient.from("transactions").update(payload).eq("id", moneyId)
+      : await supabaseClient.from("transactions").insert(payload);
     if (error) {
       alert(`Nie udało się zapisać operacji w kasie: ${error.message}`);
       return;
     }
-    event.target.reset();
-    event.target.date.valueAsDate = new Date();
+    resetMoneyForm(event.target);
     await refreshSupabaseData();
     return;
   }
+  if (moneyId) {
+    const entry = state.money.find((item) => item.id === moneyId);
+    if (entry) {
+      Object.assign(entry, data, {
+        id: moneyId,
+        eventName: linkedEvent?.name || "",
+        amount: Number(data.amount)
+      });
+    }
+    resetMoneyForm(event.target);
+    saveState();
+    render();
+    return;
+  }
+  delete data.id;
   state.money.push({
     id: makeId(),
     ...data,
@@ -1381,8 +1402,45 @@ function moneyRowWithDelete(item) {
       <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
       <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${eventText}</small>
     </div>
-    ${deleteAction("money", item.id)}
+    <div class="row-actions">
+      ${canCorrect() ? `<button class="small-button" onclick="editMoney('${item.id}')">Edytuj</button>` : ""}
+      ${canCorrect() ? `<button class="delete-button" onclick="removeItem('money', '${item.id}')">Usuń</button>` : ""}
+    </div>
   `;
+}
+
+function editMoney(id) {
+  if (!canCorrect()) return;
+  const entry = state.money.find((item) => item.id === id);
+  const form = document.querySelector("#moneyForm");
+  if (!entry || !form) return;
+  form.id.value = entry.id;
+  form.type.value = entry.type || "income";
+  form.title.value = entry.title || "";
+  form.category.value = entry.category || "";
+  renderEventOptions();
+  form.eventId.value = entry.eventId || "";
+  form.amount.value = Number(entry.amount || 0);
+  form.date.value = entry.date || new Date().toISOString().slice(0, 10);
+  elements.moneyFormTitle.textContent = "Edytuj operację";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  elements.cancelMoneyEdit.classList.remove("hidden");
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelMoneyEdit() {
+  resetMoneyForm(document.querySelector("#moneyForm"));
+}
+
+function resetMoneyForm(form) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  form.date.valueAsDate = new Date();
+  elements.moneyFormTitle.textContent = "Dodaj wpływ lub wydatek";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz";
+  elements.cancelMoneyEdit.classList.add("hidden");
+  renderEventOptions();
 }
 
 function eventRow(item) {
