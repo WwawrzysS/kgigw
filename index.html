@@ -241,6 +241,13 @@
             </select>
             <input name="date" type="date" required />
             <input name="file" type="file" accept="application/pdf" />
+            <select name="eventId" id="docEvent">
+              <option value="">Bez wydarzenia</option>
+            </select>
+            <div class="form-grid">
+              <input name="incomeAmount" type="number" min="0" step="0.01" placeholder="Kwota - wpływ" />
+              <input name="expenseAmount" type="number" min="0" step="0.01" placeholder="Kwota - wydatek" />
+            </div>
             <textarea name="notes" placeholder="Krótka treść lub notatka"></textarea>
             <button type="submit">Zapisz dokument</button>
           </form>
@@ -329,6 +336,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-supabase-invoices"></script>
+    <script src="app.js?v=20260525-docs-money"></script>
   </body>
 </html>

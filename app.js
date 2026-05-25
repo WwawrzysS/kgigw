@@ -88,6 +88,7 @@ const elements = {
   feesList: document.querySelector("#feesList"),
   sendFeeSms: document.querySelector("#sendFeeSms"),
   moneyEvent: document.querySelector("#moneyEvent"),
+  docEvent: document.querySelector("#docEvent"),
   moneyList: document.querySelector("#moneyList"),
   eventsList: document.querySelector("#eventsList"),
   rentalInventory: document.querySelector("#rentalInventory"),
@@ -790,7 +791,7 @@ async function handleDoc(event) {
       }
     }
 
-    const { error } = await supabaseClient.from("documents").insert({
+    const { data: savedDoc, error } = await supabaseClient.from("documents").insert({
       title: data.title,
       sender: data.sender || null,
       category: data.category,
@@ -799,11 +800,20 @@ async function handleDoc(event) {
       file_path: filePath || null,
       file_name: fileName || null,
       file_size: fileSize || null,
-      mime_type: mimeType || null
-    });
+      mime_type: mimeType || null,
+      event_id: data.eventId || null
+    }).select("id").single();
     if (error) {
       alert(`PDF mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
       return;
+    }
+    const moneyEntries = docMoneyEntries(data, savedDoc.id);
+    if (moneyEntries.length) {
+      const { error: moneyError } = await supabaseClient.from("transactions").insert(moneyEntries);
+      if (moneyError) {
+        alert(`Dokument zapisany, ale nie udało się dopisać pozycji w kasie: ${moneyError.message}`);
+        return;
+      }
     }
     event.target.reset();
     event.target.date.valueAsDate = new Date();
@@ -812,7 +822,21 @@ async function handleDoc(event) {
   }
   const attachment = file ? await readPdfAttachment(file) : null;
   delete data.file;
-  state.docs.push({ id: makeId(), ...data, attachment });
+  const localDocId = makeId();
+  state.docs.push({ id: localDocId, ...data, attachment });
+  docMoneyEntries(data, localDocId).forEach((entry) => {
+    const linkedEvent = state.events.find((item) => item.id === entry.event_id);
+    state.money.push({
+      id: makeId(),
+      type: entry.type,
+      title: entry.title,
+      category: entry.category,
+      amount: Number(entry.amount),
+      date: entry.transaction_date,
+      eventId: entry.event_id || "",
+      eventName: linkedEvent?.name || ""
+    });
+  });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
 }
@@ -1234,11 +1258,17 @@ function sendFeeSmsReminders() {
 }
 
 function renderEventOptions() {
-  const current = elements.moneyEvent.value;
-  elements.moneyEvent.innerHTML = '<option value="">Bez wydarzenia</option>' + state.events
+  renderEventSelect(elements.moneyEvent);
+  renderEventSelect(elements.docEvent);
+}
+
+function renderEventSelect(select) {
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = '<option value="">Bez wydarzenia</option>' + state.events
     .map((event) => `<option value="${escapeHtml(event.id)}">${escapeHtml(event.name)} - ${formatDate(event.date)}</option>`)
     .join("");
-  elements.moneyEvent.value = state.events.some((event) => event.id === current) ? current : "";
+  select.value = state.events.some((event) => event.id === current) ? current : "";
 }
 
 function renderInvoiceRentalOptions() {
@@ -1634,6 +1664,35 @@ function safeFileName(name) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "dokument.pdf";
+}
+
+function docMoneyEntries(data, documentId) {
+  const entries = [];
+  const income = Number(data.incomeAmount || 0);
+  const expense = Number(data.expenseAmount || 0);
+  if (income > 0) {
+    entries.push({
+      type: "income",
+      title: data.title,
+      category: data.category || "Dokument",
+      amount: income,
+      transaction_date: data.date,
+      event_id: data.eventId || null,
+      document_id: documentId
+    });
+  }
+  if (expense > 0) {
+    entries.push({
+      type: "expense",
+      title: data.title,
+      category: data.category || "Dokument",
+      amount: expense,
+      transaction_date: data.date,
+      event_id: data.eventId || null,
+      document_id: documentId
+    });
+  }
+  return entries;
 }
 
 function formatBytes(bytes) {
