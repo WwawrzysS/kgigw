@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-7";
+const APP_VERSION = "2026.05.25-8";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -333,7 +333,7 @@ async function refreshSupabaseData() {
       .order("event_date", { ascending: true }),
     supabaseClient
       .from("transactions")
-      .select("id, type, title, category, amount, transaction_date, event_id")
+      .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason")
       .order("transaction_date", { ascending: false })
     ,
     supabaseClient
@@ -466,7 +466,10 @@ async function refreshSupabaseData() {
       amount: Number(entry.amount || 0),
       date: entry.transaction_date,
       eventId: entry.event_id || "",
-      eventName: linkedEvent?.name || ""
+      eventName: linkedEvent?.name || "",
+      status: entry.status || "active",
+      cancelledAt: entry.cancelled_at || "",
+      cancelledReason: entry.cancelled_reason || ""
     };
   });
 
@@ -811,11 +814,12 @@ async function handleMoney(event) {
   }
   delete data.id;
   state.money.push({
-    id: makeId(),
-    ...data,
-    eventName: linkedEvent?.name || "",
-    amount: Number(data.amount)
-  });
+      id: makeId(),
+      ...data,
+      eventName: linkedEvent?.name || "",
+      amount: Number(data.amount),
+      status: "active"
+    });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
 }
@@ -1086,8 +1090,9 @@ function render() {
 }
 
 function renderDashboard() {
-  const income = state.money.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
-  const expenses = state.money.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+  const activeMoney = state.money.filter(isActiveMoney);
+  const income = activeMoney.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
+  const expenses = activeMoney.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
   const lateFees = feeMemberRows().reduce((sum, member) => sum + member.currentDue, 0);
 
   elements.cashBalance.textContent = money(income - expenses);
@@ -1518,14 +1523,16 @@ function moneyRow(item) {
 function moneyRowWithDelete(item) {
   const eventText = item.eventName ? ` - Wydarzenie: ${escapeHtml(item.eventName)}` : "";
   const typeLabel = moneyTypeLabel(item.type);
+  const cancelled = !isActiveMoney(item);
+  const statusLabel = cancelled ? ' <span class="badge neutral">Anulowany</span>' : "";
   return `
     <div>
       <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${eventText}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${statusLabel}${eventText}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editMoney('${item.id}')">Edytuj</button>` : ""}
-      ${canCorrect() ? `<button class="delete-button" onclick="removeItem('money', '${item.id}')">Usuń</button>` : ""}
+      ${canCorrect() && !cancelled ? `<button class="delete-button" onclick="removeItem('money', '${item.id}')">Usuń</button>` : ""}
     </div>
   `;
 }
@@ -1579,6 +1586,10 @@ function moneyTypeLabel(type) {
   if (type === "income") return "Wpływ";
   if (type === "donation") return "Darowizna";
   return "Wydatek";
+}
+
+function isActiveMoney(item) {
+  return (item.status || "active") !== "cancelled";
 }
 
 async function addEventNote(id) {
@@ -1850,6 +1861,36 @@ async function removeItem(collection, id) {
     alert("Dokumenty PDF i faktury może usuwać tylko Administrator.");
     return;
   }
+  if (collection === "money") {
+    const confirmed = confirm("Anulować ten wpis w Kasie? Wpis zostanie w historii, ale nie będzie liczony do salda.");
+    if (!confirmed) return;
+    if (supabaseClient && currentRole) {
+      const { error } = await supabaseClient
+        .from("transactions")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancelled_reason: null
+        })
+        .eq("id", id);
+      if (error) {
+        alert(`Nie udało się anulować operacji kasowej w Supabase: ${error.message}`);
+        return;
+      }
+      await refreshSupabaseData();
+      return;
+    }
+    const entry = state.money.find((item) => item.id === id);
+    if (entry) {
+      rememberUndo();
+      entry.status = "cancelled";
+      entry.cancelledAt = new Date().toISOString();
+      entry.cancelledReason = "";
+      saveState();
+      render();
+    }
+    return;
+  }
   const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
   if (!confirmed) return;
   if (supabaseClient && currentRole && collection === "fees") {
@@ -1883,15 +1924,6 @@ async function removeItem(collection, id) {
     const { error } = await supabaseClient.from("events").delete().eq("id", id);
     if (error) {
       alert(`Nie udało się usunąć wydarzenia w Supabase: ${error.message}`);
-      return;
-    }
-    await refreshSupabaseData();
-    return;
-  }
-  if (supabaseClient && currentRole && collection === "money") {
-    const { error } = await supabaseClient.from("transactions").delete().eq("id", id);
-    if (error) {
-      alert(`Nie udało się usunąć operacji kasowej w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -2134,21 +2166,25 @@ function returnPrintHtml(loan) {
 
 function moneyReportHtml() {
   const items = [...state.money].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const income = items.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
-  const expenses = items.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
-  const rowsHtml = items.map((item) => `
+  const activeItems = items.filter(isActiveMoney);
+  const income = activeItems.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
+  const expenses = activeItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
+  const rowsHtml = items.map((item) => {
+    const statusText = isActiveMoney(item) ? "" : " (Anulowany)";
+    return `
     <tr>
       <td>${formatDate(item.date)}</td>
-      <td>${moneyTypeLabel(item.type)}</td>
+      <td>${moneyTypeLabel(item.type)}${statusText}</td>
       <td>${escapeHtml(item.title)}</td>
       <td>${escapeHtml(item.category || "Bez kategorii")}</td>
       <td>${escapeHtml(item.eventName || "Bez wydarzenia")}</td>
       <td>${money(item.amount)}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   const eventGroups = state.events.map((event) => {
-    const eventItems = items.filter((item) => item.eventId === event.id || item.eventName === event.name);
+    const eventItems = activeItems.filter((item) => item.eventId === event.id || item.eventName === event.name);
     const eventIncome = eventItems.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
     const eventExpenses = eventItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
     return { event, eventItems, eventIncome, eventExpenses };
