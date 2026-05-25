@@ -466,6 +466,30 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.inventory-add-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.inventory-add-form h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.inventory-add-form button {
+  border: 0;
+  background: var(--green);
+  color: #fff;
+  border-radius: 8px;
+  padding: 11px 14px;
+}
+
+.inventory-add-form button:hover {
+  background: var(--green-dark);
+}
+
 .inventory-card,
 .rental-item-line {
   border: 1px solid var(--line);

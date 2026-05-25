@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-4";
+const APP_VERSION = "2026.05.25-5";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -101,6 +101,7 @@ const elements = {
   docEvent: document.querySelector("#docEvent"),
   moneyList: document.querySelector("#moneyList"),
   eventsList: document.querySelector("#eventsList"),
+  inventoryAddForm: document.querySelector("#inventoryAddForm"),
   rentalInventory: document.querySelector("#rentalInventory"),
   rentalItemsForm: document.querySelector("#rentalItemsForm"),
   rentalDays: document.querySelector("#rentalDays"),
@@ -136,6 +137,7 @@ document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
 document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
 document.querySelector("#printMoneyReport").addEventListener("click", printMoneyReport);
 document.querySelector("#eventForm").addEventListener("submit", handleEvent);
+document.querySelector("#inventoryAddForm").addEventListener("submit", handleInventoryAdd);
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
@@ -1629,6 +1631,47 @@ async function updateInventory(id, field, value) {
   }
   rememberUndo();
   item[field] = normalizedValue;
+  saveState();
+  renderRentals();
+}
+
+async function handleInventoryAdd(event) {
+  event.preventDefault();
+  if (!canCorrect()) return;
+
+  const data = formData(event.target);
+  const name = String(data.name || "").trim();
+  const quantity = Math.max(0, Math.round(Number(data.quantity) || 0));
+  const price = Math.max(0, Number(data.price) || 0);
+
+  if (!name) {
+    alert("Wpisz nazwę przedmiotu.");
+    return;
+  }
+
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("rental_inventory").insert({
+      name,
+      quantity,
+      price_per_day: price
+    });
+    if (error) {
+      alert(`Nie udało się dodać przedmiotu do magazynu w Supabase: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    await refreshSupabaseData();
+    return;
+  }
+
+  rememberUndo();
+  state.rentalInventory.push({
+    id: makeId(),
+    name,
+    quantity,
+    price
+  });
+  event.target.reset();
   saveState();
   renderRentals();
 }
