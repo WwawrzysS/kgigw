@@ -245,12 +245,16 @@ function roleName(role) {
 }
 
 function isAdmin() {
+  return currentRole === "admin";
+}
+
+function canCorrect() {
   return currentRole === "admin" || currentRole === "staff";
 }
 
 function applyRole() {
   document.querySelectorAll(".admin-only").forEach((item) => {
-    item.classList.toggle("hidden-role", !isAdmin());
+    item.classList.toggle("hidden-role", !canCorrect());
   });
 }
 
@@ -983,8 +987,8 @@ function feeMemberRowHtml(item) {
       </div>
       <div class="row-actions">
         ${item.isLate && item.phone ? `<button class="small-button" onclick="sendSingleFeeSms('${escapeHtml(item.phone)}', '${escapeHtml(item.name)}', ${item.currentDue})">SMS</button>` : ""}
-        ${isAdmin() ? `<button class="delete-button" onclick="resetMemberFees('${escapeHtml(item.name)}')">Reset wpłat</button>` : ""}
-        ${isAdmin() ? item.fees.map((fee) => `<button class="delete-button" onclick="removeItem('fees', '${fee.id}')">Usuń wpis</button>`).join("") : ""}
+        ${canCorrect() ? `<button class="delete-button" onclick="resetMemberFees('${escapeHtml(item.name)}')">Reset wpłat</button>` : ""}
+        ${canCorrect() ? item.fees.map((fee) => `<button class="delete-button" onclick="removeItem('fees', '${fee.id}')">Usuń wpis</button>`).join("") : ""}
       </div>
     </div>
   `;
@@ -1090,7 +1094,7 @@ function renderRentalInventory() {
       <article class="inventory-card">
         <strong>${escapeHtml(item.name)}</strong>
         <small>Stan magazynu: ${available} szt. - Wypożyczone: ${borrowed} szt. - Zwrócone łącznie: ${returned} szt. - Stan całkowity: ${item.quantity} szt. - ${money(item.price)} / doba</small>
-        <div class="inventory-edit admin-only ${isAdmin() ? "" : "hidden-role"}">
+        <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
           <input type="number" min="0" step="1" value="${item.quantity}" aria-label="Ilosc ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
           <input type="number" min="0" step="0.01" value="${item.price}" aria-label="Cena ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
         </div>
@@ -1368,8 +1372,8 @@ async function addEventNote(id) {
 }
 
 async function resetMemberFees(name) {
-  if (!isAdmin()) {
-    alert("Reset wpłat jest dostępny tylko dla administratora.");
+  if (!canCorrect()) {
+    alert("Reset wpłat jest dostępny tylko dla osób z uprawnieniami.");
     return;
   }
   const confirmed = confirm(`Wyzerować wpłaty składek dla: ${name} w roku ${FEE_YEAR}? Członek zostanie na liście, usunięte będą tylko jego wpłaty z tego roku.`);
@@ -1395,12 +1399,12 @@ async function resetMemberFees(name) {
 }
 
 function deleteAction(collection, id) {
-  if (!isAdmin()) return "";
+  if (!canCorrect()) return "";
   return `<div class="row-actions"><button class="delete-button" onclick="removeItem('${collection}', '${id}')">Usuń</button></div>`;
 }
 
 async function updateInventory(id, field, value) {
-  if (!isAdmin()) return;
+  if (!canCorrect()) return;
   const item = state.rentalInventory.find((entry) => entry.id === id);
   if (!item) return;
   const normalizedValue = field === "quantity" ? Math.max(0, Math.round(Number(value) || 0)) : Math.max(0, Number(value) || 0);
@@ -1532,8 +1536,12 @@ async function openDocumentAttachment(id) {
 }
 
 async function removeItem(collection, id) {
-  if (!isAdmin()) {
-    alert("Usuwanie wpisów jest dostępne tylko dla administratora.");
+  if (!canCorrect()) {
+    alert("Usuwanie wpisów jest dostępne tylko dla osób z uprawnieniami.");
+    return;
+  }
+  if (["docs", "invoices"].includes(collection) && !isAdmin()) {
+    alert("Dokumenty PDF i faktury może usuwać tylko Administrator.");
     return;
   }
   const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
