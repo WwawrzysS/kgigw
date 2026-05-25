@@ -179,7 +179,9 @@ body:not(.locked) .login-screen {
   margin-bottom: 3px;
 }
 
-.admin-only.hidden-role {
+.hidden-role,
+.admin-only.hidden-role,
+.admin-role-only.hidden-role {
   display: none;
 }
 

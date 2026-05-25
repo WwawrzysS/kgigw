@@ -260,7 +260,10 @@ function applyRole() {
     item.classList.toggle("hidden-role", !canCorrect());
   });
   document.querySelectorAll(".admin-role-only").forEach((item) => {
-    item.classList.toggle("hidden-role", !isAdmin());
+    const show = isAdmin();
+    item.classList.toggle("hidden-role", !show);
+    item.hidden = !show;
+    item.style.display = show ? "" : "none";
   });
   if (!isAdmin() && activeView === "administration") {
     switchView("dashboard");
