@@ -260,7 +260,7 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
-  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult] = await Promise.all([
+  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
     supabaseClient
       .from("members")
       .select("id, name, phone, email, status, created_at")
@@ -291,6 +291,11 @@ async function refreshSupabaseData() {
       .from("documents")
       .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id")
       .order("document_date", { ascending: false })
+    ,
+    supabaseClient
+      .from("invoices")
+      .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
+      .order("invoice_date", { ascending: false })
   ]);
 
   if (membersResult.error) {
@@ -319,6 +324,10 @@ async function refreshSupabaseData() {
   }
   if (docsResult.error) {
     alert(`Nie udało się pobrać dokumentów z Supabase: ${docsResult.error.message}`);
+    return;
+  }
+  if (invoicesResult.error) {
+    alert(`Nie udało się pobrać faktur z Supabase: ${invoicesResult.error.message}`);
     return;
   }
 
@@ -425,6 +434,29 @@ async function refreshSupabaseData() {
     mimeType: doc.mime_type || "",
     eventId: doc.event_id || ""
   }));
+
+  state.invoices = (invoicesResult.data || []).map((invoice) => {
+    const rental = state.rentalLoans.find((entry) => entry.id === invoice.rental_id);
+    return {
+      id: invoice.id,
+      number: invoice.number,
+      date: invoice.invoice_date,
+      buyerName: invoice.buyer_name,
+      buyerAddress: invoice.buyer_address || "",
+      buyerNip: invoice.buyer_nip || "",
+      source: invoice.source,
+      itemName: invoice.item_name,
+      quantity: Number(invoice.quantity || 1),
+      unitPrice: Number(invoice.unit_price || 0),
+      vatRate: invoice.vat_rate,
+      net: Number(invoice.net || 0),
+      vat: Number(invoice.vat || 0),
+      gross: Number(invoice.gross || 0),
+      rentalId: invoice.rental_id || "",
+      rentalLabel: rental ? `${rental.firstName} ${rental.lastName} - ${formatDate(rental.dateFrom)}` : "",
+      notes: invoice.notes || ""
+    };
+  });
 
   supabaseDataReady = true;
   saveState();
@@ -785,7 +817,7 @@ async function handleDoc(event) {
   event.target.date.valueAsDate = new Date();
 }
 
-function handleInvoice(event) {
+async function handleInvoice(event) {
   event.preventDefault();
   const data = formData(event.target);
   const selectedRental = state.rentalLoans.find((entry) => entry.id === data.rentalId);
@@ -796,6 +828,33 @@ function handleInvoice(event) {
     quantity: Number(data.quantity),
     unitPrice: Number(data.unitPrice)
   });
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("invoices").insert({
+      number: invoice.number,
+      invoice_date: invoice.date,
+      buyer_name: invoice.buyerName,
+      buyer_address: invoice.buyerAddress || null,
+      buyer_nip: invoice.buyerNip || null,
+      source: invoice.source,
+      item_name: invoice.itemName,
+      quantity: invoice.quantity,
+      unit_price: invoice.unitPrice,
+      vat_rate: invoice.vatRate,
+      net: invoice.net,
+      vat: invoice.vat,
+      gross: invoice.gross,
+      rental_id: invoice.rentalId || null,
+      notes: invoice.notes || null
+    });
+    if (error) {
+      alert(`Nie udało się zapisać faktury w Supabase: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    event.target.date.valueAsDate = new Date();
+    await refreshSupabaseData();
+    return;
+  }
   state.invoices.push(invoice);
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
@@ -1502,6 +1561,15 @@ async function removeItem(collection, id) {
     const { error } = await supabaseClient.from("documents").delete().eq("id", id);
     if (error) {
       alert(`Nie udało się usunąć dokumentu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  if (supabaseClient && currentRole && collection === "invoices") {
+    const { error } = await supabaseClient.from("invoices").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć faktury w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
