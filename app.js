@@ -50,6 +50,7 @@ let currentRole = sessionStorage.getItem(AUTH_KEY);
 let currentUserName = sessionStorage.getItem("kgigw-user-name") || "";
 let undoSnapshot = null;
 let supabaseClient = null;
+let supabaseDataReady = false;
 
 const titles = {
   dashboard: "Pulpit",
@@ -151,6 +152,9 @@ document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Dat
 
 applyRole();
 render();
+if (currentRole) {
+  refreshSupabaseData();
+}
 
 async function handleLogin(event) {
   event.preventDefault();
@@ -190,7 +194,7 @@ async function handleLogin(event) {
     event.target.reset();
     document.body.classList.remove("locked");
     applyRole();
-    render();
+    await refreshSupabaseData();
     return;
   }
 
@@ -248,6 +252,57 @@ function setupSupabaseClient() {
   const config = window.KGIGW_SUPABASE;
   if (!window.supabase || !config?.url || !config?.anonKey) return;
   supabaseClient = window.supabase.createClient(config.url, config.anonKey);
+}
+
+async function refreshSupabaseData() {
+  if (!supabaseClient || !currentRole) return;
+  const [membersResult, feesResult] = await Promise.all([
+    supabaseClient
+      .from("members")
+      .select("id, name, phone, email, status, created_at")
+      .order("name", { ascending: true }),
+    supabaseClient
+      .from("fees")
+      .select("id, member_id, year, amount, note, paid_at, created_at")
+      .order("paid_at", { ascending: false })
+  ]);
+
+  if (membersResult.error) {
+    alert(`Nie udało się pobrać członków z Supabase: ${membersResult.error.message}`);
+    return;
+  }
+  if (feesResult.error) {
+    alert(`Nie udało się pobrać składek z Supabase: ${feesResult.error.message}`);
+    return;
+  }
+
+  state.members = (membersResult.data || []).map((member) => ({
+    id: member.id,
+    name: member.name,
+    phone: member.phone || "",
+    email: member.email || "",
+    status: member.status || "Aktywny"
+  }));
+
+  state.fees = (feesResult.data || []).map((fee) => {
+    const member = state.members.find((entry) => entry.id === fee.member_id);
+    return {
+      id: fee.id,
+      memberId: fee.member_id,
+      member: member?.name || "",
+      period: String(fee.year || FEE_YEAR),
+      year: Number(fee.year || FEE_YEAR),
+      dueAmount: ANNUAL_FEE,
+      amount: Number(fee.amount || 0),
+      status: "Wpłata",
+      paidAt: fee.paid_at,
+      note: fee.note || ""
+    };
+  });
+
+  supabaseDataReady = true;
+  saveState();
+  render();
 }
 
 function setupRentalShell() {
@@ -337,22 +392,61 @@ function switchRentalTab(tabName) {
   elements.rentalPanels.forEach((panel) => panel.classList.toggle("active-rental-panel", panel.dataset.rentalPanel === tabName));
 }
 
-function handleMember(event) {
+async function handleMember(event) {
   event.preventDefault();
   const data = formData(event.target);
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("members").insert({
+      name: data.name,
+      phone: data.phone || null,
+      email: data.email || null,
+      status: data.status || "Aktywny"
+    });
+    if (error) {
+      alert(`Nie udało się zapisać członka w Supabase: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    await refreshSupabaseData();
+    return;
+  }
   state.members.push({ id: makeId(), ...data });
   finishForm(event.target);
 }
 
-function handleFee(event) {
+async function handleFee(event) {
   event.preventDefault();
   const data = formData(event.target);
+  const member = state.members.find((entry) => entry.id === data.member);
+  if (!member) {
+    alert("Wybierz członka z listy.");
+    return;
+  }
   const year = feeYear(data.period);
   const dueAmount = ANNUAL_FEE;
   const paidAmount = Number(data.amount || 0);
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("fees").insert({
+      member_id: member.id,
+      year,
+      amount: paidAmount,
+      paid_at: new Date().toISOString().slice(0, 10)
+    });
+    if (error) {
+      alert(`Nie udało się zapisać składki w Supabase: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    event.target.period.value = FEE_YEAR;
+    event.target.dueAmount.value = ANNUAL_FEE;
+    await refreshSupabaseData();
+    return;
+  }
   state.fees.push({
     id: makeId(),
     ...data,
+    memberId: member.id,
+    member: member.name,
     year,
     dueAmount,
     amount: paidAmount,
@@ -729,7 +823,7 @@ function renderBoard() {
 }
 
 function renderFeeOptions() {
-  elements.feeMember.innerHTML = state.members.map((member) => `<option>${escapeHtml(member.name)}</option>`).join("");
+  elements.feeMember.innerHTML = state.members.map((member) => `<option value="${escapeHtml(member.id)}">${escapeHtml(member.name)}</option>`).join("");
 }
 
 function feeMemberRows() {
@@ -914,13 +1008,27 @@ function addEventNote(id) {
   renderDashboard();
 }
 
-function resetMemberFees(name) {
+async function resetMemberFees(name) {
   if (!isAdmin()) {
     alert("Reset wpłat jest dostępny tylko dla administratora.");
     return;
   }
   const confirmed = confirm(`Wyzerować wpłaty składek dla: ${name} w roku ${FEE_YEAR}? Członek zostanie na liście, usunięte będą tylko jego wpłaty z tego roku.`);
   if (!confirmed) return;
+  const member = state.members.find((entry) => entry.name === name);
+  if (supabaseClient && currentRole && member) {
+    const { error } = await supabaseClient
+      .from("fees")
+      .delete()
+      .eq("member_id", member.id)
+      .eq("year", FEE_YEAR);
+    if (error) {
+      alert(`Nie udało się wyzerować składek w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
   rememberUndo();
   state.fees = state.fees.filter((fee) => !(fee.member === name && feeYear(fee.year || fee.period) === FEE_YEAR));
   saveState();
@@ -1004,13 +1112,23 @@ function openDocumentAttachment(id) {
   win.document.write(`<iframe src="${doc.attachment.dataUrl}" title="${escapeHtml(doc.attachment.name)}" style="border:0;width:100%;height:100vh"></iframe>`);
 }
 
-function removeItem(collection, id) {
+async function removeItem(collection, id) {
   if (!isAdmin()) {
     alert("Usuwanie wpisów jest dostępne tylko dla administratora.");
     return;
   }
   const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
   if (!confirmed) return;
+  if (supabaseClient && currentRole && ["members", "fees"].includes(collection)) {
+    const table = collection === "members" ? "members" : "fees";
+    const { error } = await supabaseClient.from(table).delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć wpisu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
   rememberUndo();
   state[collection] = state[collection].filter((item) => item.id !== id);
   saveState();
