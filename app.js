@@ -256,7 +256,7 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
-  const [membersResult, feesResult, inventoryResult, rentalsResult] = await Promise.all([
+  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult] = await Promise.all([
     supabaseClient
       .from("members")
       .select("id, name, phone, email, status, created_at")
@@ -273,6 +273,15 @@ async function refreshSupabaseData() {
       .from("rentals")
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
       .order("date_from", { ascending: false })
+    ,
+    supabaseClient
+      .from("events")
+      .select("id, name, event_date, place, notes")
+      .order("event_date", { ascending: true }),
+    supabaseClient
+      .from("transactions")
+      .select("id, type, title, category, amount, transaction_date, event_id")
+      .order("transaction_date", { ascending: false })
   ]);
 
   if (membersResult.error) {
@@ -289,6 +298,14 @@ async function refreshSupabaseData() {
   }
   if (rentalsResult.error) {
     alert(`Nie udało się pobrać wypożyczeń z Supabase: ${rentalsResult.error.message}`);
+    return;
+  }
+  if (eventsResult.error) {
+    alert(`Nie udało się pobrać wydarzeń z Supabase: ${eventsResult.error.message}`);
+    return;
+  }
+  if (moneyResult.error) {
+    alert(`Nie udało się pobrać kasy z Supabase: ${moneyResult.error.message}`);
     return;
   }
 
@@ -357,6 +374,28 @@ async function refreshSupabaseData() {
       damageCost: Number(rental.damage_cost || 0),
       items,
       returnItems
+    };
+  });
+
+  state.events = (eventsResult.data || []).map((event) => ({
+    id: event.id,
+    name: event.name,
+    date: event.event_date || "",
+    place: event.place || "",
+    notes: event.notes || ""
+  }));
+
+  state.money = (moneyResult.data || []).map((entry) => {
+    const linkedEvent = state.events.find((event) => event.id === entry.event_id);
+    return {
+      id: entry.id,
+      type: entry.type,
+      title: entry.title,
+      category: entry.category || "",
+      amount: Number(entry.amount || 0),
+      date: entry.transaction_date,
+      eventId: entry.event_id || "",
+      eventName: linkedEvent?.name || ""
     };
   });
 
@@ -517,12 +556,30 @@ async function handleFee(event) {
   event.target.dueAmount.value = ANNUAL_FEE;
 }
 
-function handleMoney(event) {
+async function handleMoney(event) {
   event.preventDefault();
   const data = formData(event.target);
   const linkedEvent = state.events.find((item) => item.id === data.eventId);
   if (data.type === "donation" && !data.category) {
     data.category = "Darowizny";
+  }
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("transactions").insert({
+      type: data.type,
+      title: data.title,
+      category: data.category || null,
+      amount: Number(data.amount || 0),
+      transaction_date: data.date,
+      event_id: data.eventId || null
+    });
+    if (error) {
+      alert(`Nie udało się zapisać operacji w kasie: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    event.target.date.valueAsDate = new Date();
+    await refreshSupabaseData();
+    return;
   }
   state.money.push({
     id: makeId(),
@@ -534,9 +591,26 @@ function handleMoney(event) {
   event.target.date.valueAsDate = new Date();
 }
 
-function handleEvent(event) {
+async function handleEvent(event) {
   event.preventDefault();
-  state.events.push({ id: makeId(), ...formData(event.target) });
+  const data = formData(event.target);
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("events").insert({
+      name: data.name,
+      event_date: data.date || null,
+      place: data.place || null,
+      notes: data.notes || null
+    });
+    if (error) {
+      alert(`Nie udało się zapisać wydarzenia w Supabase: ${error.message}`);
+      return;
+    }
+    event.target.reset();
+    event.target.date.valueAsDate = new Date();
+    await refreshSupabaseData();
+    return;
+  }
+  state.events.push({ id: makeId(), ...data });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   renderEventOptions();
@@ -1097,14 +1171,27 @@ function moneyTypeLabel(type) {
   return "Wydatek";
 }
 
-function addEventNote(id) {
+async function addEventNote(id) {
   const event = state.events.find((entry) => entry.id === id);
   const input = document.querySelector(`#eventNote-${id}`);
   const note = input?.value.trim();
   if (!event || !note) return;
-  rememberUndo();
   const date = new Intl.DateTimeFormat("pl-PL").format(new Date());
-  event.notes = [event.notes, `${date}: ${note}`].filter(Boolean).join("\n");
+  const updatedNotes = [event.notes, `${date}: ${note}`].filter(Boolean).join("\n");
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("events")
+      .update({ notes: updatedNotes })
+      .eq("id", id);
+    if (error) {
+      alert(`Nie udało się dopisać notatki do wydarzenia: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  rememberUndo();
+  event.notes = updatedNotes;
   saveState();
   renderEvents();
   renderDashboard();
@@ -1293,6 +1380,24 @@ async function removeItem(collection, id) {
     const { error } = await supabaseClient.from("rental_inventory").delete().eq("id", id);
     if (error) {
       alert(`Nie udało się usunąć przedmiotu z magazynu w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  if (supabaseClient && currentRole && collection === "events") {
+    const { error } = await supabaseClient.from("events").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć wydarzenia w Supabase: ${error.message}`);
+      return;
+    }
+    await refreshSupabaseData();
+    return;
+  }
+  if (supabaseClient && currentRole && collection === "money") {
+    const { error } = await supabaseClient.from("transactions").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć operacji kasowej w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
