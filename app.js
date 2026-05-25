@@ -1,5 +1,7 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
+const APP_VERSION = "2026.05.25-1";
+const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
 const FEE_YEAR = new Date().getFullYear();
@@ -45,6 +47,7 @@ const starterData = {
   board: []
 };
 
+prepareLocalVersion();
 let state = loadState();
 let activeView = "dashboard";
 let query = "";
@@ -110,6 +113,7 @@ const elements = {
   docsList: document.querySelector("#docsList"),
   storageText: document.querySelector("#storageText"),
   storageBar: document.querySelector("#storageBar"),
+  appVersion: document.querySelector("#appVersion"),
   boardList: document.querySelector("#boardList"),
   feeMember: document.querySelector("#feeMember"),
   mailboxInfo: document.querySelector("#mailboxInfo")
@@ -118,6 +122,7 @@ const elements = {
 document.body.classList.toggle("locked", !currentRole);
 document.querySelectorAll("#exportData, .import-button").forEach((item) => item.classList.add("admin-only"));
 elements.currentRole.textContent = currentUserName ? `${currentUserName} (${roleName(currentRole)})` : roleName(currentRole);
+if (elements.appVersion) elements.appVersion.textContent = APP_VERSION;
 elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
@@ -137,6 +142,7 @@ document.querySelector("#boardForm").addEventListener("submit", handleBoard);
 document.querySelector("#exportData").addEventListener("click", exportData);
 document.querySelector("#undoButton").addEventListener("click", undoLastChange);
 document.querySelector("#importData").addEventListener("change", importData);
+document.querySelector("#refreshProgram").addEventListener("click", refreshProgram);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
@@ -531,6 +537,22 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function prepareLocalVersion() {
+  const savedVersion = localStorage.getItem(VERSION_KEY);
+  if (savedVersion !== APP_VERSION) {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(VERSION_KEY, APP_VERSION);
+  }
+}
+
+function refreshProgram() {
+  const confirmed = confirm("Odświeżyć program i wyczyścić lokalną pamięć tej przeglądarki? Dane w Supabase zostaną bez zmian.");
+  if (!confirmed) return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.setItem(VERSION_KEY, APP_VERSION);
+  window.location.reload();
 }
 
 function rememberUndo() {

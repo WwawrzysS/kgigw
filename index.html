@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260525-admin-hidden-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260525-refresh-program" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -366,8 +366,15 @@
               </div>
               <div class="row">
                 <div>
+                  <strong>Odśwież program</strong>
+                  <small>Wyczyść lokalną pamięć tej przeglądarki i pobierz świeżą wersję strony.</small>
+                </div>
+                <button id="refreshProgram" class="small-button">Odśwież program</button>
+              </div>
+              <div class="row">
+                <div>
                   <strong>Program</strong>
-                  <small>Kopia kodu strony jest w repozytorium GitHub.</small>
+                  <small>Kopia kodu strony jest w repozytorium GitHub. Wersja: <span id="appVersion">-</span></small>
                 </div>
               </div>
               <div class="row">
@@ -411,6 +418,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260525-edit-money"></script>
+    <script src="app.js?v=20260525-refresh-program"></script>
   </body>
 </html>
