@@ -622,6 +622,49 @@ textarea {
   font-size: 26px;
 }
 
+.admin-export {
+  padding: 14px;
+}
+
+.admin-export > p {
+  margin: 0 0 14px;
+  max-width: 760px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.admin-export-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-export-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.admin-export-card strong {
+  font-size: 16px;
+}
+
+.admin-export-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.admin-export-card .small-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 4px;
+}
+
 .overdue-list {
   display: grid;
   gap: 8px;
@@ -1196,6 +1239,10 @@ textarea {
 
 @media (max-width: 900px) {
   body {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-export-grid {
     grid-template-columns: 1fr;
   }
 
