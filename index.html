@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-member-export-ui" />
+    <link rel="stylesheet" href="styles.css?v=20260526-member-card" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -161,6 +161,7 @@
               <button id="downloadMembersCsv" class="small-button" type="button">Pobierz CSV</button>
             </div>
             <div id="membersList" class="table"></div>
+            <div id="memberDetails" class="member-details hidden"></div>
           </section>
         </div>
       </section>
@@ -499,6 +500,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260526-member-export-ui"></script>
+    <script src="app.js?v=20260526-member-card"></script>
   </body>
 </html>

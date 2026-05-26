@@ -93,6 +93,7 @@ const elements = {
   recentMoney: document.querySelector("#recentMoney"),
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
+  memberDetails: document.querySelector("#memberDetails"),
   showInactiveMembers: document.querySelector("#showInactiveMembers"),
   toggleMemberExport: document.querySelector("#toggleMemberExport"),
   memberExportPanel: document.querySelector("#memberExportPanel"),
@@ -1136,14 +1137,82 @@ function renderMembers() {
   const visibleMembers = state.members.filter((item) => showInactive || (item.status || "Aktywny") === "Aktywny");
   elements.membersList.innerHTML = rows(filterItems(visibleMembers), (item) => `
     <div>
-      <strong>${escapeHtml(item.name)}</strong>
+      <button class="link-button" type="button" onclick="showMemberDetails('${item.id}')">${escapeHtml(item.name)}</button>
       <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}${memberBoardRoleText(item)}</small>
     </div>
     <div class="row-actions">
+      <button class="small-button" onclick="showMemberDetails('${item.id}')">Szczegóły</button>
       ${canCorrect() ? `<button class="small-button" onclick="editMember('${item.id}')">Edytuj</button>` : ""}
       ${canCorrect() ? `<button class="delete-button" onclick="removeItem('members', '${item.id}')">Usuń</button>` : ""}
     </div>
   `);
+}
+
+function showMemberDetails(id) {
+  const member = state.members.find((entry) => entry.id === id);
+  if (!member) return;
+
+  const feeRow = feeMemberRows().find((row) => row.name === member.name);
+  const memberFees = state.fees
+    .filter((fee) => fee.memberId === member.id || fee.member === member.name)
+    .sort((a, b) => String(b.paidAt || b.date || "").localeCompare(String(a.paidAt || a.date || "")));
+  const memberRentals = memberRentalHistory(member);
+  const feeStatus = feeRow?.isLate ? "Zaległość" : feeRow?.paid >= ANNUAL_FEE ? "Opłacone do końca roku" : `Opłacone do ${feeRow?.paidUntil || "brak danych"}`;
+
+  elements.memberDetails.innerHTML = `
+    <div class="member-details-head">
+      <div>
+        <h3>${escapeHtml(member.name)}</h3>
+        <small>Karta członka</small>
+      </div>
+      <button class="small-button" type="button" onclick="hideMemberDetails()">Zamknij</button>
+    </div>
+    <div class="member-details-grid">
+      <div><span>Telefon</span><strong>${escapeHtml(member.phone || "Brak telefonu")}</strong></div>
+      <div><span>E-mail</span><strong>${escapeHtml(member.email || "Brak e-maila")}</strong></div>
+      <div><span>Status</span><strong>${escapeHtml(member.status || "Aktywny")}</strong></div>
+      <div><span>Funkcja w kole</span><strong>${escapeHtml(member.boardRole || "Brak")}</strong></div>
+      <div><span>Suma wpłat ${FEE_YEAR}</span><strong>${money(feeRow?.paid || 0)}</strong></div>
+      <div><span>Status składek</span><strong>${escapeHtml(feeStatus)}</strong></div>
+    </div>
+    <div class="member-details-section">
+      <h4>Składki</h4>
+      ${memberFees.length ? memberFees.map((fee) => `
+        <div class="member-detail-line">
+          <strong>${escapeHtml(fee.year || fee.period || FEE_YEAR)}</strong>
+          <span>${money(fee.amount)}${fee.paidAt || fee.date ? ` · ${formatDate(fee.paidAt || fee.date)}` : ""}${fee.note ? ` · ${escapeHtml(fee.note)}` : ""}</span>
+        </div>
+      `).join("") : '<small>Brak zapisanych składek dla tego członka.</small>'}
+    </div>
+    <div class="member-details-section">
+      <h4>Historia wypożyczeń</h4>
+      ${memberRentals.length ? memberRentals.map((loan) => `
+        <div class="member-detail-line">
+          <strong>${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)}</strong>
+          <span>${escapeHtml(loan.status)} · ${money(loan.total)} · ${loan.items.map((item) => `${escapeHtml(item.name)}: ${item.quantity} szt.`).join(" · ")}</span>
+        </div>
+      `).join("") : '<small>Brak powiązanych wypożyczeń.</small>'}
+    </div>
+  `;
+  elements.memberDetails.classList.remove("hidden");
+  elements.memberDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function hideMemberDetails() {
+  elements.memberDetails.classList.add("hidden");
+  elements.memberDetails.innerHTML = "";
+}
+
+function memberRentalHistory(member) {
+  const memberName = normalizeText(member.name);
+  const memberPhone = normalizePhone(member.phone);
+  return state.rentalLoans
+    .filter((loan) => {
+      const loanName = normalizeText(`${loan.firstName || ""} ${loan.lastName || ""}`);
+      const loanPhone = normalizePhone(loan.phone);
+      return loanName === memberName || (memberPhone && loanPhone === memberPhone);
+    })
+    .sort((a, b) => String(b.dateFrom || "").localeCompare(String(a.dateFrom || "")));
 }
 
 function editMember(id) {
@@ -2040,6 +2109,14 @@ function safeFileName(name) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase() || "dokument.pdf";
+}
+
+function normalizeText(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizePhone(value) {
+  return String(value || "").replace(/\D/g, "");
 }
 
 function docMoneyEntries(data, documentId) {
