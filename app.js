@@ -44,7 +44,8 @@ const starterData = {
   rentalLoans: [],
   docs: [],
   invoices: [],
-  board: []
+  board: [],
+  auditLogs: []
 };
 
 prepareLocalVersion();
@@ -138,7 +139,10 @@ const elements = {
   appVersion: document.querySelector("#appVersion"),
   boardList: document.querySelector("#boardList"),
   feeMember: document.querySelector("#feeMember"),
-  mailboxInfo: document.querySelector("#mailboxInfo")
+  mailboxInfo: document.querySelector("#mailboxInfo"),
+  adminTabs: document.querySelectorAll("[data-admin-tab]"),
+  adminPanels: document.querySelectorAll("[data-admin-panel]"),
+  auditLogList: document.querySelector("#auditLogList")
 };
 
 document.body.classList.toggle("locked", !currentRole);
@@ -165,10 +169,8 @@ document.querySelector("#rentalForm").addEventListener("input", updateRentalSumm
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
-document.querySelector("#exportData").addEventListener("click", exportData);
-document.querySelector("#undoButton").addEventListener("click", undoLastChange);
-document.querySelector("#importData").addEventListener("change", importData);
-document.querySelector("#refreshProgram").addEventListener("click", refreshProgram);
+document.querySelector("#exportData")?.addEventListener("click", exportData);
+document.querySelector("#refreshProgram")?.addEventListener("click", refreshProgram);
 document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgram);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
@@ -198,6 +200,10 @@ elements.navSubitems.forEach((button) => {
 
 elements.rentalSubtabs.forEach((button) => {
   button.addEventListener("click", () => switchRentalTab(button.dataset.rentalTab));
+});
+
+elements.adminTabs.forEach((button) => {
+  button.addEventListener("click", () => switchAdminTab(button.dataset.adminTab));
 });
 
 elements.globalSearch.addEventListener("input", (event) => {
@@ -407,6 +413,29 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("Finansów", moneyResult.error);
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
+  if (isAdmin()) {
+    const { data: auditRows, error: auditError } = await supabaseClient
+      .from("audit_log")
+      .select("id, created_at, action, table_name, details")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (auditError) {
+      console.error("Nie udało się pobrać logów aktywności z public.audit_log.", {
+        table: "public.audit_log",
+        columns: "id, created_at, action, table_name, details",
+        error: auditError
+      });
+    } else {
+      state.auditLogs = (auditRows || []).map((entry) => ({
+        id: entry.id,
+        date: entry.created_at,
+        user: entry.details?.user || "Nieznany użytkownik",
+        module: entry.table_name || entry.details?.module || "",
+        action: entry.action || "",
+        details: entry.details?.summary || ""
+      }));
+    }
+  }
 
   if (!membersResult.error) state.members = (membersResult.data || []).map((member) => ({
     id: member.id,
@@ -622,9 +651,10 @@ function prepareLocalVersion() {
   }
 }
 
-function refreshProgram() {
+async function refreshProgram() {
   const confirmed = confirm("Odświeżyć program i wyczyścić lokalną pamięć tej przeglądarki? Dane w Supabase zostaną bez zmian.");
   if (!confirmed) return;
+  await logActivity("Program", "Odświeżenie programu", { summary: "Odświeżenie programu" });
   localStorage.removeItem(STORAGE_KEY);
   localStorage.setItem(VERSION_KEY, APP_VERSION);
   window.location.reload();
@@ -724,6 +754,17 @@ function switchRentalTab(tabName) {
   });
 }
 
+function switchAdminTab(tabName) {
+  elements.adminTabs.forEach((item) => item.classList.toggle("active", item.dataset.adminTab === tabName));
+  elements.adminPanels.forEach((panel) => {
+    const active = panel.dataset.adminPanel === tabName;
+    panel.classList.toggle("active-admin-panel", active);
+    panel.hidden = !active;
+    panel.style.display = active ? "" : "none";
+  });
+  if (tabName === "logs") renderAuditLogs();
+}
+
 function switchDocTab(tabName) {
   elements.docPanels.forEach((panel) => panel.classList.toggle("active-doc-panel", panel.dataset.docPanel === tabName));
   elements.navSubitems.forEach((item) => {
@@ -752,6 +793,7 @@ async function handleMember(event) {
       return;
     }
     resetMemberForm(event.target);
+    await logActivity("Członkowie", memberId ? "Edycja członka" : "Dodanie członka", { summary: data.name });
     await refreshSupabaseData();
     showToast(memberMessage);
     return;
@@ -762,12 +804,14 @@ async function handleMember(event) {
     resetMemberForm(event.target);
     saveState();
     render();
+    logActivity("Członkowie", "Edycja członka", { summary: data.name });
     showToast(memberMessage);
     return;
   }
   delete data.id;
   state.members.push({ id: makeId(), ...data });
   finishForm(event.target);
+  logActivity("Członkowie", "Dodanie członka", { summary: data.name });
   showToast(memberMessage);
 }
 
@@ -809,6 +853,7 @@ async function handleFee(event) {
     event.target.reset();
     event.target.period.value = FEE_YEAR;
     event.target.dueAmount.value = ANNUAL_FEE;
+    await logActivity("Składki", "Dodanie składki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
     await refreshSupabaseData();
     showToast("Składka zapisana i dodana do Finansów jako wpływ.");
     return;
@@ -837,6 +882,7 @@ async function handleFee(event) {
   finishForm(event.target);
   event.target.period.value = FEE_YEAR;
   event.target.dueAmount.value = ANNUAL_FEE;
+  logActivity("Składki", "Dodanie składki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
   showToast("Składka zapisana i dodana do Finansów jako wpływ.");
 }
 
@@ -866,6 +912,7 @@ async function handleMoney(event) {
       return;
     }
     resetMoneyForm(event.target);
+    await logActivity("Finanse", moneyId ? "Edycja wpisu" : "Dodanie wpływu/wydatku", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
     await refreshSupabaseData();
     showToast(moneyMessage);
     return;
@@ -882,6 +929,7 @@ async function handleMoney(event) {
     resetMoneyForm(event.target);
     saveState();
     render();
+    logActivity("Finanse", "Edycja wpisu", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
     showToast(moneyMessage);
     return;
   }
@@ -895,6 +943,7 @@ async function handleMoney(event) {
     });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
+  logActivity("Finanse", "Dodanie wpływu/wydatku", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
   showToast(moneyMessage);
 }
 
@@ -914,6 +963,7 @@ async function handleEvent(event) {
     }
     event.target.reset();
     event.target.date.valueAsDate = new Date();
+    await logActivity("Wydarzenia", "Dodanie wydarzenia", { summary: data.name });
     await refreshSupabaseData();
     return;
   }
@@ -921,6 +971,7 @@ async function handleEvent(event) {
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   renderEventOptions();
+  logActivity("Wydarzenia", "Dodanie wydarzenia", { summary: data.name });
 }
 
 async function handleRental(event) {
@@ -1000,6 +1051,7 @@ async function handleRental(event) {
     form.reset();
     form.dateFrom.valueAsDate = new Date();
     form.dateTo.valueAsDate = new Date();
+    await logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
     await refreshSupabaseData();
     showToast("Wypożyczenie zapisane");
     return;
@@ -1029,6 +1081,7 @@ async function handleRental(event) {
   form.dateTo.valueAsDate = new Date();
   renderRentalItemInputs();
   updateRentalSummary();
+  logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
   showToast("Wypożyczenie zapisane");
 }
 
@@ -1085,6 +1138,7 @@ async function handleDoc(event) {
     }
     event.target.reset();
     event.target.date.valueAsDate = new Date();
+    await logActivity("Dokumenty", "Dodanie dokumentu", { summary: data.title });
     await refreshSupabaseData();
     showToast("Zapisano dokument");
     return;
@@ -1108,6 +1162,7 @@ async function handleDoc(event) {
   });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
+  logActivity("Dokumenty", "Dodanie dokumentu", { summary: data.title });
   showToast("Zapisano dokument");
 }
 
@@ -1164,6 +1219,7 @@ async function handleInvoice(event) {
     event.target.reset();
     event.target.date.valueAsDate = new Date();
     event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
+    await logActivity("Faktury", "Wystawienie faktury", { summary: `${invoice.number} - ${invoice.buyerName} - ${money(invoice.gross)}` });
     await refreshSupabaseData();
     showToast("Zapisano fakturę");
     return;
@@ -1173,6 +1229,7 @@ async function handleInvoice(event) {
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
+  logActivity("Faktury", "Wystawienie faktury", { summary: `${invoice.number} - ${invoice.buyerName} - ${money(invoice.gross)}` });
   showToast("Zapisano fakturę");
 }
 
@@ -1197,6 +1254,7 @@ function render() {
   renderDocs();
   renderInvoices();
   renderBoard();
+  renderAuditLogs();
   renderFeeOptions();
   renderEventOptions();
   renderInvoiceRentalOptions();
@@ -1212,6 +1270,79 @@ function showToast(message, type = "success") {
     toast.classList.add("toast-hide");
     window.setTimeout(() => toast.remove(), 250);
   }, 3200);
+}
+
+function renderAuditLogs() {
+  if (!elements.auditLogList) return;
+  if (!state.auditLogs.length) {
+    elements.auditLogList.innerHTML = '<div class="row"><small>Brak zapisanych logów aktywności.</small></div>';
+    return;
+  }
+  elements.auditLogList.innerHTML = `
+    <div class="audit-table">
+      <div class="audit-head">Data</div>
+      <div class="audit-head">Użytkownik</div>
+      <div class="audit-head">Moduł</div>
+      <div class="audit-head">Akcja</div>
+      <div class="audit-head">Szczegóły</div>
+      ${state.auditLogs.map((entry) => `
+        <div>${formatDateTime(entry.date)}</div>
+        <div>${escapeHtml(entry.user || "Nieznany użytkownik")}</div>
+        <div>${escapeHtml(entry.module || "—")}</div>
+        <div>${escapeHtml(entry.action || "—")}</div>
+        <div>${escapeHtml(entry.details || "—")}</div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function logActivity(moduleName, action, details = {}) {
+  if (!supabaseClient || !currentRole) return Promise.resolve();
+  return (async () => {
+    try {
+      const { data, error: userError } = await supabaseClient.auth.getUser();
+      if (userError) {
+        console.error("Nie udało się odczytać użytkownika do logu aktywności.", {
+          moduleName,
+          action,
+          details,
+          error: userError
+        });
+      }
+      const payload = {
+        user_id: data?.user?.id || null,
+        table_name: moduleName,
+        action,
+        details: {
+          ...details,
+          user: currentUserName || roleName(currentRole),
+          module: moduleName
+        }
+      };
+      const { error } = await supabaseClient.from("audit_log").insert(payload);
+      if (error) {
+        console.error("Nie udało się zapisać logu aktywności do public.audit_log.", {
+          payload,
+          error
+        });
+      }
+    } catch (error) {
+      console.error("Nie udało się zapisać logu aktywności do public.audit_log.", {
+        moduleName,
+        action,
+        details,
+        error
+      });
+    }
+  })();
+}
+
+function formatDateTime(value) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("pl-PL", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(new Date(value));
 }
 
 function renderDashboard() {
@@ -2121,6 +2252,7 @@ async function resetMemberFees(name) {
       alert(`Nie udało się wyzerować składek w Supabase: ${error.message}`);
       return;
     }
+    await logActivity("Składki", "Reset wpłat", { summary: `${name} - ${FEE_YEAR}` });
     await refreshSupabaseData();
     return;
   }
@@ -2128,6 +2260,7 @@ async function resetMemberFees(name) {
   state.fees = state.fees.filter((fee) => !(fee.member === name && feeYear(fee.year || fee.period) === FEE_YEAR));
   saveState();
   render();
+  logActivity("Składki", "Reset wpłat", { summary: `${name} - ${FEE_YEAR}` });
 }
 
 function deleteAction(collection, id) {
@@ -2184,6 +2317,7 @@ async function handleInventoryAdd(event) {
       return;
     }
     event.target.reset();
+    await logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
     await refreshSupabaseData();
     showToast("Dodano przedmiot do magazynu");
     return;
@@ -2199,6 +2333,7 @@ async function handleInventoryAdd(event) {
   event.target.reset();
   saveState();
   renderRentals();
+  logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
   showToast("Dodano przedmiot do magazynu");
 }
 
@@ -2256,6 +2391,7 @@ async function returnRental(id) {
     const paymentResult = await addRentalPaymentToSupabase(loan, paymentStatus);
     if (!paymentResult.ok) return;
 
+    await logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
     await refreshSupabaseData();
     showToast("Przyjęto zwrot");
     return;
@@ -2272,6 +2408,7 @@ async function returnRental(id) {
   addRentalPaymentLocal(loan, paymentStatus);
   saveState();
   render();
+  logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
   showToast("Przyjęto zwrot");
 }
 
@@ -2348,6 +2485,7 @@ async function markInvoicePaid(id) {
   if (supabaseClient && currentRole) {
     const result = await addInvoicePaymentToSupabase(paidInvoice);
     if (!result.ok) return;
+    await logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
     await refreshSupabaseData();
     showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
     return;
@@ -2359,6 +2497,7 @@ async function markInvoicePaid(id) {
   addInvoicePaymentLocal(invoice);
   saveState();
   render();
+  logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
   showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
 }
 
@@ -2402,6 +2541,7 @@ async function removeItem(collection, id) {
         alert(`Nie udało się zarchiwizować członka w Supabase: ${error.message}`);
         return;
       }
+      await logActivity("Członkowie", "Archiwizacja członka", { summary: member?.name || id });
       await refreshSupabaseData();
       showToast("Członek został zarchiwizowany");
       return;
@@ -2411,6 +2551,7 @@ async function removeItem(collection, id) {
       member.status = "Nieaktywny";
       saveState();
       render();
+      logActivity("Członkowie", "Archiwizacja członka", { summary: member.name });
       showToast("Członek został zarchiwizowany");
     }
     return;
@@ -2435,6 +2576,7 @@ async function removeItem(collection, id) {
         alert(`Nie udało się anulować operacji kasowej w Supabase: ${error.message}`);
         return;
       }
+      await logActivity("Finanse", "Anulowanie wpisu w Finansach", { summary: id });
       await refreshSupabaseData();
       showToast("Wpis w Finansach został anulowany");
       return;
@@ -2447,6 +2589,7 @@ async function removeItem(collection, id) {
       entry.cancelledReason = "";
       saveState();
       render();
+      logActivity("Finanse", "Anulowanie wpisu w Finansach", { summary: entry.title || id });
       showToast("Wpis w Finansach został anulowany");
     }
     return;
@@ -2462,6 +2605,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć wpisu w Supabase: ${error.message}`);
       return;
     }
+    await logActivity("Składki", "Usunięcie wpłaty", { summary: feeToDelete ? `${feeToDelete.member} - ${money(feeToDelete.amount)}` : id });
     await refreshSupabaseData();
     return;
   }
@@ -3254,6 +3398,7 @@ function exportData() {
   link.download = `panel-kgw-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(link.href);
+  logActivity("Administracja", "Eksport danych", { summary: "Pobrano kopię danych programu" });
 }
 
 function importData(event) {

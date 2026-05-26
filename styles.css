@@ -552,6 +552,38 @@ textarea {
   width: auto;
 }
 
+.admin-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-tab-panel {
+  display: none;
+}
+
+.admin-tab-panel.active-admin-panel {
+  display: block;
+}
+
+.audit-table {
+  display: grid;
+  grid-template-columns: 150px 150px 120px 160px minmax(220px, 1fr);
+  gap: 0;
+  overflow-x: auto;
+}
+
+.audit-table > div {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.audit-head {
+  color: var(--muted);
+  font-weight: 700;
+  background: #f9f7f1;
+}
+
 .finance-summary {
   margin: 14px;
   padding: 14px;

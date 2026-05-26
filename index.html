@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-dashboard-rotating-stats" />
+    <link rel="stylesheet" href="styles.css?v=20260526-admin-logs" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -29,7 +29,7 @@
         <span class="brand-mark"><img src="KGiGW.jpg" alt="Logo KGiGW" /></span>
         <div>
           <strong>KGiGW</strong>
-          <small>Panel koła</small>
+          <small>we Włosani</small>
         </div>
       </div>
       <nav class="nav" aria-label="Główne działy">
@@ -443,84 +443,63 @@
       </section>
 
       <section id="administration" class="view">
-        <div class="workspace">
-          <section class="panel">
+        <div class="admin-shell">
+          <div class="subtabs admin-tabs" role="tablist" aria-label="Administracja">
+            <button class="active" type="button" data-admin-tab="program">Program</button>
+            <button type="button" data-admin-tab="export">Eksport</button>
+            <button type="button" data-admin-tab="files">Pliki</button>
+            <button type="button" data-admin-tab="logs">Logi</button>
+          </div>
+
+          <section class="panel admin-tab-panel active-admin-panel" data-admin-panel="program">
             <div class="panel-head">
-              <h2>Kopie bezpieczeństwa</h2>
+              <h2>Program</h2>
             </div>
-            <div class="notice">
-              Dane programu są w Supabase. Kopie bazy rób w panelu Supabase, a pliki strony trzymaj na GitHubie.
+            <div class="table">
+              <div class="row">
+                <div>
+                  <strong>Narzędzia techniczne programu</strong>
+                  <small>Wersja: <span id="appVersion">-</span></small>
+                </div>
+                <button id="refreshProgram" class="small-button">Odśwież program</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel admin-tab-panel" data-admin-panel="export" hidden>
+            <div class="panel-head">
+              <h2>Eksport</h2>
             </div>
             <div class="table">
               <div class="row">
                 <div>
                   <strong>Eksport danych</strong>
-                  <small>Pobierz dodatkową kopię danych do pliku JSON.</small>
+                  <small>Pobierz kopię danych programu.</small>
                 </div>
                 <button id="exportData" class="small-button">Eksport danych</button>
               </div>
-              <div class="row">
-                <div>
-                  <strong>Import danych</strong>
-                  <small>Wczytaj dane z wcześniej pobranego pliku JSON.</small>
-                </div>
-                <label class="small-button import-button admin-import">
-                  Import danych
-                  <input id="importData" type="file" accept="application/json" />
-                </label>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Cofnij ostatnią zmianę</strong>
-                  <small>Przydatne, gdy wpis został dodany omyłkowo.</small>
-                </div>
-                <button id="undoButton" class="small-button">Cofnij ostatnią zmianę</button>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Odśwież program</strong>
-                  <small>Wyczyść lokalną pamięć tej przeglądarki i pobierz świeżą wersję strony.</small>
-                </div>
-                <button id="refreshProgram" class="small-button">Odśwież program</button>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Program</strong>
-                  <small>Kopia kodu strony jest w repozytorium GitHub. Wersja: <span id="appVersion">-</span></small>
-                </div>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Dane</strong>
-                  <small>Kopie członków, składek, kasy, wypożyczalni i dokumentów wykonuj z Supabase.</small>
-                </div>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>PDF</strong>
-                  <small>Pliki dokumentów są w Supabase Storage w folderze documents.</small>
-                </div>
-              </div>
             </div>
           </section>
-          <section class="panel">
+
+          <section class="panel admin-tab-panel" data-admin-panel="files" hidden>
             <div class="panel-head">
-              <h2>Uprawnienia</h2>
+              <h2>Pliki</h2>
             </div>
             <div class="table">
               <div class="row">
                 <div>
-                  <strong>Administrator, Agata, Tomek</strong>
-                  <small>Mogą dodawać i korygować wpisy robocze. Dokumenty PDF i faktury usuwa tylko Administrator.</small>
-                </div>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Potwierdzenie usuwania</strong>
-                  <small>Przy usuwaniu program nadal pyta o potwierdzenie.</small>
+                  <strong>Pliki PDF</strong>
+                  <small>Lista plików PDF zostanie dodana w kolejnym kroku.</small>
                 </div>
               </div>
             </div>
+          </section>
+
+          <section class="panel admin-tab-panel" data-admin-panel="logs" hidden>
+            <div class="panel-head">
+              <h2>Logi aktywności</h2>
+            </div>
+            <div id="auditLogList" class="table"></div>
           </section>
         </div>
       </section>
@@ -530,6 +509,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260526-dashboard-rotating-stats"></script>
+    <script src="app.js?v=20260526-admin-logs-fix"></script>
   </body>
 </html>
