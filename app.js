@@ -936,7 +936,7 @@ async function handleMoney(event) {
       return;
     }
     resetMoneyForm(event.target);
-    await logActivity("Finanse", moneyId ? "Edycja wpisu" : "Dodanie wpływu/wydatku", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
+    await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data) });
     await refreshSupabaseData();
     showToast(moneyMessage);
     return;
@@ -953,7 +953,7 @@ async function handleMoney(event) {
     resetMoneyForm(event.target);
     saveState();
     render();
-    logActivity("Finanse", "Edycja wpisu", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
+    logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data) });
     showToast(moneyMessage);
     return;
   }
@@ -967,7 +967,7 @@ async function handleMoney(event) {
     });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
-  logActivity("Finanse", "Dodanie wpływu/wydatku", { summary: `${data.title} - ${money(Number(data.amount || 0))}` });
+  logActivity("Finanse", moneyLogAction(data.type), { summary: moneyLogSummary(data) });
   showToast(moneyMessage);
 }
 
@@ -2228,6 +2228,14 @@ function moneyTypeLabel(type) {
   return "Wydatek";
 }
 
+function moneyLogAction(type) {
+  return type === "expense" ? "Dodanie wydatku" : "Dodanie wpływu";
+}
+
+function moneyLogSummary(entry) {
+  return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}`;
+}
+
 function isActiveMoney(item) {
   return (item.status || "active") !== "cancelled";
 }
@@ -2585,6 +2593,7 @@ async function removeItem(collection, id) {
     return;
   }
   if (collection === "money") {
+    const entry = state.money.find((item) => item.id === id);
     const confirmed = confirm("Anulować ten wpis w Finansach? Wpis zostanie w historii, ale nie będzie liczony do salda.");
     if (!confirmed) return;
     if (supabaseClient && currentRole) {
@@ -2600,12 +2609,11 @@ async function removeItem(collection, id) {
         alert(`Nie udało się anulować operacji kasowej w Supabase: ${error.message}`);
         return;
       }
-      await logActivity("Finanse", "Anulowanie wpisu w Finansach", { summary: id });
+      await logActivity("Finanse", "Anulowanie wpisu finansowego", { summary: entry ? moneyLogSummary(entry) : id });
       await refreshSupabaseData();
       showToast("Wpis w Finansach został anulowany");
       return;
     }
-    const entry = state.money.find((item) => item.id === id);
     if (entry) {
       rememberUndo();
       entry.status = "cancelled";
@@ -2613,7 +2621,7 @@ async function removeItem(collection, id) {
       entry.cancelledReason = "";
       saveState();
       render();
-      logActivity("Finanse", "Anulowanie wpisu w Finansach", { summary: entry.title || id });
+      logActivity("Finanse", "Anulowanie wpisu finansowego", { summary: moneyLogSummary(entry) });
       showToast("Wpis w Finansach został anulowany");
     }
     return;
