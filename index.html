@@ -474,9 +474,19 @@
               <div class="row">
                 <div>
                   <strong>Eksport danych</strong>
-                  <small>Pobierz kopię danych programu.</small>
+                  <small>Eksport tworzy kopię danych do pobrania. Nie usuwa ani nie zmienia danych w programie.</small>
                 </div>
-                <button id="exportData" class="small-button">Eksport danych</button>
+                <div class="row-actions">
+                  <button class="small-button admin-export-button" type="button" data-admin-export="members">Eksport członków CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="fees">Eksport składek CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="money">Eksport finansów CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="inventory">Eksport magazynu CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="rentals">Eksport wypożyczeń CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="invoices">Eksport faktur CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="documents">Eksport dokumentów CSV</button>
+                  <button class="small-button admin-export-button" type="button" data-admin-export="events">Eksport wydarzeń CSV</button>
+                  <button id="exportData" class="small-button admin-export-button" type="button" data-admin-export="full-json">Eksport pełny JSON</button>
+                </div>
               </div>
             </div>
           </section>
@@ -509,6 +519,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260526-finance-log-labels-2"></script>
+    <script src="app.js?v=20260526-admin-exports"></script>
   </body>
 </html>

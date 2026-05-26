@@ -169,7 +169,9 @@ document.querySelector("#rentalForm").addEventListener("input", updateRentalSumm
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
-document.querySelector("#exportData")?.addEventListener("click", exportData);
+document.querySelectorAll("[data-admin-export]").forEach((button) => {
+  button.addEventListener("click", () => exportAdminData(button.dataset.adminExport));
+});
 document.querySelector("#refreshProgram")?.addEventListener("click", refreshProgram);
 document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgram);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
@@ -3431,14 +3433,190 @@ function filterItems(items) {
 }
 
 function exportData() {
+  exportAdminData("full-json");
+}
+
+function exportAdminData(kind) {
   if (!isAdmin()) return;
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const today = new Date().toISOString().slice(0, 10);
+  if (kind === "full-json") {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      members: state.members,
+      fees: state.fees,
+      transactions: state.money,
+      inventory: state.rentalInventory,
+      rentals: state.rentalLoans,
+      invoices: state.invoices,
+      documents: state.docs,
+      events: state.events,
+      board: boardMembers()
+    };
+    downloadTextFile(`kgigw-pelna-kopia-${today}.json`, JSON.stringify(data, null, 2), "application/json;charset=utf-8");
+    logActivity("Administracja", "Eksport danych", { summary: "Eksport pełny JSON" });
+    return;
+  }
+
+  const config = adminExportConfig()[kind];
+  if (!config) return;
+  const rows = config.rows();
+  const header = config.columns.map((column) => csvValue(column.label)).join(";");
+  const body = rows.map((row) => config.columns.map((column) => csvValue(column.value(row))).join(";"));
+  downloadTextFile(`kgigw-${config.file}-${today}.csv`, `\uFEFF${[header, ...body].join("\r\n")}`, "text/csv;charset=utf-8");
+  logActivity("Administracja", "Eksport danych", { summary: config.log });
+}
+
+function downloadTextFile(fileName, content, type) {
+  const blob = new Blob([content], { type });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `panel-kgw-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = fileName;
   link.click();
   URL.revokeObjectURL(link.href);
-  logActivity("Administracja", "Eksport danych", { summary: "Pobrano kopię danych programu" });
+}
+
+function adminExportConfig() {
+  return {
+    members: {
+      file: "czlonkowie",
+      log: "Eksport członków CSV",
+      rows: () => state.members,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Imię i nazwisko", value: (item) => item.name },
+        { label: "Telefon", value: (item) => item.phone },
+        { label: "E-mail", value: (item) => item.email },
+        { label: "Status", value: (item) => item.status },
+        { label: "Funkcja w kole", value: (item) => item.boardRole }
+      ]
+    },
+    fees: {
+      file: "skladki",
+      log: "Eksport składek CSV",
+      rows: () => state.fees,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Członek", value: (item) => item.member },
+        { label: "ID członka", value: (item) => item.memberId },
+        { label: "Rok", value: (item) => item.year || item.period },
+        { label: "Kwota", value: (item) => item.amount },
+        { label: "Data wpłaty", value: (item) => item.paidAt },
+        { label: "Notatka", value: (item) => item.note }
+      ]
+    },
+    money: {
+      file: "finanse",
+      log: "Eksport finansów CSV",
+      rows: () => state.money,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Typ", value: (item) => moneyTypeLabel(item.type) },
+        { label: "Opis", value: (item) => item.title },
+        { label: "Kategoria", value: (item) => item.category },
+        { label: "Kwota", value: (item) => item.amount },
+        { label: "Data", value: (item) => item.date },
+        { label: "Wydarzenie", value: (item) => item.eventName },
+        { label: "Status", value: (item) => isActiveMoney(item) ? "Aktywny" : "Anulowany" },
+        { label: "Źródło", value: (item) => item.sourceType },
+        { label: "ID źródła", value: (item) => item.sourceId }
+      ]
+    },
+    inventory: {
+      file: "magazyn",
+      log: "Eksport magazynu CSV",
+      rows: () => state.rentalInventory,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Nazwa", value: (item) => item.name },
+        { label: "Stan całkowity", value: (item) => item.quantity },
+        { label: "Dostępne", value: (item) => availableQuantity(item.id) },
+        { label: "Wypożyczone", value: (item) => borrowedQuantity(item.id) },
+        { label: "Zwrócone łącznie", value: (item) => returnedQuantity(item.id) },
+        { label: "Cena za dobę", value: (item) => item.price }
+      ]
+    },
+    rentals: {
+      file: "wypozyczenia",
+      log: "Eksport wypożyczeń CSV",
+      rows: () => state.rentalLoans,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Imię", value: (item) => item.firstName },
+        { label: "Nazwisko", value: (item) => item.lastName },
+        { label: "Telefon", value: (item) => item.phone },
+        { label: "Od", value: (item) => item.dateFrom },
+        { label: "Do", value: (item) => item.dateTo },
+        { label: "Dni", value: (item) => item.days },
+        { label: "Wartość netto", value: (item) => item.total },
+        { label: "Wartość brutto", value: (item) => grossFromNet(item.total, 23).toFixed(2) },
+        { label: "Status", value: (item) => item.status },
+        { label: "Płatność", value: (item) => rentalPaymentLabel(item.paymentStatus) },
+        { label: "Pozycje", value: (item) => rentalItemsText(item.items) },
+        { label: "Uwagi", value: (item) => item.notes },
+        { label: "Data zwrotu", value: (item) => item.returnedAt },
+        { label: "Uwagi zwrotu", value: (item) => item.returnNotes }
+      ]
+    },
+    invoices: {
+      file: "faktury",
+      log: "Eksport faktur CSV",
+      rows: () => state.invoices,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Numer", value: (item) => item.number },
+        { label: "Data", value: (item) => item.date },
+        { label: "Nabywca", value: (item) => item.buyerName },
+        { label: "Adres nabywcy", value: (item) => item.buyerAddress },
+        { label: "NIP", value: (item) => item.buyerNip },
+        { label: "Netto", value: (item) => item.net },
+        { label: "VAT", value: (item) => item.vat },
+        { label: "Brutto", value: (item) => item.gross },
+        { label: "Status płatności", value: (item) => invoicePaymentStatusLabel(item.paymentStatus) },
+        { label: "Forma płatności", value: (item) => invoicePaymentMethodLabel(item.paymentMethod) },
+        { label: "Termin płatności", value: (item) => item.paymentDueDate },
+        { label: "ID wypożyczenia", value: (item) => item.rentalId },
+        { label: "Uwagi", value: (item) => item.notes }
+      ]
+    },
+    documents: {
+      file: "dokumenty",
+      log: "Eksport dokumentów CSV",
+      rows: () => state.docs,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Tytuł", value: (item) => item.title },
+        { label: "Nadawca", value: (item) => item.sender },
+        { label: "Typ", value: (item) => item.category },
+        { label: "Data", value: (item) => item.date },
+        { label: "Kwota wpływ", value: (item) => item.incomeAmount },
+        { label: "Kwota wydatek", value: (item) => item.expenseAmount },
+        { label: "Wydarzenie", value: (item) => item.eventName },
+        { label: "Plik", value: (item) => item.fileName },
+        { label: "Rozmiar pliku", value: (item) => item.fileSize },
+        { label: "Notatka", value: (item) => item.notes }
+      ]
+    },
+    events: {
+      file: "wydarzenia",
+      log: "Eksport wydarzeń CSV",
+      rows: () => state.events,
+      columns: [
+        { label: "ID", value: (item) => item.id },
+        { label: "Nazwa", value: (item) => item.name },
+        { label: "Data", value: (item) => item.date },
+        { label: "Miejsce", value: (item) => item.place },
+        { label: "Notatki", value: (item) => item.notes }
+      ]
+    }
+  };
+}
+
+function boardMembers() {
+  return state.members.filter((member) => (member.boardRole || "Brak") !== "Brak");
+}
+
+function rentalItemsText(items = []) {
+  return items.map((item) => `${item.name} x ${item.quantity}`).join(", ");
 }
 
 function importData(event) {
