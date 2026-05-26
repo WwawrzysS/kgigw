@@ -936,7 +936,7 @@ async function handleMoney(event) {
       return;
     }
     resetMoneyForm(event.target);
-    await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data) });
+    await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
     await refreshSupabaseData();
     showToast(moneyMessage);
     return;
@@ -953,7 +953,7 @@ async function handleMoney(event) {
     resetMoneyForm(event.target);
     saveState();
     render();
-    logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data) });
+    logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data), type: data.type });
     showToast(moneyMessage);
     return;
   }
@@ -967,7 +967,7 @@ async function handleMoney(event) {
     });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
-  logActivity("Finanse", moneyLogAction(data.type), { summary: moneyLogSummary(data) });
+  logActivity("Finanse", moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
   showToast(moneyMessage);
 }
 
@@ -1324,11 +1324,15 @@ function logActivity(moduleName, action, details = {}) {
   if (!supabaseClient || !currentRole) return Promise.resolve();
   return (async () => {
     try {
+      let logAction = action;
+      if (moduleName === "Finanse" && action === "Dodanie wpływu/wydatku") {
+        logAction = moneyLogAction(details.type);
+      }
       const { data, error: userError } = await supabaseClient.auth.getUser();
       if (userError) {
         console.error("Nie udało się odczytać użytkownika do logu aktywności.", {
           moduleName,
-          action,
+          action: logAction,
           details,
           error: userError
         });
@@ -1336,7 +1340,7 @@ function logActivity(moduleName, action, details = {}) {
       const payload = {
         user_id: data?.user?.id || null,
         table_name: moduleName,
-        action,
+        action: logAction,
         details: {
           ...details,
           user: currentUserName || roleName(currentRole),
@@ -1353,7 +1357,7 @@ function logActivity(moduleName, action, details = {}) {
     } catch (error) {
       console.error("Nie udało się zapisać logu aktywności do public.audit_log.", {
         moduleName,
-        action,
+        action: moduleName === "Finanse" && action === "Dodanie wpływu/wydatku" ? moneyLogAction(details.type) : action,
         details,
         error
       });
@@ -2229,11 +2233,15 @@ function moneyTypeLabel(type) {
 }
 
 function moneyLogAction(type) {
-  return type === "expense" ? "Dodanie wydatku" : "Dodanie wpływu";
+  return isExpenseType(type) ? "Dodanie wydatku" : "Dodanie wpływu";
 }
 
 function moneyLogSummary(entry) {
   return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}`;
+}
+
+function isExpenseType(type) {
+  return ["expense", "wydatek", "wydatki", "minus", "koszt"].includes(normalizeText(type || ""));
 }
 
 function isActiveMoney(item) {
