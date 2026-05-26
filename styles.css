@@ -228,6 +228,40 @@ body:not(.locked) .login-screen {
   padding: 28px;
 }
 
+.toast-container {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 80;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--green);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 12px 30px rgba(39, 34, 25, 0.14);
+  font-weight: 700;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.toast-error {
+  border-left-color: var(--red);
+}
+
+.toast-hide {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -267,6 +301,21 @@ h2 {
 
 .search-wrap {
   width: min(360px, 100%);
+  display: grid;
+  gap: 6px;
+}
+
+.admin-contact-link {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.admin-contact-link:hover {
+  color: var(--green-dark);
+  text-decoration: underline;
 }
 
 input,
@@ -322,6 +371,82 @@ textarea {
 
 .stat strong {
   font-size: 28px;
+}
+
+.unpaid-invoices-stat,
+.dashboard-link-stat {
+  cursor: pointer;
+  align-content: start;
+}
+
+.unpaid-invoices-stat:focus-visible,
+.dashboard-link-stat:focus-visible {
+  outline: 3px solid rgba(47, 111, 78, 0.28);
+  outline-offset: 2px;
+}
+
+.dashboard-metric-value,
+.dashboard-metric-separator,
+.dashboard-metric-name {
+  display: inline-block;
+  vertical-align: baseline;
+}
+
+.dashboard-metric-value {
+  max-width: 55%;
+}
+
+.dashboard-metric-separator {
+  margin: 0 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.dashboard-metric-name {
+  max-width: 38%;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat .unpaid-invoices-line {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted);
+  font-weight: 600;
+  overflow: hidden;
+  display: block;
+  white-space: nowrap;
+}
+
+.unpaid-invoice-text {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+
+.unpaid-invoice-text.is-scrolling {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+  animation: unpaid-invoice-marquee 14s linear infinite;
+}
+
+@keyframes unpaid-invoice-marquee {
+  0%,
+  18% {
+    transform: translateX(0);
+  }
+  82%,
+  100% {
+    transform: translateX(var(--marquee-distance, -40px));
+  }
 }
 
 .split,
@@ -425,6 +550,41 @@ textarea {
 
 .panel-head-actions input {
   width: auto;
+}
+
+.finance-summary {
+  margin: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9f7f1;
+  display: grid;
+  gap: 6px;
+}
+
+.finance-summary span,
+.finance-summary small {
+  color: var(--muted);
+}
+
+.finance-summary strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 26px;
+}
+
+.overdue-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.overdue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .member-export-panel {
@@ -819,6 +979,53 @@ textarea {
   color: var(--red);
 }
 
+.fee-payment-list,
+.fee-contact-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fee-contact-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fee-payment-item,
+.fee-contact-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fee-delete-button,
+.contact-button {
+  padding: 6px 9px;
+  font-size: 12px;
+  min-height: 28px;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contact-missing {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fee-contact-panel small {
+  display: block;
+  margin-top: 4px;
+}
+
 .row strong {
   display: block;
   margin-bottom: 4px;
@@ -1013,9 +1220,22 @@ textarea {
     padding: 16px;
   }
 
+  .toast-container {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+
   .search-wrap,
   .search-wrap input {
     width: 100%;
+  }
+
+  .admin-contact-link {
+    justify-self: start;
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   h1 {

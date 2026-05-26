@@ -56,6 +56,13 @@ let currentUserName = sessionStorage.getItem("kgigw-user-name") || "";
 let undoSnapshot = null;
 let supabaseClient = null;
 let supabaseDataReady = false;
+let showFeeContactPanel = false;
+let unpaidInvoiceDashboardIndex = 0;
+let unpaidInvoiceDashboardTimer = null;
+let lateFeeDashboardIndex = 0;
+let lateFeeDashboardTimer = null;
+let activeRentalDashboardIndex = 0;
+let activeRentalDashboardTimer = null;
 
 const titles = {
   dashboard: "Pulpit",
@@ -80,6 +87,7 @@ const elements = {
   sidebar: document.querySelector(".sidebar"),
   currentRole: document.querySelector("#currentRole"),
   mobileMenuButton: document.querySelector("#mobileMenuButton"),
+  toastContainer: document.querySelector("#toastContainer"),
   viewTitle: document.querySelector("#viewTitle"),
   navItems: document.querySelectorAll(".nav-item"),
   navSubitems: document.querySelectorAll(".nav-subitem"),
@@ -87,7 +95,8 @@ const elements = {
   views: document.querySelectorAll(".view"),
   globalSearch: document.querySelector("#globalSearch"),
   cashBalance: document.querySelector("#cashBalance"),
-  memberCount: document.querySelector("#memberCount"),
+  unpaidInvoicesSummary: document.querySelector("#unpaidInvoicesSummary"),
+  unpaidInvoicesList: document.querySelector("#unpaidInvoicesList"),
   lateFees: document.querySelector("#lateFees"),
   rentalCount: document.querySelector("#rentalCount"),
   recentMoney: document.querySelector("#recentMoney"),
@@ -106,6 +115,8 @@ const elements = {
   moneyFormTitle: document.querySelector("#moneyFormTitle"),
   cancelMoneyEdit: document.querySelector("#cancelMoneyEdit"),
   docEvent: document.querySelector("#docEvent"),
+  moneySummary: document.querySelector("#moneySummary"),
+  overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
   moneyList: document.querySelector("#moneyList"),
   eventsList: document.querySelector("#eventsList"),
   inventoryAddForm: document.querySelector("#inventoryAddForm"),
@@ -199,6 +210,7 @@ document.querySelector('#feeForm input[name="period"]').value = FEE_YEAR;
 document.querySelector('#eventForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#docForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#invoiceForm input[name="date"]').valueAsDate = new Date();
+document.querySelector('#invoiceForm input[name="paymentDueDate"]').value = dateOffset(new Date().toISOString().slice(0, 10), 7);
 document.querySelector('#rentalForm input[name="dateFrom"]').valueAsDate = new Date();
 document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Date();
 
@@ -322,7 +334,7 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
-  const [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
     supabaseClient
       .from("members")
       .select("id, name, phone, email, status, board_role, created_at")
@@ -337,7 +349,7 @@ async function refreshSupabaseData() {
       .order("name", { ascending: true }),
     supabaseClient
       .from("rentals")
-      .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
+      .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, payment_status, payment_method, paid_at, payment_transaction_id, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
       .order("date_from", { ascending: false })
     ,
     supabaseClient
@@ -346,7 +358,7 @@ async function refreshSupabaseData() {
       .order("event_date", { ascending: true }),
     supabaseClient
       .from("transactions")
-      .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason")
+      .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason, source_type, source_id")
       .order("transaction_date", { ascending: false })
     ,
     supabaseClient
@@ -356,44 +368,47 @@ async function refreshSupabaseData() {
     ,
     supabaseClient
       .from("invoices")
-      .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
+      .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes, payment_status, payment_method, paid_at, payment_transaction_id, payment_due_date, bank_account")
       .order("invoice_date", { ascending: false })
   ]);
 
-  if (membersResult.error) {
-    alert(`Nie udało się pobrać członków z Supabase: ${membersResult.error.message}`);
-    return;
-  }
-  if (feesResult.error) {
-    alert(`Nie udało się pobrać składek z Supabase: ${feesResult.error.message}`);
-    return;
-  }
-  if (inventoryResult.error) {
-    alert(`Nie udało się pobrać magazynu z Supabase: ${inventoryResult.error.message}`);
-    return;
-  }
   if (rentalsResult.error) {
-    alert(`Nie udało się pobrać wypożyczeń z Supabase: ${rentalsResult.error.message}`);
-    return;
-  }
-  if (eventsResult.error) {
-    alert(`Nie udało się pobrać wydarzeń z Supabase: ${eventsResult.error.message}`);
-    return;
-  }
-  if (moneyResult.error) {
-    alert(`Nie udało się pobrać kasy z Supabase: ${moneyResult.error.message}`);
-    return;
-  }
-  if (docsResult.error) {
-    alert(`Nie udało się pobrać dokumentów z Supabase: ${docsResult.error.message}`);
-    return;
-  }
-  if (invoicesResult.error) {
-    alert(`Nie udało się pobrać faktur z Supabase: ${invoicesResult.error.message}`);
-    return;
+    console.error("Nie udało się pobrać wypożyczeń z nowymi polami płatności. Próba pobrania podstawowego widoku.", rentalsResult.error);
+    const fallbackRentals = await supabaseClient
+      .from("rentals")
+      .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
+      .order("date_from", { ascending: false });
+    if (!fallbackRentals.error) rentalsResult = fallbackRentals;
   }
 
-  state.members = (membersResult.data || []).map((member) => ({
+  if (moneyResult.error) {
+    console.error("Nie udało się pobrać Finansów z polami źródła. Próba pobrania podstawowego widoku.", moneyResult.error);
+    const fallbackMoney = await supabaseClient
+      .from("transactions")
+      .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason")
+      .order("transaction_date", { ascending: false });
+    if (!fallbackMoney.error) moneyResult = fallbackMoney;
+  }
+
+  if (invoicesResult.error) {
+    console.error("Nie udało się pobrać faktur z polami płatności. Próba pobrania podstawowego widoku.", invoicesResult.error);
+    const fallbackInvoices = await supabaseClient
+      .from("invoices")
+      .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
+      .order("invoice_date", { ascending: false });
+    if (!fallbackInvoices.error) invoicesResult = fallbackInvoices;
+  }
+
+  logSupabaseLoadError("członków", membersResult.error);
+  logSupabaseLoadError("składek", feesResult.error);
+  logSupabaseLoadError("magazynu", inventoryResult.error);
+  logSupabaseLoadError("wypożyczeń", rentalsResult.error);
+  logSupabaseLoadError("wydarzeń", eventsResult.error);
+  logSupabaseLoadError("Finansów", moneyResult.error);
+  logSupabaseLoadError("dokumentów", docsResult.error);
+  logSupabaseLoadError("faktur", invoicesResult.error);
+
+  if (!membersResult.error) state.members = (membersResult.data || []).map((member) => ({
     id: member.id,
     name: member.name,
     phone: member.phone || "",
@@ -402,7 +417,7 @@ async function refreshSupabaseData() {
     boardRole: member.board_role || "Brak"
   }));
 
-  state.fees = (feesResult.data || []).map((fee) => {
+  if (!feesResult.error) state.fees = (feesResult.data || []).map((fee) => {
     const member = state.members.find((entry) => entry.id === fee.member_id);
     return {
       id: fee.id,
@@ -418,14 +433,14 @@ async function refreshSupabaseData() {
     };
   });
 
-  state.rentalInventory = (inventoryResult.data || []).map((item) => ({
+  if (!inventoryResult.error) state.rentalInventory = (inventoryResult.data || []).map((item) => ({
     id: item.id,
     name: item.name,
     quantity: Number(item.quantity || 0),
     price: Number(item.price_per_day || 0)
   }));
 
-  state.rentalLoans = (rentalsResult.data || []).map((rental) => {
+  if (!rentalsResult.error) state.rentalLoans = (rentalsResult.data || []).map((rental) => {
     const lines = rental.rental_lines || [];
     const items = lines.map((line) => ({
       lineId: line.id,
@@ -457,12 +472,17 @@ async function refreshSupabaseData() {
       returnedAt: rental.returned_at,
       returnNotes: rental.return_notes || "",
       damageCost: Number(rental.damage_cost || 0),
+      createdAt: rental.created_at || "",
+      paymentStatus: rental.payment_status || "unpaid",
+      paymentMethod: rental.payment_method || "",
+      paidAt: rental.paid_at || "",
+      paymentTransactionId: rental.payment_transaction_id || "",
       items,
       returnItems
     };
   });
 
-  state.events = (eventsResult.data || []).map((event) => ({
+  if (!eventsResult.error) state.events = (eventsResult.data || []).map((event) => ({
     id: event.id,
     name: event.name,
     date: event.event_date || "",
@@ -470,7 +490,7 @@ async function refreshSupabaseData() {
     notes: event.notes || ""
   }));
 
-  state.money = (moneyResult.data || []).map((entry) => {
+  if (!moneyResult.error) state.money = (moneyResult.data || []).map((entry) => {
     const linkedEvent = state.events.find((event) => event.id === entry.event_id);
     return {
       id: entry.id,
@@ -483,11 +503,13 @@ async function refreshSupabaseData() {
       eventName: linkedEvent?.name || "",
       status: entry.status || "active",
       cancelledAt: entry.cancelled_at || "",
-      cancelledReason: entry.cancelled_reason || ""
+      cancelledReason: entry.cancelled_reason || "",
+      sourceType: entry.source_type || "",
+      sourceId: entry.source_id || ""
     };
   });
 
-  state.docs = (docsResult.data || []).map((doc) => ({
+  if (!docsResult.error) state.docs = (docsResult.data || []).map((doc) => ({
     id: doc.id,
     title: doc.title,
     sender: doc.sender || "",
@@ -501,7 +523,7 @@ async function refreshSupabaseData() {
     eventId: doc.event_id || ""
   }));
 
-  state.invoices = (invoicesResult.data || []).map((invoice) => {
+  if (!invoicesResult.error) state.invoices = (invoicesResult.data || []).map((invoice) => {
     const rental = state.rentalLoans.find((entry) => entry.id === invoice.rental_id);
     return {
       id: invoice.id,
@@ -520,13 +542,24 @@ async function refreshSupabaseData() {
       gross: Number(invoice.gross || 0),
       rentalId: invoice.rental_id || "",
       rentalLabel: rental ? `${rental.firstName} ${rental.lastName} - ${formatDate(rental.dateFrom)}` : "",
-      notes: invoice.notes || ""
+      notes: invoice.notes || "",
+      paymentStatus: invoice.payment_status || "unpaid",
+      paymentMethod: invoice.payment_method || "",
+      paidAt: invoice.paid_at || "",
+      paymentTransactionId: invoice.payment_transaction_id || "",
+      paymentDueDate: invoice.payment_due_date || "",
+      bankAccount: invoice.bank_account || ""
     };
   });
 
   supabaseDataReady = true;
   saveState();
   render();
+}
+
+function logSupabaseLoadError(moduleName, error) {
+  if (!error) return;
+  console.error(`Nie udało się pobrać danych modułu ${moduleName} z Supabase. Pozostałe moduły będą ładowane dalej.`, error);
 }
 
 function setupRentalShell() {
@@ -702,6 +735,7 @@ async function handleMember(event) {
   event.preventDefault();
   const data = formData(event.target);
   const memberId = data.id || "";
+  const memberMessage = memberId ? "Zapisano zmiany członka" : "Zapisano członka";
   if (supabaseClient && currentRole) {
     const payload = {
       name: data.name,
@@ -719,6 +753,7 @@ async function handleMember(event) {
     }
     resetMemberForm(event.target);
     await refreshSupabaseData();
+    showToast(memberMessage);
     return;
   }
   if (memberId) {
@@ -727,11 +762,13 @@ async function handleMember(event) {
     resetMemberForm(event.target);
     saveState();
     render();
+    showToast(memberMessage);
     return;
   }
   delete data.id;
   state.members.push({ id: makeId(), ...data });
   finishForm(event.target);
+  showToast(memberMessage);
 }
 
 async function handleFee(event) {
@@ -766,13 +803,14 @@ async function handleFee(event) {
       transaction_date: paidAt
     });
     if (moneyError) {
-      alert(`Składka została zapisana, ale nie udało się dopisać wpływu do Kasy: ${moneyError.message}`);
+      alert(`Składka została zapisana, ale nie udało się dopisać wpływu do Finansów: ${moneyError.message}`);
       return;
     }
     event.target.reset();
     event.target.period.value = FEE_YEAR;
     event.target.dueAmount.value = ANNUAL_FEE;
     await refreshSupabaseData();
+    showToast("Składka zapisana i dodana do Finansów jako wpływ.");
     return;
   }
   state.fees.push({
@@ -799,12 +837,14 @@ async function handleFee(event) {
   finishForm(event.target);
   event.target.period.value = FEE_YEAR;
   event.target.dueAmount.value = ANNUAL_FEE;
+  showToast("Składka zapisana i dodana do Finansów jako wpływ.");
 }
 
 async function handleMoney(event) {
   event.preventDefault();
   const data = formData(event.target);
   const moneyId = data.id || "";
+  const moneyMessage = moneyId ? "Zapisano zmiany w Finansach" : "Dodano wpis w Finansach";
   const linkedEvent = state.events.find((item) => item.id === data.eventId);
   if (data.type === "donation" && !data.category) {
     data.category = "Darowizny";
@@ -827,6 +867,7 @@ async function handleMoney(event) {
     }
     resetMoneyForm(event.target);
     await refreshSupabaseData();
+    showToast(moneyMessage);
     return;
   }
   if (moneyId) {
@@ -841,6 +882,7 @@ async function handleMoney(event) {
     resetMoneyForm(event.target);
     saveState();
     render();
+    showToast(moneyMessage);
     return;
   }
   delete data.id;
@@ -853,6 +895,7 @@ async function handleMoney(event) {
     });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
+  showToast(moneyMessage);
 }
 
 async function handleEvent(event) {
@@ -906,6 +949,7 @@ async function handleRental(event) {
 
   const days = rentalDays(data.dateFrom, data.dateTo);
   const total = rentalTotal(items, days);
+  const paymentStatus = data.paymentStatus || "unpaid";
   if (supabaseClient && currentRole) {
     const { data: rental, error: rentalError } = await supabaseClient
       .from("rentals")
@@ -918,7 +962,10 @@ async function handleRental(event) {
         days,
         total,
         status: "Wypożyczone",
-        notes: data.notes || null
+        notes: data.notes || null,
+        payment_status: paymentStatus,
+        payment_method: rentalPaymentMethod(paymentStatus),
+        paid_at: isRentalPaid(paymentStatus) ? new Date().toISOString().slice(0, 10) : null
       })
       .select("id")
       .single();
@@ -941,10 +988,20 @@ async function handleRental(event) {
       return;
     }
 
+    const paymentResult = await addRentalPaymentToSupabase({
+      id: rental.id,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      items,
+      total
+    }, paymentStatus);
+    if (!paymentResult.ok) return;
+
     form.reset();
     form.dateFrom.valueAsDate = new Date();
     form.dateTo.valueAsDate = new Date();
     await refreshSupabaseData();
+    showToast("Wypożyczenie zapisane");
     return;
   }
   state.rentalLoans.push({
@@ -958,14 +1015,21 @@ async function handleRental(event) {
     days,
     items,
     total,
-    status: "Wypożyczone"
+    status: "Wypożyczone",
+    createdAt: new Date().toISOString(),
+    paymentStatus,
+    paymentMethod: rentalPaymentMethod(paymentStatus),
+    paidAt: isRentalPaid(paymentStatus) ? new Date().toISOString().slice(0, 10) : "",
+    paymentTransactionId: ""
   });
+  addRentalPaymentLocal(state.rentalLoans.at(-1), paymentStatus);
 
   finishForm(form);
   form.dateFrom.valueAsDate = new Date();
   form.dateTo.valueAsDate = new Date();
   renderRentalItemInputs();
   updateRentalSummary();
+  showToast("Wypożyczenie zapisane");
 }
 
 async function handleDoc(event) {
@@ -1022,6 +1086,7 @@ async function handleDoc(event) {
     event.target.reset();
     event.target.date.valueAsDate = new Date();
     await refreshSupabaseData();
+    showToast("Zapisano dokument");
     return;
   }
   const attachment = file ? await readPdfAttachment(file) : null;
@@ -1043,21 +1108,32 @@ async function handleDoc(event) {
   });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
+  showToast("Zapisano dokument");
 }
 
 async function handleInvoice(event) {
   event.preventDefault();
   const data = formData(event.target);
   const selectedRental = state.rentalLoans.find((entry) => entry.id === data.rentalId);
+  if (data.rentalId && rentalInvoice(data.rentalId)) {
+    alert("Do tego wypożyczenia faktura została już wystawiona.");
+    return;
+  }
   const invoice = makeInvoice({
     id: makeId(),
     ...data,
     rentalLabel: selectedRental ? `${selectedRental.firstName} ${selectedRental.lastName} - ${formatDate(selectedRental.dateFrom)}` : "",
     quantity: Number(data.quantity),
-    unitPrice: Number(data.unitPrice)
+    unitPrice: Number(data.unitPrice),
+    paymentStatus: data.paymentStatus || "unpaid",
+    paymentMethod: data.paymentMethod || invoicePaymentMethod(data.paymentStatus || "unpaid"),
+    paidAt: isInvoicePaid(data.paymentStatus) ? new Date().toISOString().slice(0, 10) : "",
+    paymentTransactionId: "",
+    paymentDueDate: data.paymentDueDate || "",
+    bankAccount: data.bankAccount || ""
   });
   if (supabaseClient && currentRole) {
-    const { error } = await supabaseClient.from("invoices").insert({
+    const { data: savedInvoice, error } = await supabaseClient.from("invoices").insert({
       number: invoice.number,
       invoice_date: invoice.date,
       buyer_name: invoice.buyerName,
@@ -1072,20 +1148,32 @@ async function handleInvoice(event) {
       vat: invoice.vat,
       gross: invoice.gross,
       rental_id: invoice.rentalId || null,
-      notes: invoice.notes || null
-    });
+      notes: invoice.notes || null,
+      payment_status: invoice.paymentStatus,
+      payment_method: invoice.paymentMethod || null,
+      paid_at: invoice.paidAt || null,
+      payment_due_date: invoice.paymentDueDate || null,
+      bank_account: invoice.bankAccount || null
+    }).select("id").single();
     if (error) {
       alert(`Nie udało się zapisać faktury w Supabase: ${error.message}`);
       return;
     }
+    const paymentResult = await addInvoicePaymentToSupabase({ ...invoice, id: savedInvoice.id });
+    if (!paymentResult.ok) return;
     event.target.reset();
     event.target.date.valueAsDate = new Date();
+    event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
     await refreshSupabaseData();
+    showToast("Zapisano fakturę");
     return;
   }
   state.invoices.push(invoice);
+  addInvoicePaymentLocal(state.invoices.at(-1));
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
+  event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
+  showToast("Zapisano fakturę");
 }
 
 function finishForm(form) {
@@ -1114,16 +1202,34 @@ function render() {
   renderInvoiceRentalOptions();
 }
 
-function renderDashboard() {
-  const activeMoney = state.money.filter(isActiveMoney);
-  const income = activeMoney.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
-  const expenses = activeMoney.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
-  const lateFees = feeMemberRows().reduce((sum, member) => sum + member.currentDue, 0);
+function showToast(message, type = "success") {
+  if (!elements.toastContainer) return;
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.textContent = message;
+  elements.toastContainer.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add("toast-hide");
+    window.setTimeout(() => toast.remove(), 250);
+  }, 3200);
+}
 
-  elements.cashBalance.textContent = money(income - expenses);
-  elements.memberCount.textContent = state.members.length;
-  elements.lateFees.textContent = money(lateFees);
-  elements.rentalCount.textContent = state.rentalLoans.filter((loan) => loan.status !== "Zwrócone").length;
+function renderDashboard() {
+  const { income, expenses, balance } = financeTotals();
+  const lateFeeRows = feeMemberRows().filter((member) => member.isLate);
+  const lateFees = lateFeeRows.reduce((sum, member) => sum + member.currentDue, 0);
+  const activeRentals = activeRentalRows();
+  const unpaidInvoices = unpaidInvoiceRows();
+  const unpaidInvoicesTotal = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.gross || 0), 0);
+
+  elements.cashBalance.textContent = money(balance);
+  elements.unpaidInvoicesSummary.textContent = `Nieopłacone faktury: ${money(unpaidInvoicesTotal)}`;
+  renderUnpaidInvoiceDashboardLine(unpaidInvoices);
+  setupUnpaidInvoiceDashboardRotation(unpaidInvoices);
+  renderLateFeeDashboardLine(lateFeeRows, lateFees);
+  setupLateFeeDashboardRotation(lateFeeRows, lateFees);
+  renderActiveRentalDashboardLine(activeRentals);
+  setupActiveRentalDashboardRotation(activeRentals);
 
   const recent = [...state.money].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
   elements.recentMoney.innerHTML = recent.length ? recent.map(moneyRow).join("") : "Brak wpisów.";
@@ -1262,6 +1368,7 @@ function renderFees() {
   const paidRows = visibleRows.filter((item) => !item.isLate);
 
   elements.feesList.innerHTML = `
+    ${showFeeContactPanel ? feeContactPanel(unpaidRows) : ""}
     <section class="fee-group fee-group-due">
       <h3>1. Osoby, które mają zaległość na dziś</h3>
       ${unpaidRows.length ? unpaidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osób z zaległością.</small></div>'}
@@ -1285,20 +1392,206 @@ function feeMemberRowHtml(item) {
           · Zapłacono: ${money(item.paid)}
           · <span class="badge ${item.isLate ? "due" : "paid"}">${item.isLate ? "Zaległość" : item.paid >= ANNUAL_FEE ? "Opłacone do końca roku" : `Opłacone do ${escapeHtml(item.paidUntil)}`}</span><br>
           <span class="fee-stages">${item.stages.map(feeStageHtml).join("")}</span>
-          <br>${item.fees.length ? item.fees.map((fee) => `Wpłata ${escapeHtml(fee.period)}: ${money(fee.amount)}`).join(" · ") : "Brak wpłat w tym roku"}
+          <br>${feePaymentsHtml(item)}
+          ${item.isLate ? feeContactHtml(item) : ""}
         </small>
       </div>
       <div class="row-actions">
-        ${item.isLate && item.phone ? `<button class="small-button" onclick="sendSingleFeeSms('${escapeHtml(item.phone)}', '${escapeHtml(item.name)}', ${item.currentDue})">SMS</button>` : ""}
         ${canCorrect() ? `<button class="delete-button" onclick="resetMemberFees('${escapeHtml(item.name)}')">Reset wpłat</button>` : ""}
-        ${canCorrect() ? item.fees.map((fee) => `<button class="delete-button" onclick="removeItem('fees', '${fee.id}')">Usuń wpis</button>`).join("") : ""}
       </div>
     </div>
   `;
 }
 
 function renderMoney() {
+  const { income, expenses, balance } = financeTotals();
+  if (elements.moneySummary) {
+    elements.moneySummary.innerHTML = `
+      <div>
+        <span>Aktualny stan kasy</span>
+        <strong>${money(balance)}</strong>
+      </div>
+      <small>Wpływy: ${money(income)} · Wydatki: ${money(expenses)} · Saldo: ${money(balance)}</small>
+    `;
+  }
+  renderOverdueInvoiceNotice();
   elements.moneyList.innerHTML = rows(filterItems(state.money), moneyRowWithDelete);
+}
+
+function financeTotals() {
+  const activeMoney = state.money.filter(isActiveMoney);
+  const income = activeMoney
+    .filter((item) => item.type === "income" || item.type === "donation")
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const expenses = activeMoney
+    .filter((item) => item.type === "expense")
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return { income, expenses, balance: income - expenses };
+}
+
+function overdueInvoices() {
+  const today = new Date().toISOString().slice(0, 10);
+  return state.invoices.filter((invoice) => !isInvoicePaid(invoice.paymentStatus) && invoice.paymentDueDate && invoice.paymentDueDate < today);
+}
+
+function unpaidInvoiceRows() {
+  return [...state.invoices]
+    .filter((invoice) => !isInvoicePaid(invoice.paymentStatus))
+    .sort((a, b) => String(a.paymentDueDate || "9999-12-31").localeCompare(String(b.paymentDueDate || "9999-12-31")));
+}
+
+function renderUnpaidInvoiceDashboardLine(invoices = unpaidInvoiceRows()) {
+  if (!elements.unpaidInvoicesList) return;
+  if (!invoices.length) {
+    unpaidInvoiceDashboardIndex = 0;
+    elements.unpaidInvoicesList.innerHTML = "Brak nieopłaconych faktur";
+    return;
+  }
+  if (unpaidInvoiceDashboardIndex >= invoices.length) unpaidInvoiceDashboardIndex = 0;
+  elements.unpaidInvoicesList.innerHTML = unpaidInvoiceDashboardRow(invoices[unpaidInvoiceDashboardIndex]);
+  window.requestAnimationFrame(updateUnpaidInvoiceMarquee);
+}
+
+function setupUnpaidInvoiceDashboardRotation(invoices = unpaidInvoiceRows()) {
+  if (unpaidInvoiceDashboardTimer) {
+    window.clearInterval(unpaidInvoiceDashboardTimer);
+    unpaidInvoiceDashboardTimer = null;
+  }
+  if (invoices.length <= 1) return;
+  unpaidInvoiceDashboardTimer = window.setInterval(() => {
+    const currentInvoices = unpaidInvoiceRows();
+    if (currentInvoices.length <= 1) {
+      setupUnpaidInvoiceDashboardRotation(currentInvoices);
+      renderUnpaidInvoiceDashboardLine(currentInvoices);
+      return;
+    }
+    unpaidInvoiceDashboardIndex = (unpaidInvoiceDashboardIndex + 1) % currentInvoices.length;
+    renderUnpaidInvoiceDashboardLine(currentInvoices);
+  }, 3000);
+}
+
+function unpaidInvoiceDashboardRow(invoice) {
+  const overdue = invoice.paymentDueDate && invoice.paymentDueDate < new Date().toISOString().slice(0, 10);
+  return `
+    <span class="unpaid-invoice-text">${escapeHtml(invoice.buyerName || "Brak nabywcy")} | ${money(invoice.gross)} | ${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "brak terminu"}${overdue ? " | PO TERMINIE" : ""}</span>
+  `;
+}
+
+function activeRentalRows() {
+  return state.rentalLoans.filter((loan) => loan.status !== "Zwrócone");
+}
+
+function renderLateFeeDashboardLine(rows = feeMemberRows().filter((member) => member.isLate), total = rows.reduce((sum, member) => sum + member.currentDue, 0)) {
+  if (!elements.lateFees) return;
+  if (!rows.length) {
+    lateFeeDashboardIndex = 0;
+    elements.lateFees.innerHTML = dashboardMetricHtml(money(0), "brak zaległości");
+    return;
+  }
+  if (lateFeeDashboardIndex >= rows.length) lateFeeDashboardIndex = 0;
+  elements.lateFees.innerHTML = dashboardMetricHtml(money(total), rows[lateFeeDashboardIndex].name);
+}
+
+function setupLateFeeDashboardRotation(rows = feeMemberRows().filter((member) => member.isLate), total = rows.reduce((sum, member) => sum + member.currentDue, 0)) {
+  if (lateFeeDashboardTimer) {
+    window.clearInterval(lateFeeDashboardTimer);
+    lateFeeDashboardTimer = null;
+  }
+  if (rows.length <= 1) return;
+  lateFeeDashboardTimer = window.setInterval(() => {
+    const currentRows = feeMemberRows().filter((member) => member.isLate);
+    const currentTotal = currentRows.reduce((sum, member) => sum + member.currentDue, 0);
+    if (currentRows.length <= 1) {
+      setupLateFeeDashboardRotation(currentRows, currentTotal);
+      renderLateFeeDashboardLine(currentRows, currentTotal);
+      return;
+    }
+    lateFeeDashboardIndex = (lateFeeDashboardIndex + 1) % currentRows.length;
+    renderLateFeeDashboardLine(currentRows, currentTotal);
+  }, 3000);
+}
+
+function renderActiveRentalDashboardLine(rows = activeRentalRows()) {
+  if (!elements.rentalCount) return;
+  if (!rows.length) {
+    activeRentalDashboardIndex = 0;
+    elements.rentalCount.innerHTML = dashboardMetricHtml("0", "brak aktywnych");
+    return;
+  }
+  if (activeRentalDashboardIndex >= rows.length) activeRentalDashboardIndex = 0;
+  elements.rentalCount.innerHTML = dashboardMetricHtml(String(rows.length), rentalPersonName(rows[activeRentalDashboardIndex]));
+}
+
+function setupActiveRentalDashboardRotation(rows = activeRentalRows()) {
+  if (activeRentalDashboardTimer) {
+    window.clearInterval(activeRentalDashboardTimer);
+    activeRentalDashboardTimer = null;
+  }
+  if (rows.length <= 1) return;
+  activeRentalDashboardTimer = window.setInterval(() => {
+    const currentRows = activeRentalRows();
+    if (currentRows.length <= 1) {
+      setupActiveRentalDashboardRotation(currentRows);
+      renderActiveRentalDashboardLine(currentRows);
+      return;
+    }
+    activeRentalDashboardIndex = (activeRentalDashboardIndex + 1) % currentRows.length;
+    renderActiveRentalDashboardLine(currentRows);
+  }, 3000);
+}
+
+function dashboardMetricHtml(value, name) {
+  return `
+    <span class="dashboard-metric-value">${escapeHtml(value)}</span>
+    <span class="dashboard-metric-separator">/</span>
+    <span class="dashboard-metric-name">${escapeHtml(name)}</span>
+  `;
+}
+
+function rentalPersonName(loan) {
+  const name = `${loan?.firstName || ""} ${loan?.lastName || ""}`.trim();
+  return name || "brak danych";
+}
+
+function updateUnpaidInvoiceMarquee() {
+  const line = elements.unpaidInvoicesList;
+  const text = line?.querySelector(".unpaid-invoice-text");
+  if (!line || !text) return;
+  text.classList.remove("is-scrolling");
+  text.style.removeProperty("--marquee-distance");
+  const overflow = text.scrollWidth - line.clientWidth;
+  if (overflow > 4) {
+    text.style.setProperty("--marquee-distance", `-${overflow + 18}px`);
+    text.classList.add("is-scrolling");
+  }
+}
+
+function renderOverdueInvoiceNotice() {
+  if (!elements.overdueInvoiceNotice) return;
+  const overdue = overdueInvoices();
+  elements.overdueInvoiceNotice.classList.toggle("hidden", overdue.length === 0);
+  if (!overdue.length) {
+    elements.overdueInvoiceNotice.innerHTML = "";
+    return;
+  }
+  elements.overdueInvoiceNotice.innerHTML = `
+    <strong>Masz ${overdue.length} ${overdue.length === 1 ? "nieopłaconą fakturę po terminie" : "nieopłacone faktury po terminie"}</strong>
+    <div class="overdue-list">
+      ${overdue.map((invoice) => `
+        <div class="overdue-item">
+          <span>Faktura ${escapeHtml(invoice.number)} · ${escapeHtml(invoice.buyerName)} · termin: ${formatDate(invoice.paymentDueDate)} · ${money(invoice.gross)}</span>
+          <button class="small-button" type="button" onclick="switchView('invoices')">Przejdź do Faktur</button>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function invoiceDueBadge(invoice) {
+  if (isInvoicePaid(invoice.paymentStatus) || !invoice.paymentDueDate) return "";
+  const today = new Date().toISOString().slice(0, 10);
+  if (invoice.paymentDueDate < today) return '<br><span class="badge due">Po terminie</span>';
+  return `<br><span class="badge neutral">Termin: ${formatDate(invoice.paymentDueDate)}</span>`;
 }
 
 function renderEvents() {
@@ -1325,27 +1618,39 @@ function renderRentals() {
   renderRentalItemInputs();
   updateRentalSummary();
   renderRentalReturns();
-  const historyLoans = [...filterItems(state.rentalLoans)].sort((a, b) => (b.dateFrom || "").localeCompare(a.dateFrom || ""));
-  elements.rentalsList.innerHTML = rows(historyLoans, (loan) => `
+  const historyLoans = [...filterItems(state.rentalLoans)].sort((a, b) => rentalSortDate(b).localeCompare(rentalSortDate(a)));
+  elements.rentalsList.innerHTML = rows(historyLoans, rentalHistoryRow);
+}
+
+function rentalSortDate(loan) {
+  if (loan.returnedAt) return `${loan.returnedAt}T23:59:59`;
+  return loan.createdAt || (loan.dateFrom ? `${loan.dateFrom}T00:00:00` : "");
+}
+
+function rentalHistoryRow(loan) {
+  const invoice = rentalInvoice(loan.id);
+  return `
     <div>
       <details class="return-details">
         <summary>
           <strong>${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)} - ${formatDate(loan.dateFrom)}</strong>
-          <small>${escapeHtml(loan.status)} - ${money(loan.total)}</small>
+          <small>${escapeHtml(loan.status)} - ${money(loan.total)} - ${escapeHtml(rentalPaymentLabel(loan.paymentStatus))}</small>
         </summary>
         <small>
           Okres: ${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} - tel. ${escapeHtml(loan.phone)}<br>
           ${loan.items.map((item) => `${escapeHtml(item.name)}: ${item.quantity} szt.`).join(" - ")}
           ${loan.returnNotes ? `<br>Uwagi zwrotu: ${escapeHtml(loan.returnNotes)}` : ""}
+          <br>Faktura: ${invoice ? `wystawiona nr ${escapeHtml(invoice.number)}` : "Brak faktury"}
         </small>
       </details>
     </div>
     <div class="row-actions">
       <button class="small-button" onclick="printRental('${loan.id}')">Druk wydania</button>
       ${loan.status === "Zwrócone" ? `<button class="small-button" onclick="printReturn('${loan.id}')">Druk zwrotu</button>` : ""}
+      ${invoice ? `<button class="small-button" onclick="downloadInvoicePdf('${invoice.id}')">Drukuj / Zapisz PDF</button>` : `<button class="small-button" onclick="prepareInvoiceFromRental('${loan.id}')">Wystaw fakturę</button>`}
       ${deleteAction("rentalLoans", loan.id)}
     </div>
-  `);
+  `;
 }
 
 function renderRentalReturns() {
@@ -1376,6 +1681,12 @@ function renderRentalReturns() {
           `).join("")}
         </div>
         <div class="return-form">
+          <select id="returnPayment-${loan.id}">
+            <option value="unpaid" ${loan.paymentStatus === "unpaid" ? "selected" : ""}>Nieopłacone</option>
+            <option value="cash" ${loan.paymentStatus === "cash" ? "selected" : ""}>Opłacone gotówką</option>
+            <option value="transfer" ${loan.paymentStatus === "transfer" ? "selected" : ""}>Opłacone przelewem</option>
+            <option value="invoice_later" ${loan.paymentStatus === "invoice_later" ? "selected" : ""}>Faktura / płatność później</option>
+          </select>
           <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="Dopłata za braki/uszkodzenia" />
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi do zwrotu, np. uszkodzone, brakuje sztuk, zabrudzone obrusy"></textarea>
         </div>
@@ -1450,13 +1761,30 @@ function renderInvoices() {
   elements.invoicesList.innerHTML = rows(filterItems(state.invoices), (invoice) => `
     <div>
       <strong>Faktura ${escapeHtml(invoice.number)} - ${money(invoice.gross)}</strong>
-      <small>${formatDate(invoice.date)} - ${escapeHtml(invoice.buyerName)} - ${escapeHtml(invoice.source)}${invoice.rentalLabel ? ` - Wypożyczenie: ${escapeHtml(invoice.rentalLabel)}` : ""}<br>${escapeHtml(invoice.itemName)}: ${invoice.quantity} x ${money(invoice.unitPrice)} netto</small>
+      <small>
+        ${formatDate(invoice.date)} - ${escapeHtml(invoice.buyerName)} - ${escapeHtml(invoice.source)}${invoice.rentalLabel ? ` - Wypożyczenie: ${escapeHtml(invoice.rentalLabel)}` : ""}<br>
+        ${escapeHtml(invoice.itemName)}: ${invoice.quantity} x ${money(invoice.unitPrice)} netto<br>
+        Płatność: ${escapeHtml(invoicePaymentStatusLabel(invoice.paymentStatus))} - ${escapeHtml(invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)))} - termin: ${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "—"}
+        ${invoiceDueBadge(invoice)}
+      </small>
     </div>
     <div class="row-actions">
       <button class="small-button" onclick="downloadInvoicePdf('${invoice.id}')">Drukuj / Zapisz PDF</button>
+      ${invoicePaymentAction(invoice)}
       ${deleteAction("invoices", invoice.id)}
     </div>
   `);
+}
+
+function invoicePaymentAction(invoice) {
+  if (isInvoicePaid(invoice.paymentStatus)) {
+    return `<span class="badge paid">Zapłacono${invoice.paidAt ? `: ${formatDate(invoice.paidAt)}` : ""}</span>`;
+  }
+  const loan = invoice.rentalId ? state.rentalLoans.find((entry) => entry.id === invoice.rentalId) : null;
+  if (rentalAlreadyPaid(loan)) {
+    return '<span class="badge neutral">Wypożyczenie już rozliczone</span>';
+  }
+  return `<button class="small-button" onclick="markInvoicePaid('${invoice.id}')">Oznacz jako opłaconą</button>`;
 }
 
 function renderBoard() {
@@ -1486,7 +1814,7 @@ function feeMemberRows() {
     const currentRequired = requiredFeeToday();
     const currentDue = Math.max(0, currentRequired - paid);
     const paidUntil = paidUntilLabel(paid);
-    return { name, phone: member?.phone || "", fees, due, currentDue, paid, paidUntil, currentRequired, required: ANNUAL_FEE, hasDue: due > 0, isLate: currentDue > 0, stages };
+    return { name, phone: member?.phone || "", email: member?.email || "", fees, due, currentDue, paid, paidUntil, currentRequired, required: ANNUAL_FEE, hasDue: due > 0, isLate: currentDue > 0, stages };
   }).sort((a, b) => {
     if (a.isLate !== b.isLate) return a.isLate ? -1 : 1;
     if (b.currentDue !== a.currentDue) return b.currentDue - a.currentDue;
@@ -1536,33 +1864,79 @@ function feeStageHtml(stage) {
   return `<span class="fee-stage ${stage.ok ? "fee-stage-ok" : "fee-stage-due"}">${stage.label}: ${stage.ok ? "OK" : "brak"} (${stage.deadline})</span>`;
 }
 
-function feeSmsText(name, due) {
-  return `Przypomnienie KGiGW: prosimy o uregulowanie zaległej składki. Zaległość: ${money(due)}. Dziękujemy.`;
+function feePaymentsHtml(item) {
+  if (!item.fees.length) return "Brak wpłat w tym roku";
+  return `
+    <span class="fee-payment-list">
+      ${item.fees.map((fee) => `
+        <span class="fee-payment-item">
+          Wpłata ${escapeHtml(fee.period)}: ${money(fee.amount)}
+          ${canCorrect() ? `<button class="delete-button fee-delete-button" onclick="removeItem('fees', '${fee.id}')">Usuń</button>` : ""}
+        </span>
+      `).join("")}
+    </span>
+  `;
 }
 
-function sendSingleFeeSms(phone, name, due) {
-  const cleanedPhone = String(phone || "").replace(/\s+/g, "");
-  if (!cleanedPhone) {
-    alert("Ten członek nie ma wpisanego numeru telefonu.");
-    return;
+function feeSmsText(name, due) {
+  return `Dzień dobry, przypominamy o zaległej składce członkowskiej KGIGW. Zaległość na dziś: ${money(due)}. Prosimy o uregulowanie wpłaty. Dziękujemy.`;
+}
+
+function feeContactPanel(rows) {
+  if (!rows.length) {
+    return '<div class="notice fee-contact-panel"><strong>Lista kontaktów</strong><br>Brak osób z zaległością na dziś.</div>';
   }
-  window.location.href = `sms:${encodeURIComponent(cleanedPhone)}?&body=${encodeURIComponent(feeSmsText(name, due))}`;
+  return `
+    <div class="notice fee-contact-panel">
+      <strong>Lista kontaktów do osób z zaległością</strong>
+      <small>Wiadomości są tylko przygotowane. Program nie wysyła ich automatycznie.</small>
+      <div class="fee-contact-list">
+        ${rows.map((item) => `
+          <div class="fee-contact-entry">
+            <span>${escapeHtml(item.name)} · zaległość: ${money(item.currentDue)}</span>
+            ${feeContactLinks(item)}
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function feeContactHtml(item) {
+  return `<span class="fee-contact-links">${feeContactLinks(item)}</span>`;
+}
+
+function feeContactLinks(item) {
+  const text = feeSmsText(item.name, item.currentDue);
+  const smsPhone = normalizeSmsPhone(item.phone);
+  const whatsAppPhone = normalizeWhatsAppPhone(item.phone);
+  const email = String(item.email || "").trim();
+  return `
+    ${smsPhone ? `<a class="small-button contact-button" href="sms:${encodeURIComponent(smsPhone)}?body=${encodeURIComponent(text)}">SMS</a>` : '<span class="contact-missing">Brak telefonu</span>'}
+    ${whatsAppPhone ? `<a class="small-button contact-button" target="_blank" rel="noopener" href="https://wa.me/${encodeURIComponent(whatsAppPhone)}?text=${encodeURIComponent(text)}">WhatsApp</a>` : '<span class="contact-missing">Brak telefonu</span>'}
+    ${email ? `<a class="small-button contact-button" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Przypomnienie o składce")}&body=${encodeURIComponent(text)}">E-mail</a>` : '<span class="contact-missing">Brak e-maila</span>'}
+  `;
+}
+
+function normalizeSmsPhone(phone) {
+  return String(phone || "").replace(/[^\d+]/g, "");
+}
+
+function normalizeWhatsAppPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.length === 9 ? `48${digits}` : digits;
 }
 
 function sendFeeSmsReminders() {
-  const overdue = feeMemberRows().filter((item) => item.hasDue && item.phone);
+  const overdue = feeMemberRows().filter((item) => item.isLate);
   if (!overdue.length) {
-    alert("Brak zaległych członków z wpisanym numerem telefonu.");
+    alert("Brak osób z zaległością na dziś.");
     return;
   }
-
-  const confirmed = confirm(`Przygotować SMS do ${overdue.length} osób z zaległością? Na komputerze może otworzyć się aplikacja SMS albo nic się nie stanie, zależnie od systemu.`);
-  if (!confirmed) return;
-
-  const phones = overdue.map((item) => String(item.phone).replace(/\s+/g, "")).join(",");
-  const totalDue = overdue.reduce((sum, item) => sum + item.due, 0);
-  const text = `Przypomnienie KGiGW: prosimy o uregulowanie zaległej składki. Łączna zaległość na liście: ${money(totalDue)}. Dziękujemy.`;
-  window.location.href = `sms:${encodeURIComponent(phones)}?&body=${encodeURIComponent(text)}`;
+  showFeeContactPanel = true;
+  renderFees();
+  showToast("Przygotowano listę kontaktów do osób z zaległością");
 }
 
 function renderEventOptions() {
@@ -1582,6 +1956,7 @@ function renderEventSelect(select) {
 function renderInvoiceRentalOptions() {
   const current = elements.invoiceRental.value;
   elements.invoiceRental.innerHTML = '<option value="">Bez wypożyczenia</option>' + state.rentalLoans
+    .filter((loan) => loan.id === current || !rentalInvoice(loan.id))
     .map((loan) => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)} - ${formatDate(loan.dateFrom)} - ${money(loan.total)}</option>`)
     .join("");
   elements.invoiceRental.value = state.rentalLoans.some((loan) => loan.id === current) ? current : "";
@@ -1592,14 +1967,25 @@ function fillInvoiceFromRental() {
   const form = document.querySelector("#invoiceForm");
   if (!loan || !form) return;
 
-  form.buyerName.value = `${loan.firstName} ${loan.lastName}`;
+  form.buyerName.value = "";
   form.buyerAddress.value = "";
+  form.buyerNip.value = "";
   form.source.value = "Wypożyczenie";
   form.itemName.value = `Wypożyczenie: ${loan.items.map((item) => `${item.name} ${item.quantity} szt.`).join(", ")}`;
   form.quantity.value = 1;
   form.unitPrice.value = Number(loan.total || 0).toFixed(2);
+  form.vatRate.value = "23";
+  form.paymentStatus.value = "unpaid";
+  form.paymentMethod.value = "transfer";
+  form.paymentDueDate.value = dateOffset(form.date.value || new Date().toISOString().slice(0, 10), 7);
+  form.bankAccount.value = "";
   form.notes.value = `Wypożyczenie od ${formatDate(loan.dateFrom)} do ${formatDate(loan.dateTo)}. Telefon: ${loan.phone}.`;
 }
+
+document.querySelector('#invoiceForm input[name="date"]').addEventListener("change", (event) => {
+  const dueInput = document.querySelector('#invoiceForm input[name="paymentDueDate"]');
+  if (dueInput && !dueInput.value) dueInput.value = dateOffset(event.target.value, 7);
+});
 
 function rows(items, template) {
   if (!items.length) return '<div class="row"><small>Brak wpisów pasujących do wyszukiwania.</small></div>';
@@ -1799,6 +2185,7 @@ async function handleInventoryAdd(event) {
     }
     event.target.reset();
     await refreshSupabaseData();
+    showToast("Dodano przedmiot do magazynu");
     return;
   }
 
@@ -1812,6 +2199,7 @@ async function handleInventoryAdd(event) {
   event.target.reset();
   saveState();
   renderRentals();
+  showToast("Dodano przedmiot do magazynu");
 }
 
 async function returnRental(id) {
@@ -1821,6 +2209,7 @@ async function returnRental(id) {
   if (!confirmed) return;
   const notes = document.querySelector(`#returnNotes-${id}`)?.value || "";
   const damageCost = Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
+  const paymentStatus = document.querySelector(`#returnPayment-${id}`)?.value || loan.paymentStatus || "unpaid";
   const returnItems = loan.items.map((item, index) => ({
     lineId: item.lineId,
     id: item.id,
@@ -1837,7 +2226,10 @@ async function returnRental(id) {
         status: "Zwrócone",
         returned_at: new Date().toISOString().slice(0, 10),
         return_notes: notes || null,
-        damage_cost: damageCost
+        damage_cost: damageCost,
+        payment_status: paymentStatus,
+        payment_method: rentalPaymentMethod(paymentStatus),
+        paid_at: isRentalPaid(paymentStatus) && !loan.paidAt ? new Date().toISOString().slice(0, 10) : loan.paidAt || null
       })
       .eq("id", id);
     if (rentalError) {
@@ -1861,7 +2253,11 @@ async function returnRental(id) {
       }
     }
 
+    const paymentResult = await addRentalPaymentToSupabase(loan, paymentStatus);
+    if (!paymentResult.ok) return;
+
     await refreshSupabaseData();
+    showToast("Przyjęto zwrot");
     return;
   }
   rememberUndo();
@@ -1870,8 +2266,13 @@ async function returnRental(id) {
   loan.returnNotes = notes;
   loan.damageCost = damageCost;
   loan.returnItems = returnItems;
+  loan.paymentStatus = paymentStatus;
+  loan.paymentMethod = rentalPaymentMethod(paymentStatus);
+  if (isRentalPaid(paymentStatus) && !loan.paidAt) loan.paidAt = new Date().toISOString().slice(0, 10);
+  addRentalPaymentLocal(loan, paymentStatus);
   saveState();
   render();
+  showToast("Przyjęto zwrot");
 }
 
 function printRental(id) {
@@ -1903,6 +2304,62 @@ function printInvoice(id) {
 
 function downloadInvoicePdf(id) {
   printInvoice(id);
+}
+
+async function markInvoicePaid(id) {
+  const invoice = state.invoices.find((entry) => entry.id === id);
+  if (!invoice) return;
+  if (isInvoicePaid(invoice.paymentStatus)) {
+    showToast("Faktura jest już oznaczona jako zapłacona");
+    return;
+  }
+  const loan = invoice.rentalId ? state.rentalLoans.find((entry) => entry.id === invoice.rentalId) : null;
+  if (rentalAlreadyPaid(loan)) {
+    alert("To wypożyczenie było już rozliczone w Finansach. Faktura nie zostanie zaksięgowana drugi raz.");
+    return;
+  }
+
+  const choice = prompt("Wybierz płatność:\n1 - Opłacona gotówką\n2 - Opłacona przelewem", "2");
+  if (!choice) return;
+  const normalizedChoice = choice.trim().toLowerCase();
+  let paymentStatus = "";
+  if (normalizedChoice === "1" || normalizedChoice.includes("got")) paymentStatus = "cash";
+  if (normalizedChoice === "2" || normalizedChoice.includes("przelew")) paymentStatus = "transfer";
+  if (!paymentStatus) {
+    alert("Wybierz 1 dla gotówki albo 2 dla przelewu.");
+    return;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const paidAt = prompt("Data płatności (RRRR-MM-DD):", today);
+  if (!paidAt) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) {
+    alert("Podaj datę w formacie RRRR-MM-DD, np. 2026-05-26.");
+    return;
+  }
+
+  const paidInvoice = {
+    ...invoice,
+    paymentStatus,
+    paymentMethod: paymentStatus,
+    paidAt
+  };
+
+  if (supabaseClient && currentRole) {
+    const result = await addInvoicePaymentToSupabase(paidInvoice);
+    if (!result.ok) return;
+    await refreshSupabaseData();
+    showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
+    return;
+  }
+
+  invoice.paymentStatus = paymentStatus;
+  invoice.paymentMethod = paymentStatus;
+  invoice.paidAt = paidAt;
+  addInvoicePaymentLocal(invoice);
+  saveState();
+  render();
+  showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
 }
 
 async function openDocumentAttachment(id) {
@@ -1946,6 +2403,7 @@ async function removeItem(collection, id) {
         return;
       }
       await refreshSupabaseData();
+      showToast("Członek został zarchiwizowany");
       return;
     }
     if (member) {
@@ -1953,6 +2411,7 @@ async function removeItem(collection, id) {
       member.status = "Nieaktywny";
       saveState();
       render();
+      showToast("Członek został zarchiwizowany");
     }
     return;
   }
@@ -1977,6 +2436,7 @@ async function removeItem(collection, id) {
         return;
       }
       await refreshSupabaseData();
+      showToast("Wpis w Finansach został anulowany");
       return;
     }
     const entry = state.money.find((item) => item.id === id);
@@ -1987,10 +2447,14 @@ async function removeItem(collection, id) {
       entry.cancelledReason = "";
       saveState();
       render();
+      showToast("Wpis w Finansach został anulowany");
     }
     return;
   }
-  const confirmed = confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
+  const feeToDelete = collection === "fees" ? state.fees.find((fee) => fee.id === id) : null;
+  const confirmed = collection === "fees"
+    ? confirm(`Usunąć tę konkretną wpłatę: ${feeToDelete ? `${feeToDelete.member || "członek"} - ${money(feeToDelete.amount)} (${feeToDelete.period || feeToDelete.year || FEE_YEAR})` : "wybrana wpłata"}?`)
+    : confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
   if (!confirmed) return;
   if (supabaseClient && currentRole && collection === "fees") {
     const { error } = await supabaseClient.from("fees").delete().eq("id", id);
@@ -2102,6 +2566,282 @@ function rentalTotal(items, days) {
   return items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0) * days, 0);
 }
 
+function grossFromNet(net, vatRate = 23) {
+  return Number(net || 0) + Number(net || 0) * Number(vatRate || 0) / 100;
+}
+
+function isRentalPaid(status) {
+  return status === "cash" || status === "transfer";
+}
+
+function isInvoicePaid(status) {
+  return status === "cash" || status === "transfer";
+}
+
+function rentalPaymentMethod(status) {
+  if (status === "cash") return "Gotówka";
+  if (status === "transfer") return "Przelew";
+  if (status === "invoice_later") return "Faktura / płatność później";
+  return "";
+}
+
+function invoicePaymentMethod(status) {
+  if (status === "cash") return "Gotówka";
+  if (status === "transfer") return "Przelew";
+  return "";
+}
+
+function invoicePaymentMethodLabel(method) {
+  if (method === "cash" || method === "Gotówka") return "Gotówka";
+  if (method === "transfer" || method === "Przelew") return "Przelew";
+  if (method === "other") return "Płatność on-line / inna";
+  return method || "—";
+}
+
+function invoicePaymentStatusLabel(status) {
+  if (status === "cash" || status === "transfer") return "Zapłacono";
+  return "Nieopłacona";
+}
+
+function dateOffset(dateValue, days) {
+  const base = dateValue ? new Date(`${dateValue}T12:00:00`) : new Date();
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+function rentalPaymentLabel(status) {
+  if (status === "cash") return "Opłacone gotówką";
+  if (status === "transfer") return "Opłacone przelewem";
+  if (status === "invoice_later") return "Faktura / płatność później";
+  return "Nieopłacone";
+}
+
+function rentalPaymentTitle(loan) {
+  const items = (loan.items || []).map((item) => `${item.name} ${item.quantity} szt.`).join(", ");
+  return `Wypożyczenie - ${loan.firstName} ${loan.lastName} - ${items}`;
+}
+
+function rentalAlreadyPaid(loan) {
+  if (!loan) return false;
+  if (isRentalPaid(loan.paymentStatus)) return true;
+  if (loan.paymentTransactionId) return true;
+  return state.money.some((entry) =>
+    entry.sourceType === "rental_payment"
+    && entry.sourceId === loan.id
+    && isActiveMoney(entry)
+  );
+}
+
+async function addRentalPaymentToSupabase(loan, paymentStatus) {
+  if (!isRentalPaid(paymentStatus)) return { ok: true };
+  if (loan.paymentTransactionId) return { ok: true };
+
+  let existing = state.money.find((entry) =>
+    entry.sourceType === "rental_payment"
+    && entry.sourceId === loan.id
+    && isActiveMoney(entry)
+  );
+  if (!existing) {
+    const { data: existingRows, error: existingError } = await supabaseClient
+      .from("transactions")
+      .select("id")
+      .eq("source_type", "rental_payment")
+      .eq("source_id", loan.id)
+      .eq("status", "active")
+      .limit(1);
+    if (existingError) {
+      alert(`Nie udało się sprawdzić płatności w Finansach: ${existingError.message}`);
+      return { ok: false };
+    }
+    existing = existingRows?.[0] ? { id: existingRows[0].id } : null;
+  }
+  if (existing) {
+    await supabaseClient
+      .from("rentals")
+      .update({
+        payment_transaction_id: existing.id,
+        payment_status: paymentStatus,
+        payment_method: rentalPaymentMethod(paymentStatus),
+        paid_at: loan.paidAt || new Date().toISOString().slice(0, 10)
+      })
+      .eq("id", loan.id);
+    return { ok: true };
+  }
+
+  const paidAt = loan.paidAt || new Date().toISOString().slice(0, 10);
+  const { data: savedPayment, error } = await supabaseClient
+    .from("transactions")
+    .insert({
+      type: "income",
+      title: rentalPaymentTitle(loan),
+      category: "Wypożyczenie",
+      amount: grossFromNet(loan.total, 23),
+      transaction_date: paidAt,
+      source_type: "rental_payment",
+      source_id: loan.id
+    })
+    .select("id")
+    .single();
+  if (error) {
+    alert(`Wypożyczenie zapisane, ale nie udało się dodać wpływu do Finansów: ${error.message}`);
+    return { ok: false };
+  }
+
+  const { error: updateError } = await supabaseClient
+    .from("rentals")
+    .update({
+      payment_transaction_id: savedPayment.id,
+      payment_status: paymentStatus,
+      payment_method: rentalPaymentMethod(paymentStatus),
+      paid_at: paidAt
+    })
+    .eq("id", loan.id);
+  if (updateError) {
+    alert(`Wpływ dodany do Finansów, ale nie udało się powiązać go z wypożyczeniem: ${updateError.message}`);
+    return { ok: false };
+  }
+
+  return { ok: true };
+}
+
+function addRentalPaymentLocal(loan, paymentStatus) {
+  if (!isRentalPaid(paymentStatus)) return;
+  if (loan.paymentTransactionId) return;
+  const existing = state.money.find((entry) => entry.sourceType === "rental_payment" && entry.sourceId === loan.id && isActiveMoney(entry));
+  if (existing) {
+    loan.paymentTransactionId = existing.id;
+    return;
+  }
+  const paymentId = makeId();
+  state.money.push({
+    id: paymentId,
+    type: "income",
+    title: rentalPaymentTitle(loan),
+    category: "Wypożyczenie",
+    amount: grossFromNet(loan.total, 23),
+    date: loan.paidAt || new Date().toISOString().slice(0, 10),
+    status: "active",
+    sourceType: "rental_payment",
+    sourceId: loan.id
+  });
+  loan.paymentTransactionId = paymentId;
+}
+
+async function addInvoicePaymentToSupabase(invoice) {
+  if (!isInvoicePaid(invoice.paymentStatus)) return { ok: true };
+  if (invoice.rentalId) {
+    const loan = state.rentalLoans.find((entry) => entry.id === invoice.rentalId);
+    if (rentalAlreadyPaid(loan)) return { ok: true };
+  }
+
+  const { data: existingRows, error: existingError } = await supabaseClient
+    .from("transactions")
+    .select("id")
+    .eq("source_type", "invoice_payment")
+    .eq("source_id", invoice.id)
+    .eq("status", "active")
+    .limit(1);
+  if (existingError) {
+    alert(`Nie udało się sprawdzić płatności faktury w Finansach: ${existingError.message}`);
+    return { ok: false };
+  }
+
+  const paidAt = invoice.paidAt || new Date().toISOString().slice(0, 10);
+  const existingId = invoice.paymentTransactionId || existingRows?.[0]?.id;
+  let paymentId = existingId;
+  if (!paymentId) {
+    const { data: savedPayment, error } = await supabaseClient
+      .from("transactions")
+      .insert({
+        type: "income",
+        title: `Faktura ${invoice.number} - ${invoice.buyerName}`,
+        category: "Faktura / Wypożyczenie",
+        amount: Number(invoice.gross || 0),
+        transaction_date: paidAt,
+        source_type: "invoice_payment",
+        source_id: invoice.id
+      })
+      .select("id")
+      .single();
+    if (error) {
+      alert(`Faktura zapisana, ale nie udało się dodać wpływu do Finansów: ${error.message}`);
+      return { ok: false };
+    }
+    paymentId = savedPayment.id;
+  }
+
+  const { error: updateError } = await supabaseClient
+    .from("invoices")
+    .update({
+      payment_transaction_id: paymentId,
+      payment_status: invoice.paymentStatus,
+      payment_method: invoice.paymentMethod || invoice.paymentStatus || invoicePaymentMethod(invoice.paymentStatus),
+      paid_at: paidAt
+    })
+    .eq("id", invoice.id);
+  if (updateError) {
+    alert(`Wpływ dodany do Finansów, ale nie udało się powiązać go z fakturą: ${updateError.message}`);
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+function addInvoicePaymentLocal(invoice) {
+  if (!isInvoicePaid(invoice.paymentStatus)) return;
+  if (invoice.rentalId) {
+    const loan = state.rentalLoans.find((entry) => entry.id === invoice.rentalId);
+    if (rentalAlreadyPaid(loan)) return;
+  }
+  if (invoice.paymentTransactionId) return;
+  const existing = state.money.find((entry) => entry.sourceType === "invoice_payment" && entry.sourceId === invoice.id && isActiveMoney(entry));
+  if (existing) {
+    invoice.paymentTransactionId = existing.id;
+    return;
+  }
+  const paymentId = makeId();
+  state.money.push({
+    id: paymentId,
+    type: "income",
+    title: `Faktura ${invoice.number} - ${invoice.buyerName}`,
+    category: "Faktura / Wypożyczenie",
+    amount: Number(invoice.gross || 0),
+    date: invoice.paidAt || new Date().toISOString().slice(0, 10),
+    status: "active",
+    sourceType: "invoice_payment",
+    sourceId: invoice.id
+  });
+  invoice.paymentTransactionId = paymentId;
+}
+
+function rentalInvoice(rentalId) {
+  return state.invoices.find((invoice) => invoice.rentalId === rentalId);
+}
+
+function prepareInvoiceFromRental(id) {
+  const loan = state.rentalLoans.find((entry) => entry.id === id);
+  if (!loan) return;
+  const existing = rentalInvoice(id);
+  if (existing) {
+    switchView("invoices");
+    showToast(`Faktura ${existing.number} jest już zapisana`);
+    return;
+  }
+
+  switchView("invoices");
+  renderInvoiceRentalOptions();
+  const form = document.querySelector("#invoiceForm");
+  form.reset();
+  form.date.valueAsDate = new Date();
+  form.rentalId.value = loan.id;
+  fillInvoiceFromRental();
+  form.number.value = "";
+  form.buyerName.value = "";
+  form.buyerAddress.value = "";
+  form.buyerNip.value = "";
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast("Przygotowano formularz faktury. Uzupełnij dane i kliknij Zapisz fakturę.");
+}
+
 function safeFileName(name) {
   return String(name || "dokument.pdf")
     .normalize("NFD")
@@ -2190,6 +2930,9 @@ function readPdfAttachment(file) {
 }
 
 function rentalPrintHtml(loan) {
+  const net = Number(loan.total || 0);
+  const vat = net * 0.23;
+  const gross = net + vat;
   const rows = loan.items.map((item) => `
     <tr>
       <td>${escapeHtml(item.name)}</td>
@@ -2210,13 +2953,15 @@ function rentalPrintHtml(loan) {
         <tr>
           <th>Przedmiot</th>
           <th>Ilosc</th>
-          <th>Cena za dobe</th>
-          <th>Wartosc</th>
+          <th>Cena za dobe netto</th>
+          <th>Wartosc netto</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p><strong>Razem do zaplaty:</strong> ${money(loan.total)}</p>
+    <p><strong>Razem netto:</strong> ${money(net)}</p>
+    <p><strong>VAT 23%:</strong> ${money(vat)}</p>
+    <p><strong>Razem brutto do zaplaty:</strong> ${money(gross)}</p>
     <p><strong>Uwagi:</strong> ${escapeHtml(loan.notes || "Brak")}</p>
     <p>Potwierdzam odbior wymienionych przedmiotow i zobowiazuje sie do ich zwrotu w ustalonym terminie.</p>
     <div class="print-signatures">
@@ -2366,6 +3111,11 @@ function makeInvoice(data) {
 
 function invoicePrintHtml(invoice) {
   const invoiceItems = invoiceLineItems(invoice);
+  const paid = isInvoicePaid(invoice.paymentStatus);
+  const paymentMethod = invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus));
+  const paidAmount = paid ? Number(invoice.gross || 0) : 0;
+  const amountDue = paid ? 0 : Number(invoice.gross || 0);
+  const showBankAccount = paymentMethod === "Przelew";
   const rowsHtml = invoiceItems.map((item, index) => {
     const vatLabel = invoice.vatRate === "zw" ? "ZW" : `${invoice.vatRate}%`;
     return `
@@ -2420,6 +3170,39 @@ function invoicePrintHtml(invoice) {
       <tbody>${rowsHtml}</tbody>
     </table>
     <p><strong>Razem netto:</strong> ${money(invoice.net)} &nbsp; <strong>VAT:</strong> ${money(invoice.vat)} &nbsp; <strong>Razem brutto:</strong> ${money(invoice.gross)}</p>
+    <table>
+      <tbody>
+        <tr>
+          <th colspan="2">Płatność</th>
+        </tr>
+        <tr>
+          <td>Forma płatności</td>
+          <td>${escapeHtml(paymentMethod)}</td>
+        </tr>
+        <tr>
+          <td>Termin płatności</td>
+          <td>${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "—"}</td>
+        </tr>
+        <tr>
+          <td>Status płatności</td>
+          <td>${escapeHtml(invoicePaymentStatusLabel(invoice.paymentStatus))}</td>
+        </tr>
+        ${showBankAccount ? `
+        <tr>
+          <td>Numer konta</td>
+          <td>${escapeHtml(invoice.bankAccount || "—")}</td>
+        </tr>
+        ` : ""}
+        <tr>
+          <td>Kwota opłacona</td>
+          <td>${money(paidAmount)}</td>
+        </tr>
+        <tr>
+          <td>Do zapłaty</td>
+          <td>${money(amountDue)}</td>
+        </tr>
+      </tbody>
+    </table>
     ${invoice.rentalLabel ? `<p><strong>Powiązane wypożyczenie:</strong> ${escapeHtml(invoice.rentalLabel)}</p>` : ""}
     <p><strong>Uwagi:</strong> ${escapeHtml(invoice.notes || "Brak")}</p>
     <div class="print-signatures">

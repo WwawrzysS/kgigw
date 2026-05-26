@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260526-member-card" />
+    <link rel="stylesheet" href="styles.css?v=20260526-dashboard-rotating-stats" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -65,13 +65,14 @@
     </aside>
 
     <main class="app app-shell">
+      <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
       <header class="topbar">
         <button id="mobileMenuButton" class="mobile-menu-button" type="button" aria-label="Otwórz menu">☰</button>
         <div>
-          <p class="eyebrow">Wspólny porządek dokumentów, kasy i członków</p>
           <h1 id="viewTitle">Pulpit</h1>
         </div>
         <div class="search-wrap">
+          <a class="admin-contact-link" href="mailto:dariuszwawrzynek@gmail.com">Administrator: dariuszwawrzynek@gmail.com</a>
           <input id="globalSearch" type="search" placeholder="Szukaj w całym kole..." />
         </div>
       </header>
@@ -79,9 +80,18 @@
       <section id="dashboard" class="view active-view">
         <div class="stats-grid">
           <article class="stat"><span>Stan kasy</span><strong id="cashBalance">0 zł</strong></article>
-          <article class="stat"><span>Członkowie</span><strong id="memberCount">0</strong></article>
-          <article class="stat"><span>Zaległe składki</span><strong id="lateFees">0 zł</strong></article>
-          <article class="stat"><span>Aktywne wypożyczenia</span><strong id="rentalCount">0</strong></article>
+          <article class="stat unpaid-invoices-stat" role="button" tabindex="0" onclick="switchView('invoices')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('invoices')">
+            <span id="unpaidInvoicesSummary">Nieopłacone faktury: 0 zł</span>
+            <strong id="unpaidInvoicesList" class="unpaid-invoices-line">Brak nieopłaconych faktur</strong>
+          </article>
+          <article class="stat dashboard-link-stat" role="button" tabindex="0" onclick="switchView('fees')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('fees')">
+            <span>Zaległe składki</span>
+            <strong id="lateFees">0,00 zł / brak zaległości</strong>
+          </article>
+          <article class="stat dashboard-link-stat" role="button" tabindex="0" onclick="switchView('rentals'); switchRentalTab('history')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { switchView('rentals'); switchRentalTab('history'); }">
+            <span>Aktywne wypożyczenia</span>
+            <strong id="rentalCount">0 / brak aktywnych</strong>
+          </article>
         </div>
         <div class="split">
           <section class="panel">
@@ -212,6 +222,8 @@
               <h2>Zakupy, wydatki i wpływy</h2>
               <button id="printMoneyReport" class="small-button">Druk</button>
             </div>
+            <div id="moneySummary" class="finance-summary"></div>
+            <div id="overdueInvoiceNotice" class="notice hidden"></div>
             <div id="moneyList" class="table"></div>
           </section>
         </div>
@@ -274,6 +286,12 @@
               </label>
             </div>
             <div id="rentalItemsForm" class="rental-items-form"></div>
+            <select name="paymentStatus">
+              <option value="unpaid">Nieopłacone</option>
+              <option value="cash">Opłacone gotówką</option>
+              <option value="transfer">Opłacone przelewem</option>
+              <option value="invoice_later">Faktura / płatność później</option>
+            </select>
             <textarea name="notes" placeholder="Uwagi, np. kaucja, uszkodzenia przed wydaniem"></textarea>
             <div class="rental-summary">
               <span>Dni: <strong id="rentalDays">1</strong></span>
@@ -389,6 +407,18 @@
               <option value="0">VAT 0%</option>
               <option value="zw">ZW</option>
             </select>
+            <select name="paymentStatus">
+              <option value="unpaid">Nieopłacona</option>
+              <option value="cash">Opłacona gotówką</option>
+              <option value="transfer">Opłacona przelewem</option>
+            </select>
+            <select name="paymentMethod">
+              <option value="cash">Gotówka</option>
+              <option value="transfer">Przelew</option>
+              <option value="other">Płatność on-line / inna</option>
+            </select>
+            <input name="paymentDueDate" type="date" />
+            <input name="bankAccount" placeholder="Numer konta bankowego" />
             <textarea name="notes" placeholder="Uwagi"></textarea>
             <button type="submit">Zapisz fakturę</button>
           </form>
@@ -500,6 +530,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260526-member-card"></script>
+    <script src="app.js?v=20260526-dashboard-rotating-stats"></script>
   </body>
 </html>
