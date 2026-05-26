@@ -3460,9 +3460,9 @@ function exportAdminData(kind) {
   const config = adminExportConfig()[kind];
   if (!config) return;
   const rows = config.rows();
-  const header = config.columns.map((column) => csvValue(column.label)).join(";");
-  const body = rows.map((row) => config.columns.map((column) => adminCsvValue(column.value(row), column.type)).join(";"));
-  downloadTextFile(`kgigw-${config.file}-${today}.csv`, `\uFEFF${["sep=;", header, ...body].join("\r\n")}`, "text/csv;charset=utf-8");
+  const header = config.columns.map((column) => excelCellValue(column.label)).join("\t");
+  const body = rows.map((row) => config.columns.map((column) => adminExcelValue(column.value(row), column.type)).join("\t"));
+  downloadUtf16LeFile(`kgigw-${config.file}-${today}.xls`, [header, ...body].join("\r\n"));
   logActivity("Administracja", "Eksport danych", { summary: config.log });
 }
 
@@ -3473,6 +3473,28 @@ function downloadTextFile(fileName, content, type) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+function downloadUtf16LeFile(fileName, content) {
+  const bytes = utf16LeWithBom(content);
+  const blob = new Blob([bytes], { type: "application/vnd.ms-excel;charset=utf-16le" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function utf16LeWithBom(text) {
+  const bytes = new Uint8Array(2 + text.length * 2);
+  bytes[0] = 0xff;
+  bytes[1] = 0xfe;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    bytes[2 + index * 2] = code & 0xff;
+    bytes[3 + index * 2] = code >> 8;
+  }
+  return bytes;
 }
 
 function adminExportConfig() {
@@ -3684,24 +3706,33 @@ function csvValue(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
 
-function adminCsvValue(value, type = "text") {
-  if (["date", "phone", "id", "text-forced"].includes(type)) return csvValue(excelText(csvDateOrText(value, type)));
-  if (type === "money") return csvValue(excelText(csvMoney(value)));
-  if (type === "money-currency") return csvValue(excelText(`${csvMoney(value)} zł`));
-  if (type === "percent") return csvValue(excelText(`${csvMoney(value)}%`));
-  return csvValue(value);
+function adminExcelValue(value, type = "text") {
+  if (["date", "phone", "id", "text-forced"].includes(type)) return excelCellValue(excelForcedText(excelDateOrText(value, type)));
+  if (type === "money") return excelCellValue(excelForcedText(excelMoney(value)));
+  if (type === "money-currency") return excelCellValue(excelForcedText(`${excelMoney(value)} zł`));
+  if (type === "percent") return excelCellValue(excelForcedText(`${excelMoney(value)}%`));
+  return excelCellValue(value);
 }
 
-function excelText(value) {
-  return `="${String(value ?? "").replaceAll('"', '""')}"`;
+function excelCellValue(value) {
+  return String(value ?? "")
+    .replaceAll("—", "brak")
+    .replaceAll("\t", " ")
+    .replaceAll("\r", " ")
+    .replaceAll("\n", " ")
+    .trim();
 }
 
-function csvMoney(value) {
+function excelForcedText(value) {
+  return `="${excelCellValue(value).replaceAll('"', '""')}"`;
+}
+
+function excelMoney(value) {
   const number = Number(value || 0);
   return number.toFixed(2).replace(".", ",");
 }
 
-function csvDateOrText(value, type) {
+function excelDateOrText(value, type) {
   if (type !== "date") return value ?? "";
   if (!value) return "";
   const date = new Date(`${value}T12:00:00`);
