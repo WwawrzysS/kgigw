@@ -3461,8 +3461,8 @@ function exportAdminData(kind) {
   if (!config) return;
   const rows = config.rows();
   const header = config.columns.map((column) => csvValue(column.label)).join(";");
-  const body = rows.map((row) => config.columns.map((column) => csvValue(column.value(row))).join(";"));
-  downloadTextFile(`kgigw-${config.file}-${today}.csv`, `\uFEFF${[header, ...body].join("\r\n")}`, "text/csv;charset=utf-8");
+  const body = rows.map((row) => config.columns.map((column) => adminCsvValue(column.value(row), column.type)).join(";"));
+  downloadTextFile(`kgigw-${config.file}-${today}.csv`, `\uFEFF${["sep=;", header, ...body].join("\r\n")}`, "text/csv;charset=utf-8");
   logActivity("Administracja", "Eksport danych", { summary: config.log });
 }
 
@@ -3482,12 +3482,12 @@ function adminExportConfig() {
       log: "Eksport członków CSV",
       rows: () => state.members,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Imię i nazwisko", value: (item) => item.name },
-        { label: "Telefon", value: (item) => item.phone },
+        { label: "Telefon", value: (item) => item.phone, type: "phone" },
         { label: "E-mail", value: (item) => item.email },
         { label: "Status", value: (item) => item.status },
-        { label: "Funkcja w kole", value: (item) => item.boardRole }
+        { label: "Funkcja w kole", value: (item) => item.boardRole },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     fees: {
@@ -3495,13 +3495,13 @@ function adminExportConfig() {
       log: "Eksport składek CSV",
       rows: () => state.fees,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Członek", value: (item) => item.member },
-        { label: "ID członka", value: (item) => item.memberId },
         { label: "Rok", value: (item) => item.year || item.period },
-        { label: "Kwota", value: (item) => item.amount },
-        { label: "Data wpłaty", value: (item) => item.paidAt },
-        { label: "Notatka", value: (item) => item.note }
+        { label: "Kwota", value: (item) => item.amount, type: "money" },
+        { label: "Data wpłaty", value: (item) => item.paidAt, type: "date" },
+        { label: "Notatka", value: (item) => item.note },
+        { label: "ID członka", value: (item) => item.memberId, type: "id" },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     money: {
@@ -3509,16 +3509,16 @@ function adminExportConfig() {
       log: "Eksport finansów CSV",
       rows: () => state.money,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Typ", value: (item) => moneyTypeLabel(item.type) },
         { label: "Opis", value: (item) => item.title },
         { label: "Kategoria", value: (item) => item.category },
-        { label: "Kwota", value: (item) => item.amount },
-        { label: "Data", value: (item) => item.date },
+        { label: "Kwota", value: (item) => item.amount, type: "money" },
+        { label: "Data", value: (item) => item.date, type: "date" },
         { label: "Wydarzenie", value: (item) => item.eventName },
         { label: "Status", value: (item) => isActiveMoney(item) ? "Aktywny" : "Anulowany" },
         { label: "Źródło", value: (item) => item.sourceType },
-        { label: "ID źródła", value: (item) => item.sourceId }
+        { label: "ID źródła", value: (item) => item.sourceId, type: "id" },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     inventory: {
@@ -3526,13 +3526,13 @@ function adminExportConfig() {
       log: "Eksport magazynu CSV",
       rows: () => state.rentalInventory,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Nazwa", value: (item) => item.name },
         { label: "Stan całkowity", value: (item) => item.quantity },
         { label: "Dostępne", value: (item) => availableQuantity(item.id) },
         { label: "Wypożyczone", value: (item) => borrowedQuantity(item.id) },
-        { label: "Zwrócone łącznie", value: (item) => returnedQuantity(item.id) },
-        { label: "Cena za dobę", value: (item) => item.price }
+        { label: "Zwrócone", value: (item) => returnedQuantity(item.id) },
+        { label: "Cena za dobę", value: (item) => item.price, type: "money" },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     rentals: {
@@ -3540,21 +3540,20 @@ function adminExportConfig() {
       log: "Eksport wypożyczeń CSV",
       rows: () => state.rentalLoans,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Imię", value: (item) => item.firstName },
         { label: "Nazwisko", value: (item) => item.lastName },
-        { label: "Telefon", value: (item) => item.phone },
-        { label: "Od", value: (item) => item.dateFrom },
-        { label: "Do", value: (item) => item.dateTo },
+        { label: "Telefon", value: (item) => item.phone, type: "phone" },
+        { label: "Od", value: (item) => item.dateFrom, type: "date" },
+        { label: "Do", value: (item) => item.dateTo, type: "date" },
         { label: "Dni", value: (item) => item.days },
-        { label: "Wartość netto", value: (item) => item.total },
-        { label: "Wartość brutto", value: (item) => grossFromNet(item.total, 23).toFixed(2) },
+        { label: "Wartość netto", value: (item) => item.total, type: "money" },
+        { label: "Wartość brutto", value: (item) => grossFromNet(item.total, 23), type: "money" },
         { label: "Status", value: (item) => item.status },
         { label: "Płatność", value: (item) => rentalPaymentLabel(item.paymentStatus) },
         { label: "Pozycje", value: (item) => rentalItemsText(item.items) },
-        { label: "Uwagi", value: (item) => item.notes },
-        { label: "Data zwrotu", value: (item) => item.returnedAt },
-        { label: "Uwagi zwrotu", value: (item) => item.returnNotes }
+        { label: "Data zwrotu", value: (item) => item.returnedAt, type: "date" },
+        { label: "Uwagi zwrotu", value: (item) => item.returnNotes },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     invoices: {
@@ -3562,20 +3561,20 @@ function adminExportConfig() {
       log: "Eksport faktur CSV",
       rows: () => state.invoices,
       columns: [
-        { label: "ID", value: (item) => item.id },
-        { label: "Numer", value: (item) => item.number },
-        { label: "Data", value: (item) => item.date },
+        { label: "Numer faktury", value: (item) => item.number, type: "text-forced" },
+        { label: "Data", value: (item) => item.date, type: "date" },
         { label: "Nabywca", value: (item) => item.buyerName },
         { label: "Adres nabywcy", value: (item) => item.buyerAddress },
-        { label: "NIP", value: (item) => item.buyerNip },
-        { label: "Netto", value: (item) => item.net },
-        { label: "VAT", value: (item) => item.vat },
-        { label: "Brutto", value: (item) => item.gross },
+        { label: "NIP", value: (item) => item.buyerNip, type: "text-forced" },
+        { label: "Netto", value: (item) => item.net, type: "money" },
+        { label: "VAT", value: (item) => item.vat, type: "money-currency" },
+        { label: "Brutto", value: (item) => item.gross, type: "money" },
         { label: "Status płatności", value: (item) => invoicePaymentStatusLabel(item.paymentStatus) },
         { label: "Forma płatności", value: (item) => invoicePaymentMethodLabel(item.paymentMethod) },
-        { label: "Termin płatności", value: (item) => item.paymentDueDate },
-        { label: "ID wypożyczenia", value: (item) => item.rentalId },
-        { label: "Uwagi", value: (item) => item.notes }
+        { label: "Termin płatności", value: (item) => item.paymentDueDate, type: "date" },
+        { label: "ID wypożyczenia", value: (item) => item.rentalId, type: "id" },
+        { label: "Uwagi", value: (item) => item.notes },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     documents: {
@@ -3583,17 +3582,17 @@ function adminExportConfig() {
       log: "Eksport dokumentów CSV",
       rows: () => state.docs,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Tytuł", value: (item) => item.title },
         { label: "Nadawca", value: (item) => item.sender },
         { label: "Typ", value: (item) => item.category },
-        { label: "Data", value: (item) => item.date },
-        { label: "Kwota wpływ", value: (item) => item.incomeAmount },
-        { label: "Kwota wydatek", value: (item) => item.expenseAmount },
+        { label: "Data", value: (item) => item.date, type: "date" },
+        { label: "Kwota wpływ", value: (item) => item.incomeAmount, type: "money" },
+        { label: "Kwota wydatek", value: (item) => item.expenseAmount, type: "money" },
         { label: "Wydarzenie", value: (item) => item.eventName },
         { label: "Plik", value: (item) => item.fileName },
         { label: "Rozmiar pliku", value: (item) => item.fileSize },
-        { label: "Notatka", value: (item) => item.notes }
+        { label: "Notatka", value: (item) => item.notes },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     events: {
@@ -3601,11 +3600,11 @@ function adminExportConfig() {
       log: "Eksport wydarzeń CSV",
       rows: () => state.events,
       columns: [
-        { label: "ID", value: (item) => item.id },
         { label: "Nazwa", value: (item) => item.name },
-        { label: "Data", value: (item) => item.date },
+        { label: "Data", value: (item) => item.date, type: "date" },
         { label: "Miejsce", value: (item) => item.place },
-        { label: "Notatki", value: (item) => item.notes }
+        { label: "Notatki", value: (item) => item.notes },
+        { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     }
   };
@@ -3683,6 +3682,35 @@ function memberCsvColumns() {
 
 function csvValue(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function adminCsvValue(value, type = "text") {
+  if (["date", "phone", "id", "text-forced"].includes(type)) return csvValue(excelText(csvDateOrText(value, type)));
+  if (type === "money") return csvValue(excelText(csvMoney(value)));
+  if (type === "money-currency") return csvValue(excelText(`${csvMoney(value)} zł`));
+  if (type === "percent") return csvValue(excelText(`${csvMoney(value)}%`));
+  return csvValue(value);
+}
+
+function excelText(value) {
+  return `="${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function csvMoney(value) {
+  const number = Number(value || 0);
+  return number.toFixed(2).replace(".", ",");
+}
+
+function csvDateOrText(value, type) {
+  if (type !== "date") return value ?? "";
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric"
+  }).format(date);
 }
 
 function money(value) {
