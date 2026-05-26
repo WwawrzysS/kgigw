@@ -406,6 +406,76 @@ textarea {
   gap: 12px;
 }
 
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.panel-head-actions label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.panel-head-actions input {
+  width: auto;
+}
+
+.member-export-panel {
+  margin: 12px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.member-export-panel.hidden {
+  display: none;
+}
+
+.member-export-group {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.member-export-group strong {
+  font-size: 14px;
+}
+
+.member-export-group label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.member-export-group input {
+  width: auto;
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.member-export-scope,
+.member-export-panel > .small-button {
+  grid-column: 1 / -1;
+}
+
+.member-export-panel > .small-button {
+  justify-self: start;
+}
+
 .form-panel {
   padding: 18px;
   align-self: start;
@@ -890,6 +960,20 @@ textarea {
   .return-form,
   .return-check-head,
   .return-check-row {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-head {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .panel-head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .member-export-panel {
     grid-template-columns: 1fr;
   }
 }

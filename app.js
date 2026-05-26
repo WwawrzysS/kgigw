@@ -94,6 +94,8 @@ const elements = {
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
   showInactiveMembers: document.querySelector("#showInactiveMembers"),
+  toggleMemberExport: document.querySelector("#toggleMemberExport"),
+  memberExportPanel: document.querySelector("#memberExportPanel"),
   downloadMembersCsv: document.querySelector("#downloadMembersCsv"),
   memberFormTitle: document.querySelector("#memberFormTitle"),
   cancelMemberEdit: document.querySelector("#cancelMemberEdit"),
@@ -137,6 +139,7 @@ document.querySelector("#mobileMenuButton").addEventListener("click", toggleMobi
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
 document.querySelector("#showInactiveMembers").addEventListener("change", renderMembers);
+document.querySelector("#toggleMemberExport").addEventListener("click", toggleMemberExportPanel);
 document.querySelector("#downloadMembersCsv").addEventListener("click", exportMembersCsv);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
@@ -2409,6 +2412,10 @@ function importData(event) {
     }
   };
   reader.readAsText(file);
+}
+
+function toggleMemberExportPanel() {
+  elements.memberExportPanel.classList.toggle("hidden");
 }
 
 function exportMembersCsv() {
