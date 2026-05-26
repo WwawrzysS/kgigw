@@ -340,68 +340,74 @@ function setupSupabaseClient() {
 
 async function refreshSupabaseData() {
   if (!supabaseClient || !currentRole) return;
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+  if (sessionError || !sessionData?.session) {
+    console.error("Brak aktywnej sesji Supabase Auth. Dane chronione RLS nie zostaną pobrane.", {
+      error: sessionError,
+      hasCurrentRole: Boolean(currentRole)
+    });
+    return;
+  }
+
   let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
-    supabaseClient
+    loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, board_role, created_at")
-      .order("name", { ascending: true }),
-    supabaseClient
+      .order("name", { ascending: true })),
+    loadSupabaseResult("fees", supabaseClient
       .from("fees")
       .select("id, member_id, year, amount, note, paid_at, created_at")
-      .order("paid_at", { ascending: false }),
-    supabaseClient
+      .order("paid_at", { ascending: false })),
+    loadSupabaseResult("rental_inventory", supabaseClient
       .from("rental_inventory")
       .select("id, name, quantity, price_per_day")
-      .order("name", { ascending: true }),
-    supabaseClient
+      .order("name", { ascending: true })),
+    loadSupabaseResult("rentals", supabaseClient
       .from("rentals")
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, payment_status, payment_method, paid_at, payment_transaction_id, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
-      .order("date_from", { ascending: false })
-    ,
-    supabaseClient
+      .order("date_from", { ascending: false })),
+    loadSupabaseResult("events", supabaseClient
       .from("events")
       .select("id, name, event_date, place, notes")
-      .order("event_date", { ascending: true }),
-    supabaseClient
+      .order("event_date", { ascending: true })),
+    loadSupabaseResult("transactions", supabaseClient
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason, source_type, source_id")
-      .order("transaction_date", { ascending: false })
-    ,
-    supabaseClient
+      .order("transaction_date", { ascending: false })),
+    loadSupabaseResult("documents", supabaseClient
       .from("documents")
       .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id")
-      .order("document_date", { ascending: false })
-    ,
-    supabaseClient
+      .order("document_date", { ascending: false })),
+    loadSupabaseResult("invoices", supabaseClient
       .from("invoices")
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes, payment_status, payment_method, paid_at, payment_transaction_id, payment_due_date, bank_account")
-      .order("invoice_date", { ascending: false })
+      .order("invoice_date", { ascending: false }))
   ]);
 
   if (rentalsResult.error) {
     console.error("Nie udało się pobrać wypożyczeń z nowymi polami płatności. Próba pobrania podstawowego widoku.", rentalsResult.error);
-    const fallbackRentals = await supabaseClient
+    const fallbackRentals = await loadSupabaseResult("rentals fallback", supabaseClient
       .from("rentals")
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
-      .order("date_from", { ascending: false });
+      .order("date_from", { ascending: false }));
     if (!fallbackRentals.error) rentalsResult = fallbackRentals;
   }
 
   if (moneyResult.error) {
     console.error("Nie udało się pobrać Finansów z polami źródła. Próba pobrania podstawowego widoku.", moneyResult.error);
-    const fallbackMoney = await supabaseClient
+    const fallbackMoney = await loadSupabaseResult("transactions fallback", supabaseClient
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason")
-      .order("transaction_date", { ascending: false });
+      .order("transaction_date", { ascending: false }));
     if (!fallbackMoney.error) moneyResult = fallbackMoney;
   }
 
   if (invoicesResult.error) {
     console.error("Nie udało się pobrać faktur z polami płatności. Próba pobrania podstawowego widoku.", invoicesResult.error);
-    const fallbackInvoices = await supabaseClient
+    const fallbackInvoices = await loadSupabaseResult("invoices fallback", supabaseClient
       .from("invoices")
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
-      .order("invoice_date", { ascending: false });
+      .order("invoice_date", { ascending: false }));
     if (!fallbackInvoices.error) invoicesResult = fallbackInvoices;
   }
 
@@ -413,30 +419,6 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("Finansów", moneyResult.error);
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
-  if (isAdmin()) {
-    const { data: auditRows, error: auditError } = await supabaseClient
-      .from("audit_log")
-      .select("id, created_at, action, table_name, details")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (auditError) {
-      console.error("Nie udało się pobrać logów aktywności z public.audit_log.", {
-        table: "public.audit_log",
-        columns: "id, created_at, action, table_name, details",
-        error: auditError
-      });
-    } else {
-      state.auditLogs = (auditRows || []).map((entry) => ({
-        id: entry.id,
-        date: entry.created_at,
-        user: entry.details?.user || "Nieznany użytkownik",
-        module: entry.table_name || entry.details?.module || "",
-        action: entry.action || "",
-        details: entry.details?.summary || ""
-      }));
-    }
-  }
-
   if (!membersResult.error) state.members = (membersResult.data || []).map((member) => ({
     id: member.id,
     name: member.name,
@@ -584,11 +566,53 @@ async function refreshSupabaseData() {
   supabaseDataReady = true;
   saveState();
   render();
+  void refreshAuditLogs();
 }
 
 function logSupabaseLoadError(moduleName, error) {
   if (!error) return;
-  console.error(`Nie udało się pobrać danych modułu ${moduleName} z Supabase. Pozostałe moduły będą ładowane dalej.`, error);
+  console.error(`Nie udało się pobrać danych modułu ${moduleName} z Supabase. Pozostałe moduły będą ładowane dalej.`, {
+    moduleName,
+    error
+  });
+}
+
+async function loadSupabaseResult(label, query) {
+  try {
+    const result = await query;
+    if (result.error) {
+      console.error(`Supabase zwrócił błąd dla zapytania: ${label}.`, {
+        label,
+        error: result.error
+      });
+    }
+    return result;
+  } catch (error) {
+    console.error(`Zapytanie Supabase przerwane wyjątkiem: ${label}.`, {
+      label,
+      error
+    });
+    return { data: null, error };
+  }
+}
+
+async function refreshAuditLogs() {
+  if (!supabaseClient || !currentRole || !isAdmin()) return;
+  const { data: auditRows, error: auditError } = await loadSupabaseResult("audit_log", supabaseClient
+    .from("audit_log")
+    .select("id, created_at, action, table_name, details")
+    .order("created_at", { ascending: false })
+    .limit(100));
+  if (auditError) return;
+  state.auditLogs = (auditRows || []).map((entry) => ({
+    id: entry.id,
+    date: entry.created_at,
+    user: entry.details?.user || "Nieznany użytkownik",
+    module: entry.table_name || entry.details?.module || "",
+    action: entry.action || "",
+    details: entry.details?.summary || ""
+  }));
+  renderAuditLogs();
 }
 
 function setupRentalShell() {
