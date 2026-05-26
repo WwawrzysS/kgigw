@@ -392,18 +392,35 @@ textarea {
   vertical-align: baseline;
 }
 
+#lateFees,
+#rentalCount {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
 .dashboard-metric-value {
-  max-width: 55%;
+  flex: 0 0 auto;
+  max-width: 58%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dashboard-metric-separator {
-  margin: 0 6px;
+  flex: 0 0 auto;
+  margin: 0 2px;
   color: var(--muted);
   font-weight: 600;
 }
 
 .dashboard-metric-name {
-  max-width: 38%;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
   color: var(--muted);
   font-size: 15px;
   font-weight: 600;
