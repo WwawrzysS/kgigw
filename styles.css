@@ -624,10 +624,10 @@ textarea {
 
 .money-controls,
 .invoice-controls {
-  margin: 0 14px 12px;
+  margin: 14px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .invoice-controls #invoiceSearch {
@@ -656,6 +656,7 @@ textarea {
   overflow-y: auto;
   overscroll-behavior: contain;
   border-top: 1px solid var(--line);
+  margin-top: 0;
 }
 
 .invoice-list-scroll .row {

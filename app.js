@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-08";
+const APP_VERSION = "2026.05.27-09";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -2534,7 +2534,7 @@ function invoiceRow(invoice) {
 }
 
 function filteredInvoices() {
-  const search = normalizeText(elements.invoiceSearch?.value || "");
+  const search = normalizeSearchText(elements.invoiceSearch?.value || "");
   const payment = elements.invoicePaymentFilter?.value || "all";
   const method = elements.invoiceMethodFilter?.value || "all";
   const rental = elements.invoiceRentalFilter?.value || "all";
@@ -2566,18 +2566,25 @@ function filteredInvoices() {
 
 function invoiceMatchesSearch(invoice, search) {
   if (!search) return true;
+  const plainAmount = String(invoice.gross || "").replace(".", ",");
+  const compactNip = String(invoice.buyerNip || "").replace(/\D/g, "");
   const haystack = [
     invoice.number,
+    `faktura ${invoice.number || ""}`,
     invoice.buyerName,
     invoice.buyerAddress,
     invoice.buyerNip,
+    compactNip,
     money(invoice.gross),
     String(invoice.gross || ""),
+    plainAmount,
     invoicePaymentStatusLabel(invoice.paymentStatus),
     invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)),
+    invoice.source,
+    invoice.itemName,
     invoice.rentalLabel,
     invoice.notes
-  ].map(normalizeText).join(" ");
+  ].map(normalizeSearchText).join(" ");
   return haystack.includes(search);
 }
 
@@ -3768,6 +3775,13 @@ function safeFileName(name) {
 
 function normalizeText(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeSearchText(value) {
+  return normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u00a0/g, " ");
 }
 
 function normalizePhone(value) {
