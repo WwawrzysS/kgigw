@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-09";
+const APP_VERSION = "2026.05.27-10";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -147,6 +147,7 @@ const elements = {
   rentalsList: document.querySelector("#rentalsList"),
   invoiceRental: document.querySelector("#invoiceRental"),
   invoiceSearch: document.querySelector("#invoiceSearch"),
+  invoiceSearchButton: document.querySelector("#invoiceSearchButton"),
   invoiceSort: document.querySelector("#invoiceSort"),
   invoicePaymentFilter: document.querySelector("#invoicePaymentFilter"),
   invoiceMethodFilter: document.querySelector("#invoiceMethodFilter"),
@@ -224,6 +225,13 @@ document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceF
   elements.invoiceDateFrom,
   elements.invoiceDateTo
 ].forEach((control) => control?.addEventListener("input", renderInvoices));
+elements.invoiceSearch?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    renderInvoices();
+  }
+});
+elements.invoiceSearchButton?.addEventListener("click", renderInvoices);
 [
   elements.invoiceSort,
   elements.invoicePaymentFilter,
@@ -2585,7 +2593,8 @@ function invoiceMatchesSearch(invoice, search) {
     invoice.rentalLabel,
     invoice.notes
   ].map(normalizeSearchText).join(" ");
-  return haystack.includes(search);
+  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  return search.split(" ").filter(Boolean).every((term) => searchable.includes(term));
 }
 
 function invoiceSortComparator(sort) {
