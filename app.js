@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-03";
+const APP_VERSION = "2026.05.27-04";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -65,6 +65,7 @@ let lateFeeDashboardIndex = 0;
 let lateFeeDashboardTimer = null;
 let activeRentalDashboardIndex = 0;
 let activeRentalDashboardTimer = null;
+let selectedFundingSourceId = "";
 
 const titles = {
   dashboard: "Pulpit",
@@ -121,6 +122,8 @@ const elements = {
   fundingFormTitle: document.querySelector("#fundingFormTitle"),
   cancelFundingEdit: document.querySelector("#cancelFundingEdit"),
   fundingSourcesList: document.querySelector("#fundingSourcesList"),
+  fundingDetailsPanel: document.querySelector("#fundingDetailsPanel"),
+  fundingDetails: document.querySelector("#fundingDetails"),
   docEvent: document.querySelector("#docEvent"),
   docFundingSource: document.querySelector("#docFundingSource"),
   docFormTitle: document.querySelector("#docFormTitle"),
@@ -1414,6 +1417,7 @@ function render() {
   renderFees();
   renderMoney();
   renderFundingSources();
+  renderFundingDetails();
   renderEvents();
   renderRentals();
   renderDocs();
@@ -1916,10 +1920,120 @@ function fundingSourceRow(source) {
     </div>
     <div class="row-actions">
       <span class="badge ${fundingStatusClass(source.status)}">${escapeHtml(source.status || "aktywne")}</span>
+      <button class="small-button" onclick="showFundingSettlement('${source.id}')">Rozliczenie</button>
       ${canCorrect() ? `<button class="small-button" onclick="editFundingSource('${source.id}')">Edytuj</button>` : ""}
       ${canCorrect() && source.status !== "archiwalne" ? `<button class="delete-button" onclick="archiveFundingSource('${source.id}')">Archiwizuj</button>` : ""}
     </div>
   `;
+}
+
+function showFundingSettlement(id) {
+  selectedFundingSourceId = id;
+  renderFundingDetails();
+  elements.fundingDetailsPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideFundingSettlement() {
+  selectedFundingSourceId = "";
+  renderFundingDetails();
+}
+
+function renderFundingDetails() {
+  if (!elements.fundingDetailsPanel || !elements.fundingDetails) return;
+  const source = state.fundingSources.find((entry) => entry.id === selectedFundingSourceId);
+  elements.fundingDetailsPanel.classList.toggle("hidden", !source);
+  if (!source) {
+    elements.fundingDetails.innerHTML = "";
+    return;
+  }
+
+  const moneyEntries = state.money
+    .filter((entry) => entry.fundingSourceId === source.id)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  const activeEntries = moneyEntries.filter(isActiveMoney);
+  const income = activeEntries
+    .filter((entry) => !isExpenseType(entry.type))
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const expenses = activeEntries
+    .filter((entry) => isExpenseType(entry.type))
+    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const docs = state.docs
+    .filter((doc) => doc.fundingSourceId === source.id)
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  elements.fundingDetails.innerHTML = `
+    <div class="funding-details-head">
+      <div>
+        <h2>${escapeHtml(source.name)}</h2>
+        <small>
+          Typ: ${escapeHtml(source.type || "Inne")} ·
+          Status: ${escapeHtml(source.status || "aktywne")} ·
+          Kwota planowana: ${money(source.plannedAmount || 0)} ·
+          Okres: ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}
+        </small>
+      </div>
+      <button class="small-button" type="button" onclick="hideFundingSettlement()">Wróć do listy</button>
+    </div>
+
+    <div class="funding-summary-grid">
+      <div class="funding-summary-card"><span>Wpływy</span><strong>${money(income)}</strong></div>
+      <div class="funding-summary-card"><span>Wydatki</span><strong>${money(expenses)}</strong></div>
+      <div class="funding-summary-card"><span>Saldo</span><strong>${money(income - expenses)}</strong></div>
+      <div class="funding-summary-card"><span>Dokumenty</span><strong>${docs.length}</strong></div>
+    </div>
+
+    <section class="funding-section">
+      <h3>Finanse</h3>
+      <div class="table">
+        ${moneyEntries.length ? moneyEntries.map(fundingMoneyRow).join("") : '<div class="row"><small>Brak wpisów finansowych dla tego źródła.</small></div>'}
+      </div>
+    </section>
+
+    <section class="funding-section">
+      <h3>Dokumenty</h3>
+      <div class="table">
+        ${docs.length ? docs.map(fundingDocRow).join("") : '<div class="row"><small>Brak dokumentów dla tego źródła.</small></div>'}
+      </div>
+    </section>
+  `;
+}
+
+function fundingMoneyRow(entry) {
+  const cancelledBadge = isActiveMoney(entry) ? "" : '<span class="badge neutral">Anulowany</span>';
+  return `
+    <div class="row">
+      <div>
+        <strong>${formatDate(entry.date)} · ${moneyTypeLabel(entry.type)} · ${money(entry.amount)}</strong>
+        <small>${escapeHtml(entry.title || "Bez opisu")} · ${escapeHtml(entry.category || "Bez kategorii")} ${cancelledBadge}</small>
+      </div>
+    </div>
+  `;
+}
+
+function fundingDocRow(doc) {
+  const amountText = documentAmountText(doc);
+  return `
+    <div class="row">
+      <div>
+        <strong>${formatDate(doc.date)} · ${escapeHtml(doc.title)}</strong>
+        <small>
+          ${escapeHtml(doc.category || "Dokument")} · ${escapeHtml(doc.sender || "Brak nadawcy")}
+          ${amountText ? ` · ${amountText}` : ""}
+        </small>
+      </div>
+      <div class="row-actions">
+        ${docHasFile(doc) ? `<button class="small-button" onclick="openDocumentAttachment('${doc.id}')">Pobierz PDF</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function documentAmountText(doc) {
+  const income = Number(doc.incomeAmount || 0);
+  const expense = Number(doc.expenseAmount || 0);
+  if (income > 0) return `Wpływ: ${money(income)}`;
+  if (expense > 0) return `Wydatek: ${money(expense)}`;
+  return "";
 }
 
 function fundingStatusClass(status) {
