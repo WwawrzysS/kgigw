@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-10";
+const APP_VERSION = "2026.05.27-11";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -98,6 +98,7 @@ const elements = {
   navSubmenus: document.querySelectorAll(".nav-submenu"),
   views: document.querySelectorAll(".view"),
   globalSearch: document.querySelector("#globalSearch"),
+  globalSearchResults: document.querySelector("#globalSearchResults"),
   cashBalance: document.querySelector("#cashBalance"),
   unpaidInvoicesSummary: document.querySelector("#unpaidInvoicesSummary"),
   unpaidInvoicesList: document.querySelector("#unpaidInvoicesList"),
@@ -281,7 +282,18 @@ elements.adminTabs.forEach((button) => {
 });
 
 elements.globalSearch.addEventListener("input", (event) => {
-  query = event.target.value.trim().toLowerCase();
+  query = normalizeSearchText(event.target.value);
+  render();
+});
+elements.globalSearch.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    query = normalizeSearchText(event.target.value);
+    renderGlobalSearchResults();
+  }
+});
+elements.globalSearch.addEventListener("search", (event) => {
+  query = normalizeSearchText(event.target.value);
   render();
 });
 
@@ -1548,6 +1560,7 @@ function render() {
   renderEventOptions();
   renderFundingSourceOptions();
   renderInvoiceRentalOptions();
+  renderGlobalSearchResults();
 }
 
 function showToast(message, type = "success") {
@@ -1560,6 +1573,122 @@ function showToast(message, type = "success") {
     toast.classList.add("toast-hide");
     window.setTimeout(() => toast.remove(), 250);
   }, 3200);
+}
+
+function renderGlobalSearchResults() {
+  if (!elements.globalSearchResults) return;
+  const search = normalizeSearchText(elements.globalSearch?.value || query);
+  if (!search) {
+    elements.globalSearchResults.classList.add("hidden");
+    elements.globalSearchResults.innerHTML = "";
+    return;
+  }
+  const results = globalSearchResults(search).slice(0, 30);
+  elements.globalSearchResults.classList.remove("hidden");
+  elements.globalSearchResults.innerHTML = `
+    <strong>Wyniki wyszukiwania</strong>
+    <div class="global-search-list">
+      ${results.length ? results.map(globalSearchResultRow).join("") : '<div class="global-search-empty">Brak wyników wyszukiwania.</div>'}
+    </div>
+  `;
+}
+
+function globalSearchResultRow(result) {
+  return `
+    <button class="global-search-result" type="button" onclick="openGlobalSearchResult('${result.view}', '${result.tab || ""}')">
+      <span>${escapeHtml(result.module)}</span>
+      <strong>${escapeHtml(result.title)}</strong>
+      <small>${escapeHtml(result.detail || "")}</small>
+    </button>
+  `;
+}
+
+function openGlobalSearchResult(view, tab = "") {
+  switchView(view);
+  if (view === "rentals" && tab) switchRentalTab(tab);
+  if (view === "docs" && tab) switchDocTab(tab);
+  elements.globalSearchResults?.classList.add("hidden");
+}
+
+function globalSearchResults(search) {
+  const results = [];
+  const addResult = (module, view, title, detail, values, tab = "") => {
+    if (globalSearchMatches(values, search)) results.push({ module, view, title, detail, tab });
+  };
+
+  state.members.forEach((member) => addResult(
+    "Członkowie",
+    "members",
+    member.name || "Członek",
+    [member.phone, member.email, member.status, member.boardRole].filter(Boolean).join(" · "),
+    [member.name, member.phone, member.email, member.status, member.boardRole]
+  ));
+
+  state.fees.forEach((fee) => addResult(
+    "Składki",
+    "fees",
+    fee.member || "Składka",
+    `${fee.year || fee.period || FEE_YEAR} · ${money(fee.amount)} · ${fee.note || ""}`,
+    [fee.member, fee.year, fee.period, fee.amount, money(fee.amount), fee.note]
+  ));
+
+  state.money.forEach((entry) => addResult(
+    "Finanse",
+    "money",
+    entry.title || "Wpis finansowy",
+    `${formatDate(entry.date)} · ${entry.category || "Bez kategorii"} · ${money(entry.amount)}${entry.fundingSourceName ? ` · ${entry.fundingSourceName}` : ""}`,
+    [entry.title, entry.category, entry.amount, money(entry.amount), entry.eventName, entry.fundingSourceName, moneyTypeLabel(entry.type)]
+  ));
+
+  state.invoices.forEach((invoice) => addResult(
+    "Faktury",
+    "invoices",
+    `Faktura ${invoice.number}`,
+    `${invoice.buyerName || "Brak nabywcy"} · ${money(invoice.gross)} · ${invoicePaymentStatusLabel(invoice.paymentStatus)}`,
+    [invoice.number, `faktura ${invoice.number}`, invoice.buyerName, invoice.buyerAddress, invoice.buyerNip, invoice.gross, money(invoice.gross), invoicePaymentStatusLabel(invoice.paymentStatus), invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)), invoice.rentalLabel, invoice.notes]
+  ));
+
+  state.rentalLoans.forEach((loan) => addResult(
+    "Wypożyczalnia",
+    "rentals",
+    `${loan.firstName || ""} ${loan.lastName || ""}`.trim() || "Wypożyczenie",
+    `${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} · ${money(loan.total)} · ${loan.status}`,
+    [loan.firstName, loan.lastName, loan.phone, loan.status, loan.total, money(loan.total), rentalItemsText(loan.items), loan.notes, loan.returnNotes],
+    "history"
+  ));
+
+  state.docs.forEach((doc) => addResult(
+    "Dokumenty",
+    "docs",
+    doc.title || "Dokument",
+    `${formatDate(doc.date)} · ${doc.category || "Dokument"} · ${doc.sender || "Brak nadawcy"}${doc.fundingSourceName ? ` · ${doc.fundingSourceName}` : ""}`,
+    [doc.title, doc.sender, doc.category, doc.date, doc.notes, doc.fileName, doc.eventName, doc.fundingSourceName],
+    "documents"
+  ));
+
+  state.events.forEach((event) => addResult(
+    "Wydarzenia",
+    "events",
+    event.name || "Wydarzenie",
+    `${formatDate(event.date)} · ${event.place || "Brak miejsca"}`,
+    [event.name, event.date, event.place, event.notes]
+  ));
+
+  state.fundingSources.forEach((source) => addResult(
+    "Źródła finansowania",
+    "funding",
+    source.name || "Źródło finansowania",
+    `${source.type || "Inne"} · ${source.status || "aktywne"} · ${money(source.plannedAmount)}`,
+    [source.name, source.type, source.status, source.description, source.plannedAmount, money(source.plannedAmount)]
+  ));
+
+  return results;
+}
+
+function globalSearchMatches(values, search) {
+  const haystack = values.map(normalizeSearchText).join(" ");
+  const expanded = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  return search.split(" ").filter(Boolean).every((term) => expanded.includes(term));
 }
 
 function renderAuditLogs() {
@@ -4290,7 +4419,7 @@ function invoiceLineItems(invoice) {
 
 function filterItems(items) {
   if (!query) return items;
-  return items.filter((item) => Object.values(item).join(" ").toLowerCase().includes(query));
+  return items.filter((item) => normalizeSearchText(Object.values(item).join(" ")).includes(query));
 }
 
 function exportData() {
