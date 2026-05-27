@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260527-07-money-filters" />
+    <link rel="stylesheet" href="styles.css?v=20260527-08-invoice-filters" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -529,7 +529,40 @@
             <div class="panel-head">
               <h2>Lista faktur</h2>
             </div>
-            <div id="invoicesList" class="table"></div>
+            <div class="invoice-controls">
+              <input id="invoiceSearch" type="search" placeholder="Szukaj w fakturach..." />
+              <select id="invoiceSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="amount_desc">Kwota: największe</option>
+                <option value="amount_asc">Kwota: najmniejsze</option>
+                <option value="number_asc">Numer: A-Z</option>
+                <option value="number_desc">Numer: Z-A</option>
+                <option value="buyer_asc">Nabywca: A-Z</option>
+                <option value="buyer_desc">Nabywca: Z-A</option>
+              </select>
+              <select id="invoicePaymentFilter">
+                <option value="all">Status: wszystkie</option>
+                <option value="unpaid">Nieopłacone</option>
+                <option value="paid">Zapłacone</option>
+                <option value="overdue">Po terminie</option>
+              </select>
+              <select id="invoiceMethodFilter">
+                <option value="all">Forma: wszystkie</option>
+                <option value="cash">Gotówka</option>
+                <option value="transfer">Przelew</option>
+                <option value="none">Brak</option>
+              </select>
+              <select id="invoiceRentalFilter">
+                <option value="all">Źródło: wszystkie</option>
+                <option value="rental">Faktury z wypożyczenia</option>
+                <option value="no_rental">Faktury bez wypożyczenia</option>
+              </select>
+              <input id="invoiceDateFrom" type="date" aria-label="Data od" />
+              <input id="invoiceDateTo" type="date" aria-label="Data do" />
+              <button id="clearInvoiceFilters" class="small-button" type="button">Wyczyść filtry</button>
+            </div>
+            <div id="invoicesList" class="table invoice-list-scroll"></div>
           </section>
         </div>
       </section>
@@ -562,7 +595,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.27-07</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.27-08</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -653,6 +686,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260527-07-money-filters"></script>
+    <script src="app.js?v=20260527-08-invoice-filters"></script>
   </body>
 </html>
