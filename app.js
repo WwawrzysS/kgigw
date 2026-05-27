@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-04";
+const APP_VERSION = "2026.05.27-05";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -1972,7 +1972,10 @@ function renderFundingDetails() {
           Okres: ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}
         </small>
       </div>
-      <button class="small-button" type="button" onclick="hideFundingSettlement()">Wróć do listy</button>
+      <div class="panel-head-actions">
+        <button class="small-button" type="button" onclick="printFundingSettlement('${source.id}')">Drukuj rozliczenie</button>
+        <button class="small-button" type="button" onclick="hideFundingSettlement()">Wróć do listy</button>
+      </div>
     </div>
 
     <div class="funding-summary-grid">
@@ -2898,6 +2901,14 @@ function printMoneyReport() {
   window.print();
 }
 
+async function printFundingSettlement(id) {
+  const source = state.fundingSources.find((entry) => entry.id === id);
+  if (!source) return;
+  elements.printSheet.innerHTML = fundingSettlementPrintHtml(source);
+  await logActivity("Źródła finansowania", "Druk rozliczenia", { summary: source.name });
+  window.print();
+}
+
 function printInvoice(id) {
   const invoice = state.invoices.find((entry) => entry.id === id);
   if (!invoice) return;
@@ -3702,6 +3713,110 @@ function moneyReportHtml() {
       <div class="signature-line">Sporządził/a</div>
       <div class="signature-line">Zatwierdził/a</div>
     </div>
+  `;
+}
+
+function fundingSettlementPrintHtml(source) {
+  const activeItems = state.money
+    .filter((entry) => entry.fundingSourceId === source.id && isActiveMoney(entry))
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const incomeItems = activeItems.filter((entry) => !isExpenseType(entry.type));
+  const expenseItems = activeItems.filter((entry) => isExpenseType(entry.type));
+  const docs = state.docs
+    .filter((doc) => doc.fundingSourceId === source.id)
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+  const income = incomeItems.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+  const expenses = expenseItems.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+  return `
+    ${organizationHeaderHtml()}
+    <h2>Rozliczenie źródła finansowania</h2>
+    <p><strong>Nazwa źródła:</strong> ${escapeHtml(source.name)}</p>
+    <p><strong>Typ:</strong> ${escapeHtml(source.type || "Inne")} &nbsp; <strong>Status:</strong> ${escapeHtml(source.status || "aktywne")}</p>
+    <p><strong>Kwota planowana / przyznana:</strong> ${money(source.plannedAmount || 0)}</p>
+    <p><strong>Okres:</strong> ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}</p>
+    ${source.description ? `<p><strong>Opis:</strong> ${escapeHtml(source.description)}</p>` : ""}
+    <p><strong>Data wydruku:</strong> ${new Intl.DateTimeFormat("pl-PL").format(new Date())}</p>
+
+    <h3>Podsumowanie</h3>
+    <table>
+      <tbody>
+        <tr><th>Suma wpływów</th><td>${money(income)}</td></tr>
+        <tr><th>Suma wydatków</th><td>${money(expenses)}</td></tr>
+        <tr><th>Saldo</th><td>${money(income - expenses)}</td></tr>
+        <tr><th>Liczba dokumentów</th><td>${docs.length}</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Wpływy</h3>
+    ${fundingSettlementMoneyTable(incomeItems, "Brak wpływów dla tego źródła.")}
+
+    <h3>Wydatki</h3>
+    ${fundingSettlementMoneyTable(expenseItems, "Brak wydatków dla tego źródła.")}
+
+    <h3>Dokumenty</h3>
+    ${fundingSettlementDocsTable(docs)}
+
+    <div class="print-signatures">
+      <div class="signature-line">Sporządził/a: ____________________</div>
+      <div class="signature-line">Sprawdził/a: ____________________</div>
+    </div>
+  `;
+}
+
+function fundingSettlementMoneyTable(items, emptyText) {
+  if (!items.length) return `<p>${emptyText}</p>`;
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Opis</th>
+          <th>Kategoria</th>
+          <th>Kwota</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((entry) => `
+          <tr>
+            <td>${formatDate(entry.date)}</td>
+            <td>${escapeHtml(entry.title || "Bez opisu")}</td>
+            <td>${escapeHtml(entry.category || "Bez kategorii")}</td>
+            <td>${money(entry.amount)}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function fundingSettlementDocsTable(docs) {
+  if (!docs.length) return "<p>Brak dokumentów dla tego źródła.</p>";
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Tytuł</th>
+          <th>Typ</th>
+          <th>Nadawca</th>
+          <th>Kwota</th>
+          <th>PDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${docs.map((doc) => `
+          <tr>
+            <td>${formatDate(doc.date)}</td>
+            <td>${escapeHtml(doc.title || "Bez tytułu")}</td>
+            <td>${escapeHtml(doc.category || "Dokument")}</td>
+            <td>${escapeHtml(doc.sender || "Brak nadawcy")}</td>
+            <td>${escapeHtml(documentAmountText(doc) || "brak")}</td>
+            <td>${docHasFile(doc) ? "Tak" : "Nie"}</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
   `;
 }
 
