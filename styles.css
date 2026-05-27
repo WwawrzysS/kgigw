@@ -622,7 +622,8 @@ textarea {
   font-size: 26px;
 }
 
-.money-controls {
+.money-controls,
+.invoice-controls {
   margin: 0 14px 12px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -630,15 +631,19 @@ textarea {
 }
 
 .money-controls input,
-.money-controls select {
+.money-controls select,
+.invoice-controls input,
+.invoice-controls select {
   min-width: 0;
 }
 
-.money-controls .small-button {
+.money-controls .small-button,
+.invoice-controls .small-button {
   justify-self: start;
 }
 
-.money-list-scroll {
+.money-list-scroll,
+.invoice-list-scroll {
   max-height: 560px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1442,7 +1447,8 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .money-controls {
+  .money-controls,
+  .invoice-controls {
     grid-template-columns: 1fr;
   }
 

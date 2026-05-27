@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-07";
+const APP_VERSION = "2026.05.27-08";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -146,6 +146,14 @@ const elements = {
   rentalTotal: document.querySelector("#rentalTotal"),
   rentalsList: document.querySelector("#rentalsList"),
   invoiceRental: document.querySelector("#invoiceRental"),
+  invoiceSearch: document.querySelector("#invoiceSearch"),
+  invoiceSort: document.querySelector("#invoiceSort"),
+  invoicePaymentFilter: document.querySelector("#invoicePaymentFilter"),
+  invoiceMethodFilter: document.querySelector("#invoiceMethodFilter"),
+  invoiceRentalFilter: document.querySelector("#invoiceRentalFilter"),
+  invoiceDateFrom: document.querySelector("#invoiceDateFrom"),
+  invoiceDateTo: document.querySelector("#invoiceDateTo"),
+  clearInvoiceFilters: document.querySelector("#clearInvoiceFilters"),
   invoicesList: document.querySelector("#invoicesList"),
   rentalReturnsList: document.querySelector("#rentalReturnsList"),
   rentalSubtabs: document.querySelectorAll("[data-rental-tab]"),
@@ -207,6 +215,24 @@ document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#cancelDocEdit").addEventListener("click", cancelDocEdit);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
+[
+  elements.invoiceSearch,
+  elements.invoiceSort,
+  elements.invoicePaymentFilter,
+  elements.invoiceMethodFilter,
+  elements.invoiceRentalFilter,
+  elements.invoiceDateFrom,
+  elements.invoiceDateTo
+].forEach((control) => control?.addEventListener("input", renderInvoices));
+[
+  elements.invoiceSort,
+  elements.invoicePaymentFilter,
+  elements.invoiceMethodFilter,
+  elements.invoiceRentalFilter,
+  elements.invoiceDateFrom,
+  elements.invoiceDateTo
+].forEach((control) => control?.addEventListener("change", renderInvoices));
+elements.clearInvoiceFilters?.addEventListener("click", clearInvoiceFilters);
 document.querySelectorAll("[data-admin-export]").forEach((button) => {
   button.addEventListener("click", () => exportAdminData(button.dataset.adminExport));
 });
@@ -2484,7 +2510,12 @@ function renderStorageInfo() {
 }
 
 function renderInvoices() {
-  elements.invoicesList.innerHTML = rows(filterItems(state.invoices), (invoice) => `
+  const invoices = filteredInvoices();
+  elements.invoicesList.innerHTML = invoices.length ? invoices.map((invoice) => `<div class="row">${invoiceRow(invoice)}</div>`).join("") : '<div class="row"><small>Brak faktur pasujących do filtrów.</small></div>';
+}
+
+function invoiceRow(invoice) {
+  return `
     <div>
       <strong>Faktura ${escapeHtml(invoice.number)} - ${money(invoice.gross)}</strong>
       <small>
@@ -2499,7 +2530,94 @@ function renderInvoices() {
       ${invoicePaymentAction(invoice)}
       ${deleteAction("invoices", invoice.id)}
     </div>
-  `);
+  `;
+}
+
+function filteredInvoices() {
+  const search = normalizeText(elements.invoiceSearch?.value || "");
+  const payment = elements.invoicePaymentFilter?.value || "all";
+  const method = elements.invoiceMethodFilter?.value || "all";
+  const rental = elements.invoiceRentalFilter?.value || "all";
+  const dateFrom = elements.invoiceDateFrom?.value || "";
+  const dateTo = elements.invoiceDateTo?.value || "";
+  const sort = elements.invoiceSort?.value || "date_desc";
+  return [...state.invoices]
+    .filter((invoice) => invoiceMatchesSearch(invoice, search))
+    .filter((invoice) => {
+      if (payment === "all") return true;
+      if (payment === "paid") return isInvoicePaid(invoice.paymentStatus);
+      if (payment === "unpaid") return !isInvoicePaid(invoice.paymentStatus);
+      return isInvoiceOverdue(invoice);
+    })
+    .filter((invoice) => {
+      const invoiceMethod = invoicePaymentMethodCode(invoice);
+      if (method === "all") return true;
+      if (method === "none") return !invoiceMethod;
+      return invoiceMethod === method;
+    })
+    .filter((invoice) => {
+      if (rental === "all") return true;
+      return rental === "rental" ? Boolean(invoice.rentalId) : !invoice.rentalId;
+    })
+    .filter((invoice) => !dateFrom || String(invoice.date || "") >= dateFrom)
+    .filter((invoice) => !dateTo || String(invoice.date || "") <= dateTo)
+    .sort(invoiceSortComparator(sort));
+}
+
+function invoiceMatchesSearch(invoice, search) {
+  if (!search) return true;
+  const haystack = [
+    invoice.number,
+    invoice.buyerName,
+    invoice.buyerAddress,
+    invoice.buyerNip,
+    money(invoice.gross),
+    String(invoice.gross || ""),
+    invoicePaymentStatusLabel(invoice.paymentStatus),
+    invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)),
+    invoice.rentalLabel,
+    invoice.notes
+  ].map(normalizeText).join(" ");
+  return haystack.includes(search);
+}
+
+function invoiceSortComparator(sort) {
+  const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  const byAmount = (a, b) => Number(a.gross || 0) - Number(b.gross || 0);
+  const byNumber = (a, b) => String(a.number || "").localeCompare(String(b.number || ""), "pl", { numeric: true });
+  const byBuyer = (a, b) => String(a.buyerName || "").localeCompare(String(b.buyerName || ""), "pl");
+  if (sort === "date_asc") return byDate;
+  if (sort === "amount_desc") return (a, b) => byAmount(b, a);
+  if (sort === "amount_asc") return byAmount;
+  if (sort === "number_asc") return byNumber;
+  if (sort === "number_desc") return (a, b) => byNumber(b, a);
+  if (sort === "buyer_asc") return byBuyer;
+  if (sort === "buyer_desc") return (a, b) => byBuyer(b, a);
+  return (a, b) => byDate(b, a);
+}
+
+function clearInvoiceFilters() {
+  if (elements.invoiceSearch) elements.invoiceSearch.value = "";
+  if (elements.invoiceSort) elements.invoiceSort.value = "date_desc";
+  if (elements.invoicePaymentFilter) elements.invoicePaymentFilter.value = "all";
+  if (elements.invoiceMethodFilter) elements.invoiceMethodFilter.value = "all";
+  if (elements.invoiceRentalFilter) elements.invoiceRentalFilter.value = "all";
+  if (elements.invoiceDateFrom) elements.invoiceDateFrom.value = "";
+  if (elements.invoiceDateTo) elements.invoiceDateTo.value = "";
+  renderInvoices();
+}
+
+function invoicePaymentMethodCode(invoice) {
+  const value = normalizeText(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus));
+  if (value === "cash" || value === "gotówka") return "cash";
+  if (value === "transfer" || value === "przelew") return "transfer";
+  if (value === "other" || value.includes("inna") || value.includes("online") || value.includes("on-line")) return "other";
+  return "";
+}
+
+function isInvoiceOverdue(invoice) {
+  const today = new Date().toISOString().slice(0, 10);
+  return !isInvoicePaid(invoice.paymentStatus) && Boolean(invoice.paymentDueDate) && invoice.paymentDueDate < today;
 }
 
 function invoicePaymentAction(invoice) {
