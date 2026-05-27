@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-02";
+const APP_VERSION = "2026.05.27-03";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -122,6 +122,9 @@ const elements = {
   cancelFundingEdit: document.querySelector("#cancelFundingEdit"),
   fundingSourcesList: document.querySelector("#fundingSourcesList"),
   docEvent: document.querySelector("#docEvent"),
+  docFundingSource: document.querySelector("#docFundingSource"),
+  docFormTitle: document.querySelector("#docFormTitle"),
+  cancelDocEdit: document.querySelector("#cancelDocEdit"),
   moneySummary: document.querySelector("#moneySummary"),
   overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
   moneyList: document.querySelector("#moneyList"),
@@ -175,6 +178,7 @@ document.querySelector("#inventoryAddForm").addEventListener("submit", handleInv
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
+document.querySelector("#cancelDocEdit").addEventListener("click", cancelDocEdit);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
 document.querySelectorAll("[data-admin-export]").forEach((button) => {
@@ -390,7 +394,7 @@ async function refreshSupabaseData() {
       .order("transaction_date", { ascending: false })),
     loadSupabaseResult("documents", supabaseClient
       .from("documents")
-      .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id")
+      .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
       .order("document_date", { ascending: false })),
     loadSupabaseResult("invoices", supabaseClient
       .from("invoices")
@@ -562,7 +566,10 @@ async function refreshSupabaseData() {
     fileName: doc.file_name || "",
     fileSize: Number(doc.file_size || 0),
     mimeType: doc.mime_type || "",
-    eventId: doc.event_id || ""
+    eventId: doc.event_id || "",
+    fundingSourceId: doc.funding_source_id || "",
+    fundingSourceName: fundingSourceName(doc.funding_source_id),
+    transactionId: doc.transaction_id || ""
   }));
 
   if (!invoicesResult.error) state.invoices = (invoicesResult.data || []).map((invoice) => {
@@ -1225,6 +1232,11 @@ async function handleRental(event) {
 async function handleDoc(event) {
   event.preventDefault();
   const data = formData(event.target);
+  const docId = data.id || "";
+  const existingDoc = docId ? state.docs.find((item) => item.id === docId) : null;
+  const oldFundingName = fundingSourceName(existingDoc?.fundingSourceId);
+  const newFundingName = fundingSourceName(data.fundingSourceId);
+  const fundingChanged = docId && (existingDoc?.fundingSourceId || "") !== (data.fundingSourceId || "");
   const file = event.target.file.files[0];
   if (file && file.type !== "application/pdf") {
     alert("Można dodać tylko plik PDF.");
@@ -1249,57 +1261,72 @@ async function handleDoc(event) {
       }
     }
 
-    const { data: savedDoc, error } = await supabaseClient.from("documents").insert({
+    const payload = {
       title: data.title,
       sender: data.sender || null,
       category: data.category,
       document_date: data.date,
       notes: data.notes || null,
-      file_path: filePath || null,
-      file_name: fileName || null,
-      file_size: fileSize || null,
-      mime_type: mimeType || null,
-      event_id: data.eventId || null
-    }).select("id").single();
+      event_id: data.eventId || null,
+      funding_source_id: data.fundingSourceId || null
+    };
+    if (file) {
+      payload.file_path = filePath || null;
+      payload.file_name = fileName || null;
+      payload.file_size = fileSize || null;
+      payload.mime_type = mimeType || null;
+    }
+
+    const { data: savedDoc, error } = docId
+      ? await supabaseClient.from("documents").update(payload).eq("id", docId).select("id").single()
+      : await supabaseClient.from("documents").insert({
+          ...payload,
+          file_path: filePath || null,
+          file_name: fileName || null,
+          file_size: fileSize || null,
+          mime_type: mimeType || null
+        }).select("id").single();
     if (error) {
       alert(`PDF mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
       return;
     }
-    const moneyEntries = docMoneyEntries(data, savedDoc.id);
-    if (moneyEntries.length) {
-      const { error: moneyError } = await supabaseClient.from("transactions").insert(moneyEntries);
-      if (moneyError) {
-        alert(`Dokument zapisany, ale nie udało się dopisać pozycji w Finansach: ${moneyError.message}`);
-        return;
-      }
+    resetDocForm(event.target);
+    if (fundingChanged) {
+      await logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+    } else {
+      await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu", { summary: docLogSummary(data) });
     }
-    event.target.reset();
-    event.target.date.valueAsDate = new Date();
-    await logActivity("Dokumenty", "Dodanie dokumentu", { summary: data.title });
     await refreshSupabaseData();
     showToast("Zapisano dokument");
     return;
   }
   const attachment = file ? await readPdfAttachment(file) : null;
   delete data.file;
-  const localDocId = makeId();
-  state.docs.push({ id: localDocId, ...data, attachment });
-  docMoneyEntries(data, localDocId).forEach((entry) => {
-    const linkedEvent = state.events.find((item) => item.id === entry.event_id);
-    state.money.push({
-      id: makeId(),
-      type: entry.type,
-      title: entry.title,
-      category: entry.category,
-      amount: Number(entry.amount),
-      date: entry.transaction_date,
-      eventId: entry.event_id || "",
-      eventName: linkedEvent?.name || ""
+  delete data.id;
+  if (docId) {
+    const doc = state.docs.find((item) => item.id === docId);
+    if (doc) Object.assign(doc, {
+      ...data,
+      id: docId,
+      fundingSourceId: data.fundingSourceId || "",
+      fundingSourceName: newFundingName,
+      attachment: attachment || doc.attachment
     });
-  });
+    resetDocForm(event.target);
+    saveState();
+    render();
+    if (fundingChanged) {
+      logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+    } else {
+      logActivity("Dokumenty", "Edycja dokumentu", { summary: docLogSummary(data) });
+    }
+    showToast("Zapisano dokument");
+    return;
+  }
+  state.docs.push({ id: makeId(), ...data, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, attachment });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
-  logActivity("Dokumenty", "Dodanie dokumentu", { summary: data.title });
+  logActivity("Dokumenty", "Dodanie dokumentu", { summary: docLogSummary(data) });
   showToast("Zapisano dokument");
 }
 
@@ -2106,13 +2133,53 @@ function renderDocs() {
   elements.docsList.innerHTML = rows(filterItems(state.docs), (item) => `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
+      ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
       ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz PDF</button>` : ""}
       ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
   `);
+}
+
+function editDoc(id) {
+  if (!canCorrect()) return;
+  const doc = state.docs.find((item) => item.id === id);
+  const form = document.querySelector("#docForm");
+  if (!doc || !form) return;
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  form.sender.value = doc.sender || "";
+  form.category.value = doc.category || "Pismo";
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.eventId.value = doc.eventId || "";
+  renderFundingSourceOptions(doc.fundingSourceId || "");
+  form.fundingSourceId.value = doc.fundingSourceId || "";
+  form.incomeAmount.value = "";
+  form.expenseAmount.value = "";
+  form.notes.value = doc.notes || "";
+  elements.docFormTitle.textContent = "Edytuj dokument";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  elements.cancelDocEdit.classList.remove("hidden");
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelDocEdit() {
+  resetDocForm(document.querySelector("#docForm"));
+}
+
+function resetDocForm(form) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  form.date.valueAsDate = new Date();
+  form.fundingSourceId.value = "";
+  elements.docFormTitle.textContent = "Dodaj dokument lub wiadomość";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz dokument";
+  elements.cancelDocEdit.classList.add("hidden");
+  renderEventOptions();
+  renderFundingSourceOptions();
 }
 
 function renderStorageInfo() {
@@ -2313,6 +2380,7 @@ function renderEventOptions() {
 
 function renderFundingSourceOptions(selectedId = "") {
   renderFundingSourceSelect(elements.moneyFundingSource, selectedId);
+  renderFundingSourceSelect(elements.docFundingSource, selectedId);
 }
 
 function renderFundingSourceSelect(select, selectedId = "") {
@@ -3335,6 +3403,11 @@ function docFileSize(doc) {
 
 function docHasFile(doc) {
   return Boolean(doc?.filePath || doc?.attachment?.dataUrl);
+}
+
+function docLogSummary(doc) {
+  const sourceName = fundingSourceName(doc.fundingSourceId);
+  return `${doc.title || "Dokument"}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
 }
 
 function readPdfAttachment(file) {
