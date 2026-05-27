@@ -431,6 +431,9 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("wypożyczeń", rentalsResult.error);
   logSupabaseLoadError("wydarzeń", eventsResult.error);
   logSupabaseLoadError("źródeł finansowania", fundingSourcesResult.error);
+  if (fundingSourcesResult.error) {
+    console.error("Nie udało się pobrać funding_sources. Lista źródeł w Finansach pokaże tylko opcję Bez źródła.", fundingSourcesResult.error);
+  }
   logSupabaseLoadError("Finansów", moneyResult.error);
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
@@ -2316,7 +2319,7 @@ function renderFundingSourceSelect(select, selectedId = "") {
   if (!select) return;
   const current = selectedId || select.value;
   const activeSources = (state.fundingSources || [])
-    .filter((source) => fundingStatusValue(source.status) === "aktywne" || source.id === current)
+    .filter((source) => isActiveFundingSource(source) || source.id === current)
     .sort((a, b) => a.name.localeCompare(b.name));
   select.innerHTML = '<option value="">Bez źródła</option>' + activeSources
     .map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`)
@@ -2326,6 +2329,11 @@ function renderFundingSourceSelect(select, selectedId = "") {
 
 function fundingStatusValue(status) {
   return normalizeText(status || "aktywne");
+}
+
+function isActiveFundingSource(source) {
+  const status = fundingStatusValue(source?.status);
+  return status === "aktywne";
 }
 
 function renderEventSelect(select) {
