@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260527-06-document-expense" />
+    <link rel="stylesheet" href="styles.css?v=20260527-07-money-filters" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -228,7 +228,38 @@
             </div>
             <div id="moneySummary" class="finance-summary"></div>
             <div id="overdueInvoiceNotice" class="notice hidden"></div>
-            <div id="moneyList" class="table"></div>
+            <div class="money-controls">
+              <input id="moneySearch" type="search" placeholder="Szukaj w finansach..." />
+              <select id="moneySort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="amount_desc">Kwota: największe</option>
+                <option value="amount_asc">Kwota: najmniejsze</option>
+                <option value="name_asc">Nazwa: A-Z</option>
+                <option value="name_desc">Nazwa: Z-A</option>
+              </select>
+              <select id="moneyTypeFilter">
+                <option value="all">Typ: wszystkie</option>
+                <option value="income">Wpływ</option>
+                <option value="donation">Darowizna</option>
+                <option value="expense">Wydatek</option>
+              </select>
+              <select id="moneyStatusFilter">
+                <option value="active">Status: aktywne</option>
+                <option value="cancelled">Status: anulowane</option>
+                <option value="all">Status: wszystkie</option>
+              </select>
+              <select id="moneyFundingFilter">
+                <option value="all">Źródło: wszystkie</option>
+                <option value="none">Bez źródła</option>
+              </select>
+              <select id="moneyEventFilter">
+                <option value="all">Wydarzenie: wszystkie</option>
+                <option value="none">Bez wydarzenia</option>
+              </select>
+              <button id="clearMoneyFilters" class="small-button" type="button">Wyczyść filtry</button>
+            </div>
+            <div id="moneyList" class="table money-list-scroll"></div>
           </section>
         </div>
       </section>
@@ -531,7 +562,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.27-06</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.27-07</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -622,6 +653,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260527-06-document-expense"></script>
+    <script src="app.js?v=20260527-07-money-filters"></script>
   </body>
 </html>

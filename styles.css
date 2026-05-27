@@ -622,6 +622,29 @@ textarea {
   font-size: 26px;
 }
 
+.money-controls {
+  margin: 0 14px 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.money-controls input,
+.money-controls select {
+  min-width: 0;
+}
+
+.money-controls .small-button {
+  justify-self: start;
+}
+
+.money-list-scroll {
+  max-height: 560px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--line);
+}
+
 .funding-details-panel {
   grid-column: 1 / -1;
 }
@@ -1416,6 +1439,10 @@ textarea {
   }
 
   .member-export-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .money-controls {
     grid-template-columns: 1fr;
   }
 

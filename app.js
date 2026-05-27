@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-06";
+const APP_VERSION = "2026.05.27-07";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -117,6 +117,13 @@ const elements = {
   sendFeeSms: document.querySelector("#sendFeeSms"),
   moneyEvent: document.querySelector("#moneyEvent"),
   moneyFundingSource: document.querySelector("#moneyFundingSource"),
+  moneySearch: document.querySelector("#moneySearch"),
+  moneySort: document.querySelector("#moneySort"),
+  moneyTypeFilter: document.querySelector("#moneyTypeFilter"),
+  moneyStatusFilter: document.querySelector("#moneyStatusFilter"),
+  moneyFundingFilter: document.querySelector("#moneyFundingFilter"),
+  moneyEventFilter: document.querySelector("#moneyEventFilter"),
+  clearMoneyFilters: document.querySelector("#clearMoneyFilters"),
   moneyFormTitle: document.querySelector("#moneyFormTitle"),
   cancelMoneyEdit: document.querySelector("#cancelMoneyEdit"),
   fundingFormTitle: document.querySelector("#fundingFormTitle"),
@@ -173,6 +180,22 @@ document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
 document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
+[
+  elements.moneySearch,
+  elements.moneySort,
+  elements.moneyTypeFilter,
+  elements.moneyStatusFilter,
+  elements.moneyFundingFilter,
+  elements.moneyEventFilter
+].forEach((control) => control?.addEventListener("input", renderMoney));
+[
+  elements.moneySort,
+  elements.moneyTypeFilter,
+  elements.moneyStatusFilter,
+  elements.moneyFundingFilter,
+  elements.moneyEventFilter
+].forEach((control) => control?.addEventListener("change", renderMoney));
+elements.clearMoneyFilters?.addEventListener("click", clearMoneyFilters);
 document.querySelector("#fundingForm").addEventListener("submit", handleFundingSource);
 document.querySelector("#cancelFundingEdit").addEventListener("click", cancelFundingEdit);
 document.querySelector("#printMoneyReport").addEventListener("click", printMoneyReport);
@@ -1783,7 +1806,92 @@ function renderMoney() {
     `;
   }
   renderOverdueInvoiceNotice();
-  elements.moneyList.innerHTML = rows(filterItems(state.money), moneyRowWithDelete);
+  renderMoneyFilterOptions();
+  elements.moneyList.innerHTML = rows(filteredMoneyItems(), moneyRowWithDelete);
+}
+
+function renderMoneyFilterOptions() {
+  renderMoneyFilterSelect(elements.moneyFundingFilter, [
+    { value: "all", label: "Źródło: wszystkie" },
+    { value: "none", label: "Bez źródła" },
+    ...state.fundingSources.map((source) => ({ value: source.id, label: source.name }))
+  ]);
+  renderMoneyFilterSelect(elements.moneyEventFilter, [
+    { value: "all", label: "Wydarzenie: wszystkie" },
+    { value: "none", label: "Bez wydarzenia" },
+    ...state.events.map((event) => ({ value: event.id, label: event.name }))
+  ]);
+}
+
+function renderMoneyFilterSelect(select, options) {
+  if (!select) return;
+  const current = select.value || "all";
+  select.innerHTML = options
+    .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+    .join("");
+  select.value = options.some((option) => option.value === current) ? current : "all";
+}
+
+function filteredMoneyItems() {
+  const search = normalizeText(elements.moneySearch?.value || "");
+  const type = elements.moneyTypeFilter?.value || "all";
+  const status = elements.moneyStatusFilter?.value || "active";
+  const funding = elements.moneyFundingFilter?.value || "all";
+  const event = elements.moneyEventFilter?.value || "all";
+  const sort = elements.moneySort?.value || "date_desc";
+  return [...state.money]
+    .filter((item) => moneyMatchesSearch(item, search))
+    .filter((item) => type === "all" || item.type === type)
+    .filter((item) => {
+      if (status === "all") return true;
+      return status === "active" ? isActiveMoney(item) : !isActiveMoney(item);
+    })
+    .filter((item) => {
+      if (funding === "all") return true;
+      if (funding === "none") return !item.fundingSourceId;
+      return item.fundingSourceId === funding;
+    })
+    .filter((item) => {
+      if (event === "all") return true;
+      if (event === "none") return !item.eventId && !item.eventName;
+      return item.eventId === event;
+    })
+    .sort(moneySortComparator(sort));
+}
+
+function moneyMatchesSearch(item, search) {
+  if (!search) return true;
+  const haystack = [
+    item.title,
+    item.category,
+    item.fundingSourceName,
+    item.eventName,
+    money(item.amount),
+    String(item.amount || "")
+  ].map(normalizeText).join(" ");
+  return haystack.includes(search);
+}
+
+function moneySortComparator(sort) {
+  const byName = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pl");
+  const byAmount = (a, b) => Number(a.amount || 0) - Number(b.amount || 0);
+  const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  if (sort === "date_asc") return byDate;
+  if (sort === "amount_desc") return (a, b) => byAmount(b, a);
+  if (sort === "amount_asc") return byAmount;
+  if (sort === "name_asc") return byName;
+  if (sort === "name_desc") return (a, b) => byName(b, a);
+  return (a, b) => byDate(b, a);
+}
+
+function clearMoneyFilters() {
+  if (elements.moneySearch) elements.moneySearch.value = "";
+  if (elements.moneySort) elements.moneySort.value = "date_desc";
+  if (elements.moneyTypeFilter) elements.moneyTypeFilter.value = "all";
+  if (elements.moneyStatusFilter) elements.moneyStatusFilter.value = "active";
+  if (elements.moneyFundingFilter) elements.moneyFundingFilter.value = "all";
+  if (elements.moneyEventFilter) elements.moneyEventFilter.value = "all";
+  renderMoney();
 }
 
 function financeTotals() {
@@ -3710,8 +3818,8 @@ function returnPrintHtml(loan) {
   `;
 }
 
-function moneyReportHtml() {
-  const items = [...state.money].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+function moneyReportHtml(items = filteredMoneyItems()) {
+  items = [...items];
   const activeItems = items.filter(isActiveMoney);
   const income = activeItems.filter((item) => item.type === "income" || item.type === "donation").reduce((sum, item) => sum + item.amount, 0);
   const expenses = activeItems.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
