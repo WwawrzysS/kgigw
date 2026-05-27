@@ -30,6 +30,7 @@ const starterData = {
   members: [],
   fees: [],
   money: [],
+  fundingSources: [],
   events: [],
   rentalInventory: [
     { id: makeId(), name: "Komplet zastawy", quantity: 48, price: 10 },
@@ -70,6 +71,7 @@ const titles = {
   members: "Członkowie",
   fees: "Składki",
   money: "Finanse",
+  funding: "Źródła finansowania",
   events: "Wydarzenia",
   rentals: "Wypożyczalnia",
   invoices: "Faktury",
@@ -115,6 +117,9 @@ const elements = {
   moneyEvent: document.querySelector("#moneyEvent"),
   moneyFormTitle: document.querySelector("#moneyFormTitle"),
   cancelMoneyEdit: document.querySelector("#cancelMoneyEdit"),
+  fundingFormTitle: document.querySelector("#fundingFormTitle"),
+  cancelFundingEdit: document.querySelector("#cancelFundingEdit"),
+  fundingSourcesList: document.querySelector("#fundingSourcesList"),
   docEvent: document.querySelector("#docEvent"),
   moneySummary: document.querySelector("#moneySummary"),
   overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
@@ -161,6 +166,8 @@ document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
 document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
+document.querySelector("#fundingForm").addEventListener("submit", handleFundingSource);
+document.querySelector("#cancelFundingEdit").addEventListener("click", cancelFundingEdit);
 document.querySelector("#printMoneyReport").addEventListener("click", printMoneyReport);
 document.querySelector("#eventForm").addEventListener("submit", handleEvent);
 document.querySelector("#inventoryAddForm").addEventListener("submit", handleInventoryAdd);
@@ -351,7 +358,7 @@ async function refreshSupabaseData() {
     return;
   }
 
-  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, board_role, created_at")
@@ -372,6 +379,10 @@ async function refreshSupabaseData() {
       .from("events")
       .select("id, name, event_date, place, notes")
       .order("event_date", { ascending: true })),
+    loadSupabaseResult("funding_sources", supabaseClient
+      .from("funding_sources")
+      .select("id, name, type, description, planned_amount, date_from, date_to, status, created_at, updated_at")
+      .order("created_at", { ascending: false })),
     loadSupabaseResult("transactions", supabaseClient
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason, source_type, source_id")
@@ -418,6 +429,7 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("magazynu", inventoryResult.error);
   logSupabaseLoadError("wypożyczeń", rentalsResult.error);
   logSupabaseLoadError("wydarzeń", eventsResult.error);
+  logSupabaseLoadError("źródeł finansowania", fundingSourcesResult.error);
   logSupabaseLoadError("Finansów", moneyResult.error);
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
@@ -501,6 +513,17 @@ async function refreshSupabaseData() {
     date: event.event_date || "",
     place: event.place || "",
     notes: event.notes || ""
+  }));
+
+  if (!fundingSourcesResult.error) state.fundingSources = (fundingSourcesResult.data || []).map((source) => ({
+    id: source.id,
+    name: source.name,
+    type: source.type,
+    description: source.description || "",
+    plannedAmount: Number(source.planned_amount || 0),
+    dateFrom: source.date_from || "",
+    dateTo: source.date_to || "",
+    status: source.status || "aktywne"
   }));
 
   if (!moneyResult.error) state.money = (moneyResult.data || []).map((entry) => {
@@ -973,6 +996,71 @@ async function handleMoney(event) {
   showToast(moneyMessage);
 }
 
+async function handleFundingSource(event) {
+  event.preventDefault();
+  if (!canCorrect()) {
+    alert("Dodawanie i edycja źródeł finansowania jest dostępna tylko dla osób z uprawnieniami.");
+    return;
+  }
+  const data = formData(event.target);
+  const sourceId = data.id || "";
+  const payload = {
+    name: data.name,
+    type: data.type,
+    description: data.description || null,
+    planned_amount: Number(data.plannedAmount || 0),
+    date_from: data.dateFrom || null,
+    date_to: data.dateTo || null,
+    status: data.status || "aktywne"
+  };
+  if (supabaseClient && currentRole) {
+    const { error } = sourceId
+      ? await supabaseClient.from("funding_sources").update(payload).eq("id", sourceId)
+      : await supabaseClient.from("funding_sources").insert(payload);
+    if (error) {
+      alert(`Nie udało się zapisać źródła finansowania w Supabase: ${error.message}`);
+      return;
+    }
+    resetFundingForm(event.target);
+    await logActivity("Źródła finansowania", sourceId ? "Edycja źródła finansowania" : "Dodanie źródła finansowania", { summary: data.name });
+    await refreshSupabaseData();
+    showToast(sourceId ? "Zapisano źródło finansowania" : "Dodano źródło finansowania");
+    return;
+  }
+  if (sourceId) {
+    const source = state.fundingSources.find((entry) => entry.id === sourceId);
+    if (source) Object.assign(source, {
+      id: sourceId,
+      name: data.name,
+      type: data.type,
+      description: data.description || "",
+      plannedAmount: Number(data.plannedAmount || 0),
+      dateFrom: data.dateFrom || "",
+      dateTo: data.dateTo || "",
+      status: data.status || "aktywne"
+    });
+    resetFundingForm(event.target);
+    saveState();
+    render();
+    logActivity("Źródła finansowania", "Edycja źródła finansowania", { summary: data.name });
+    showToast("Zapisano źródło finansowania");
+    return;
+  }
+  state.fundingSources.push({
+    id: makeId(),
+    name: data.name,
+    type: data.type,
+    description: data.description || "",
+    plannedAmount: Number(data.plannedAmount || 0),
+    dateFrom: data.dateFrom || "",
+    dateTo: data.dateTo || "",
+    status: data.status || "aktywne"
+  });
+  finishForm(event.target);
+  logActivity("Źródła finansowania", "Dodanie źródła finansowania", { summary: data.name });
+  showToast("Dodano źródło finansowania");
+}
+
 async function handleEvent(event) {
   event.preventDefault();
   const data = formData(event.target);
@@ -1275,6 +1363,7 @@ function render() {
   renderMembers();
   renderFees();
   renderMoney();
+  renderFundingSources();
   renderEvents();
   renderRentals();
   renderDocs();
@@ -1753,6 +1842,99 @@ function invoiceDueBadge(invoice) {
   const today = new Date().toISOString().slice(0, 10);
   if (invoice.paymentDueDate < today) return '<br><span class="badge due">Po terminie</span>';
   return `<br><span class="badge neutral">Termin: ${formatDate(invoice.paymentDueDate)}</span>`;
+}
+
+function renderFundingSources() {
+  if (!elements.fundingSourcesList) return;
+  const sortedSources = [...filterItems(state.fundingSources || [])].sort((a, b) => {
+    const statusOrder = { aktywne: 0, zakończone: 1, archiwalne: 2 };
+    return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9) || a.name.localeCompare(b.name);
+  });
+  elements.fundingSourcesList.innerHTML = rows(sortedSources, fundingSourceRow);
+}
+
+function fundingSourceRow(source) {
+  return `
+    <div>
+      <strong>${escapeHtml(source.name)}</strong>
+      <small>
+        ${escapeHtml(source.type || "Inne")} · ${money(source.plannedAmount || 0)} ·
+        ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}
+        <br>${escapeHtml(source.description || "Bez opisu")}
+      </small>
+    </div>
+    <div class="row-actions">
+      <span class="badge ${fundingStatusClass(source.status)}">${escapeHtml(source.status || "aktywne")}</span>
+      ${canCorrect() ? `<button class="small-button" onclick="editFundingSource('${source.id}')">Edytuj</button>` : ""}
+      ${canCorrect() && source.status !== "archiwalne" ? `<button class="delete-button" onclick="archiveFundingSource('${source.id}')">Archiwizuj</button>` : ""}
+    </div>
+  `;
+}
+
+function fundingStatusClass(status) {
+  if (status === "aktywne") return "paid";
+  if (status === "zakończone") return "returned";
+  return "neutral";
+}
+
+function editFundingSource(id) {
+  if (!canCorrect()) return;
+  const source = state.fundingSources.find((entry) => entry.id === id);
+  if (!source) return;
+  const form = document.querySelector("#fundingForm");
+  form.id.value = source.id;
+  form.name.value = source.name || "";
+  form.type.value = source.type || "Inne";
+  form.plannedAmount.value = source.plannedAmount || "";
+  form.dateFrom.value = source.dateFrom || "";
+  form.dateTo.value = source.dateTo || "";
+  form.status.value = source.status || "aktywne";
+  form.description.value = source.description || "";
+  elements.fundingFormTitle.textContent = "Edytuj źródło finansowania";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  elements.cancelFundingEdit.classList.remove("hidden");
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelFundingEdit() {
+  resetFundingForm(document.querySelector("#fundingForm"));
+}
+
+function resetFundingForm(form) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  form.status.value = "aktywne";
+  elements.fundingFormTitle.textContent = "Dodaj źródło finansowania";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz źródło";
+  elements.cancelFundingEdit.classList.add("hidden");
+}
+
+async function archiveFundingSource(id) {
+  if (!canCorrect()) return;
+  const source = state.fundingSources.find((entry) => entry.id === id);
+  if (!source) return;
+  const confirmed = confirm(`Archiwizować źródło finansowania: ${source.name}? Dane zostaną w bazie.`);
+  if (!confirmed) return;
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("funding_sources")
+      .update({ status: "archiwalne" })
+      .eq("id", id);
+    if (error) {
+      alert(`Nie udało się zarchiwizować źródła finansowania: ${error.message}`);
+      return;
+    }
+    await logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
+    await refreshSupabaseData();
+    showToast("Źródło finansowania zostało zarchiwizowane");
+    return;
+  }
+  source.status = "archiwalne";
+  saveState();
+  render();
+  logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
+  showToast("Źródło finansowania zostało zarchiwizowane");
 }
 
 function renderEvents() {
@@ -3445,6 +3627,7 @@ function exportAdminData(kind) {
       members: state.members,
       fees: state.fees,
       transactions: state.money,
+      funding_sources: state.fundingSources,
       inventory: state.rentalInventory,
       rentals: state.rentalLoans,
       invoices: state.invoices,

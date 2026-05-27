@@ -37,6 +37,7 @@
         <button class="nav-item" data-view="members">Członkowie</button>
         <button class="nav-item" data-view="fees">Składki</button>
         <button class="nav-item" data-view="money">Finanse</button>
+        <button class="nav-item" data-view="funding">Źródła finansowania</button>
         <button class="nav-item" data-view="events">Wydarzenia</button>
         <button class="nav-item nav-parent" data-view="rentals" data-subnav="rentalsSubnav">Wypożyczalnia</button>
         <div id="rentalsSubnav" class="nav-submenu">
@@ -244,6 +245,59 @@
               <h2>Wydarzenia</h2>
             </div>
             <div id="eventsList" class="table"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="funding" class="view">
+        <div class="workspace">
+          <form id="fundingForm" class="form-panel">
+            <h2 id="fundingFormTitle">Dodaj źródło finansowania</h2>
+            <input name="id" type="hidden" />
+            <input name="name" required placeholder="Nazwa, np. Kiermasz Bożonarodzeniowy 2026" />
+            <label>
+              Typ źródła
+              <select name="type" required>
+                <option>Dotacja ARiMR</option>
+                <option>Program grantowy</option>
+                <option>Fundacja / firma</option>
+                <option>Samorząd</option>
+                <option>LGD</option>
+                <option>Konkurs</option>
+                <option>Kiermasz</option>
+                <option>Darowizna celowa</option>
+                <option>Fundusz własny koła</option>
+                <option>Inne</option>
+              </select>
+            </label>
+            <input name="plannedAmount" type="number" min="0" step="0.01" placeholder="Kwota planowana / przyznana" />
+            <div class="form-grid">
+              <label>
+                Data rozpoczęcia
+                <input name="dateFrom" type="date" />
+              </label>
+              <label>
+                Data zakończenia
+                <input name="dateTo" type="date" />
+              </label>
+            </div>
+            <label>
+              Status
+              <select name="status">
+                <option value="aktywne">aktywne</option>
+                <option value="zakończone">zakończone</option>
+                <option value="archiwalne">archiwalne</option>
+              </select>
+            </label>
+            <textarea name="description" placeholder="Opis źródła finansowania"></textarea>
+            <button type="submit">Zapisz źródło</button>
+            <button id="cancelFundingEdit" class="secondary-button hidden" type="button">Anuluj edycję</button>
+          </form>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Lista źródeł finansowania</h2>
+            </div>
+            <div id="fundingSourcesList" class="table"></div>
           </section>
         </div>
       </section>
@@ -550,6 +604,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260526-admin-excel-utf16"></script>
+    <script src="app.js?v=20260527-funding-sources-stage-2"></script>
   </body>
 </html>
