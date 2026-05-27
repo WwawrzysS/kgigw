@@ -630,6 +630,10 @@ textarea {
   gap: 10px;
 }
 
+.invoice-controls #invoiceSearch {
+  grid-column: 1 / -1;
+}
+
 .money-controls input,
 .money-controls select,
 .invoice-controls input,
@@ -642,12 +646,34 @@ textarea {
   justify-self: start;
 }
 
+.invoice-controls .small-button {
+  align-self: stretch;
+}
+
 .money-list-scroll,
 .invoice-list-scroll {
   max-height: 560px;
   overflow-y: auto;
   overscroll-behavior: contain;
   border-top: 1px solid var(--line);
+}
+
+.invoice-list-scroll .row {
+  align-items: flex-start;
+  padding: 10px 12px;
+}
+
+.invoice-list-scroll .row strong {
+  margin-bottom: 3px;
+}
+
+.invoice-list-scroll .row small {
+  line-height: 1.35;
+}
+
+.invoice-list-scroll .row-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .funding-details-panel {
@@ -1450,6 +1476,10 @@ textarea {
   .money-controls,
   .invoice-controls {
     grid-template-columns: 1fr;
+  }
+
+  .invoice-controls #invoiceSearch {
+    grid-column: auto;
   }
 
   .member-details-head {
