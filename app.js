@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.25-15";
+const APP_VERSION = "2026.05.27-02";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -115,6 +115,7 @@ const elements = {
   feesList: document.querySelector("#feesList"),
   sendFeeSms: document.querySelector("#sendFeeSms"),
   moneyEvent: document.querySelector("#moneyEvent"),
+  moneyFundingSource: document.querySelector("#moneyFundingSource"),
   moneyFormTitle: document.querySelector("#moneyFormTitle"),
   cancelMoneyEdit: document.querySelector("#cancelMoneyEdit"),
   fundingFormTitle: document.querySelector("#fundingFormTitle"),
@@ -385,7 +386,7 @@ async function refreshSupabaseData() {
       .order("created_at", { ascending: false })),
     loadSupabaseResult("transactions", supabaseClient
       .from("transactions")
-      .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason, source_type, source_id")
+      .select("id, type, title, category, amount, transaction_date, event_id, funding_source_id, status, cancelled_at, cancelled_reason, source_type, source_id")
       .order("transaction_date", { ascending: false })),
     loadSupabaseResult("documents", supabaseClient
       .from("documents")
@@ -537,6 +538,8 @@ async function refreshSupabaseData() {
       date: entry.transaction_date,
       eventId: entry.event_id || "",
       eventName: linkedEvent?.name || "",
+      fundingSourceId: entry.funding_source_id || "",
+      fundingSourceName: fundingSourceName(entry.funding_source_id),
       status: entry.status || "active",
       cancelledAt: entry.cancelled_at || "",
       cancelledReason: entry.cancelled_reason || "",
@@ -940,6 +943,10 @@ async function handleMoney(event) {
   const data = formData(event.target);
   const moneyId = data.id || "";
   const moneyMessage = moneyId ? "Zapisano zmiany w Finansach" : "Dodano wpis w Finansach";
+  const existingMoney = moneyId ? state.money.find((item) => item.id === moneyId) : null;
+  const oldFundingName = fundingSourceName(existingMoney?.fundingSourceId);
+  const newFundingName = fundingSourceName(data.fundingSourceId);
+  const fundingChanged = moneyId && (existingMoney?.fundingSourceId || "") !== (data.fundingSourceId || "");
   const linkedEvent = state.events.find((item) => item.id === data.eventId);
   if (data.type === "donation" && !data.category) {
     data.category = "Darowizny";
@@ -951,7 +958,8 @@ async function handleMoney(event) {
       category: data.category || null,
       amount: Number(data.amount || 0),
       transaction_date: data.date,
-      event_id: data.eventId || null
+      event_id: data.eventId || null,
+      funding_source_id: data.fundingSourceId || null
     };
     const { error } = moneyId
       ? await supabaseClient.from("transactions").update(payload).eq("id", moneyId)
@@ -961,7 +969,11 @@ async function handleMoney(event) {
       return;
     }
     resetMoneyForm(event.target);
-    await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
+    if (fundingChanged) {
+      await logActivity("Finanse", "Zmiana źródła finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+    } else {
+      await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
+    }
     await refreshSupabaseData();
     showToast(moneyMessage);
     return;
@@ -972,13 +984,19 @@ async function handleMoney(event) {
       Object.assign(entry, data, {
         id: moneyId,
         eventName: linkedEvent?.name || "",
-        amount: Number(data.amount)
+        amount: Number(data.amount),
+        fundingSourceId: data.fundingSourceId || "",
+        fundingSourceName: newFundingName
       });
     }
     resetMoneyForm(event.target);
     saveState();
     render();
-    logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data), type: data.type });
+    if (fundingChanged) {
+      logActivity("Finanse", "Zmiana źródła finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+    } else {
+      logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data), type: data.type });
+    }
     showToast(moneyMessage);
     return;
   }
@@ -988,6 +1006,8 @@ async function handleMoney(event) {
       ...data,
       eventName: linkedEvent?.name || "",
       amount: Number(data.amount),
+      fundingSourceId: data.fundingSourceId || "",
+      fundingSourceName: newFundingName,
       status: "active"
     });
   finishForm(event.target);
@@ -1372,6 +1392,7 @@ function render() {
   renderAuditLogs();
   renderFeeOptions();
   renderEventOptions();
+  renderFundingSourceOptions();
   renderInvoiceRentalOptions();
 }
 
@@ -2287,6 +2308,26 @@ function renderEventOptions() {
   renderEventSelect(elements.docEvent);
 }
 
+function renderFundingSourceOptions(selectedId = "") {
+  renderFundingSourceSelect(elements.moneyFundingSource, selectedId);
+}
+
+function renderFundingSourceSelect(select, selectedId = "") {
+  if (!select) return;
+  const current = selectedId || select.value;
+  const activeSources = (state.fundingSources || [])
+    .filter((source) => fundingStatusValue(source.status) === "aktywne" || source.id === current)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  select.innerHTML = '<option value="">Bez źródła</option>' + activeSources
+    .map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`)
+    .join("");
+  select.value = activeSources.some((source) => source.id === current) ? current : "";
+}
+
+function fundingStatusValue(status) {
+  return normalizeText(status || "aktywne");
+}
+
 function renderEventSelect(select) {
   if (!select) return;
   const current = select.value;
@@ -2337,12 +2378,13 @@ function rows(items, template) {
 
 function moneyRow(item) {
   const eventText = item.eventName ? ` - Wydarzenie: ${escapeHtml(item.eventName)}` : "";
+  const fundingText = item.fundingSourceName ? ` - Źródło: ${escapeHtml(item.fundingSourceName)}` : "";
   const typeLabel = moneyTypeLabel(item.type);
   return `
     <div class="row">
       <div>
         <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
-        <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${eventText}</small>
+        <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${eventText}${fundingText}</small>
       </div>
     </div>
   `;
@@ -2350,13 +2392,14 @@ function moneyRow(item) {
 
 function moneyRowWithDelete(item) {
   const eventText = item.eventName ? ` - Wydarzenie: ${escapeHtml(item.eventName)}` : "";
+  const fundingText = item.fundingSourceName ? ` - Źródło: ${escapeHtml(item.fundingSourceName)}` : "";
   const typeLabel = moneyTypeLabel(item.type);
   const cancelled = !isActiveMoney(item);
   const statusLabel = cancelled ? ' <span class="badge neutral">Anulowany</span>' : "";
   return `
     <div>
       <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${statusLabel}${eventText}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${statusLabel}${eventText}${fundingText}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editMoney('${item.id}')">Edytuj</button>` : ""}
@@ -2376,6 +2419,8 @@ function editMoney(id) {
   form.category.value = entry.category || "";
   renderEventOptions();
   form.eventId.value = entry.eventId || "";
+  renderFundingSourceOptions(entry.fundingSourceId || "");
+  form.fundingSourceId.value = entry.fundingSourceId || "";
   form.amount.value = Number(entry.amount || 0);
   form.date.value = entry.date || new Date().toISOString().slice(0, 10);
   elements.moneyFormTitle.textContent = "Edytuj operację";
@@ -2393,10 +2438,12 @@ function resetMoneyForm(form) {
   form.reset();
   form.id.value = "";
   form.date.valueAsDate = new Date();
+  form.fundingSourceId.value = "";
   elements.moneyFormTitle.textContent = "Dodaj wpływ lub wydatek";
   form.querySelector('button[type="submit"]').textContent = "Zapisz";
   elements.cancelMoneyEdit.classList.add("hidden");
   renderEventOptions();
+  renderFundingSourceOptions();
 }
 
 function eventRow(item) {
@@ -2421,7 +2468,13 @@ function moneyLogAction(type) {
 }
 
 function moneyLogSummary(entry) {
-  return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}`;
+  const sourceName = fundingSourceName(entry.fundingSourceId);
+  return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
+}
+
+function fundingSourceName(id) {
+  if (!id) return "Bez źródła";
+  return state.fundingSources.find((source) => source.id === id)?.name || "Bez źródła";
 }
 
 function isExpenseType(type) {
