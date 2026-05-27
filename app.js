@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-05";
+const APP_VERSION = "2026.05.27-06";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -1240,9 +1240,15 @@ async function handleDoc(event) {
   const oldFundingName = fundingSourceName(existingDoc?.fundingSourceId);
   const newFundingName = fundingSourceName(data.fundingSourceId);
   const fundingChanged = docId && (existingDoc?.fundingSourceId || "") !== (data.fundingSourceId || "");
+  const shouldAddExpense = !docId && data.documentMoneyAction === "add_expense";
+  const documentExpenseAmount = Number(data.expenseAmount || 0);
   const file = event.target.file.files[0];
   if (file && file.type !== "application/pdf") {
     alert("Można dodać tylko plik PDF.");
+    return;
+  }
+  if (shouldAddExpense && documentExpenseAmount <= 0) {
+    alert("Wpisz kwotę większą niż 0 w polu Kwota - wydatek, żeby dodać wydatek do Finansów.");
     return;
   }
   if (supabaseClient && currentRole) {
@@ -1293,6 +1299,41 @@ async function handleDoc(event) {
       alert(`PDF mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
       return;
     }
+    if (shouldAddExpense) {
+      const { data: savedExpense, error: expenseError } = await supabaseClient
+        .from("transactions")
+        .insert({
+          type: "expense",
+          title: data.title,
+          category: data.category || "Dokument",
+          amount: documentExpenseAmount,
+          transaction_date: data.date,
+          event_id: data.eventId || null,
+          funding_source_id: data.fundingSourceId || null,
+          source_type: "document_expense",
+          source_id: savedDoc.id
+        })
+        .select("id")
+        .single();
+      if (expenseError) {
+        alert(`Dokument zapisano, ale nie udało się dodać wydatku do Finansów: ${expenseError.message}`);
+        await logActivity("Dokumenty", "Dodanie dokumentu", { summary: docLogSummary(data) });
+        await refreshSupabaseData();
+        return;
+      }
+      const { error: linkError } = await supabaseClient
+        .from("documents")
+        .update({ transaction_id: savedExpense.id })
+        .eq("id", savedDoc.id);
+      if (linkError) {
+        alert(`Wydatek dodano do Finansów, ale nie udało się powiązać go z dokumentem: ${linkError.message}`);
+        await logActivity("Dokumenty", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
+        await refreshSupabaseData();
+        return;
+      }
+      await logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
+      await logActivity("Dokumenty", "Powiązanie dokumentu z wpisem Finansów", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
+    }
     resetDocForm(event.target);
     if (fundingChanged) {
       await logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
@@ -1300,7 +1341,7 @@ async function handleDoc(event) {
       await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu", { summary: docLogSummary(data) });
     }
     await refreshSupabaseData();
-    showToast("Zapisano dokument");
+    showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
     return;
   }
   const attachment = file ? await readPdfAttachment(file) : null;
@@ -1326,11 +1367,33 @@ async function handleDoc(event) {
     showToast("Zapisano dokument");
     return;
   }
-  state.docs.push({ id: makeId(), ...data, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, attachment });
+  const localDocId = makeId();
+  let transactionId = "";
+  if (shouldAddExpense) {
+    transactionId = makeId();
+    state.money.push({
+      id: transactionId,
+      type: "expense",
+      title: data.title,
+      category: data.category || "Dokument",
+      amount: documentExpenseAmount,
+      date: data.date,
+      eventId: data.eventId || "",
+      eventName: state.events.find((eventItem) => eventItem.id === data.eventId)?.name || "",
+      fundingSourceId: data.fundingSourceId || "",
+      fundingSourceName: newFundingName,
+      status: "active",
+      sourceType: "document_expense",
+      sourceId: localDocId
+    });
+    logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
+    logActivity("Dokumenty", "Powiązanie dokumentu z wpisem Finansów", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
+  }
+  state.docs.push({ id: localDocId, ...data, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, transactionId, attachment });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   logActivity("Dokumenty", "Dodanie dokumentu", { summary: docLogSummary(data) });
-  showToast("Zapisano dokument");
+  showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
 }
 
 async function handleInvoice(event) {
@@ -2032,6 +2095,8 @@ function fundingDocRow(doc) {
 }
 
 function documentAmountText(doc) {
+  const linkedTransaction = doc.transactionId ? state.money.find((entry) => entry.id === doc.transactionId) : null;
+  if (linkedTransaction) return `${moneyTypeLabel(linkedTransaction.type)}: ${money(linkedTransaction.amount)}`;
   const income = Number(doc.incomeAmount || 0);
   const expense = Number(doc.expenseAmount || 0);
   if (income > 0) return `Wpływ: ${money(income)}`;
@@ -2250,7 +2315,7 @@ function renderDocs() {
   elements.docsList.innerHTML = rows(filterItems(state.docs), (item) => `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
@@ -2275,6 +2340,7 @@ function editDoc(id) {
   form.fundingSourceId.value = doc.fundingSourceId || "";
   form.incomeAmount.value = "";
   form.expenseAmount.value = "";
+  form.documentMoneyAction.value = "save_only";
   form.notes.value = doc.notes || "";
   elements.docFormTitle.textContent = "Edytuj dokument";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
@@ -2292,6 +2358,7 @@ function resetDocForm(form) {
   form.id.value = "";
   form.date.valueAsDate = new Date();
   form.fundingSourceId.value = "";
+  form.documentMoneyAction.value = "save_only";
   elements.docFormTitle.textContent = "Dodaj dokument lub wiadomość";
   form.querySelector('button[type="submit"]').textContent = "Zapisz dokument";
   elements.cancelDocEdit.classList.add("hidden");
