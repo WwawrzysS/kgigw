@@ -220,7 +220,7 @@
         <h2>Logowanie obsługi stoiska</h2>
 
         <label for="loginEmail">E-mail użytkownika</label>
-        <input id="loginEmail" type="email" autocomplete="username" placeholder="np. faktura@kgigw.local" />
+        <input id="loginEmail" type="email" autocomplete="username" placeholder="faktura@kgigw.local" />
 
         <label for="loginPassword">Hasło</label>
         <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Hasło" />
@@ -303,14 +303,10 @@
   </div>
 
   <script>
-    /*
-      WAŻNE:
-      Wklej tutaj dane z Twojego projektu Supabase.
-      To są dane publiczne anon, takie jak masz już w swoim programie.
-      Nie wklejaj service_role.
-    */
     const SUPABASE_URL = "https://iwopaapilfnzlknjwtse.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_Ny5yMxH-Ww25xLk9fGN0jA_X2g-amvS";
+
+    const ALLOWED_EMAIL = "faktura@kgigw.local";
 
     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -376,12 +372,36 @@
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
     }
 
-    async function checkSession() {
-      const { data } = await client.auth.getSession();
-      if (data.session) {
-        loginBox.classList.add("hidden");
-        formBox.classList.remove("hidden");
+    async function showLogin(message) {
+      formBox.classList.add("hidden");
+      loginBox.classList.remove("hidden");
+
+      if (message) {
+        showMessage(loginMessage, "error", message);
       }
+    }
+
+    async function showForm() {
+      loginBox.classList.add("hidden");
+      formBox.classList.remove("hidden");
+      hideMessage(loginMessage);
+    }
+
+    async function checkSession() {
+      const { data, error } = await client.auth.getUser();
+
+      if (error || !data.user) {
+        await showLogin("");
+        return;
+      }
+
+      if (data.user.email !== ALLOWED_EMAIL) {
+        await client.auth.signOut();
+        await showLogin("Ta strona jest tylko dla użytkownika stoiska. Zaloguj się jako faktura@kgigw.local.");
+        return;
+      }
+
+      await showForm();
     }
 
     loginBtn.addEventListener("click", async () => {
@@ -392,6 +412,11 @@
 
       if (!email || !password) {
         showMessage(loginMessage, "error", "Podaj e-mail i hasło.");
+        return;
+      }
+
+      if (email !== ALLOWED_EMAIL) {
+        showMessage(loginMessage, "error", "Ta strona jest tylko dla konta faktura@kgigw.local.");
         return;
       }
 
@@ -412,13 +437,32 @@
         return;
       }
 
-      loginBox.classList.add("hidden");
-      formBox.classList.remove("hidden");
-      hideMessage(loginMessage);
+      const { data: userData } = await client.auth.getUser();
+
+      if (!userData.user || userData.user.email !== ALLOWED_EMAIL) {
+        await client.auth.signOut();
+        showMessage(loginMessage, "error", "Ta strona jest tylko dla konta faktura@kgigw.local.");
+        return;
+      }
+
+      await showForm();
     });
 
     saveBtn.addEventListener("click", async () => {
       hideMessage(saveMessage);
+
+      const { data: userData, error: userError } = await client.auth.getUser();
+
+      if (userError || !userData.user) {
+        await showLogin("Sesja wygasła. Zaloguj się ponownie.");
+        return;
+      }
+
+      if (userData.user.email !== ALLOWED_EMAIL) {
+        await client.auth.signOut();
+        await showLogin("Ta strona jest tylko dla użytkownika stoiska. Zaloguj się jako faktura@kgigw.local.");
+        return;
+      }
 
       const buyerName = fields.buyerName.value.trim();
       const buyerEmail = fields.buyerEmail.value.trim();
@@ -437,14 +481,6 @@
 
       if (!validateEmail(buyerEmail)) {
         showMessage(saveMessage, "error", "E-mail kupującego wygląda niepoprawnie.");
-        return;
-      }
-
-      const { data: userData, error: userError } = await client.auth.getUser();
-
-      if (userError || !userData.user) {
-        showMessage(saveMessage, "error", "Sesja wygasła. Zaloguj się ponownie.");
-        console.error("Brak użytkownika:", userError);
         return;
       }
 
@@ -500,6 +536,7 @@
       formBox.classList.add("hidden");
       loginBox.classList.remove("hidden");
       loginPassword.value = "";
+      hideMessage(loginMessage);
     });
 
     checkSession();
