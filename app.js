@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.29-02";
+const APP_VERSION = "2026.05.29-03";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -67,6 +67,8 @@ let lateFeeDashboardTimer = null;
 let activeRentalDashboardIndex = 0;
 let activeRentalDashboardTimer = null;
 let selectedFundingSourceId = "";
+let editingInvoiceRequestId = "";
+let pendingInvoiceRequestId = "";
 
 const titles = {
   dashboard: "Pulpit",
@@ -1496,6 +1498,12 @@ async function handleDoc(event) {
 async function handleInvoice(event) {
   event.preventDefault();
   const data = formData(event.target);
+  const sourceRequest = pendingInvoiceRequestId ? state.invoiceRequests.find((entry) => entry.id === pendingInvoiceRequestId) : null;
+  if (sourceRequest?.status === "wystawiona") {
+    alert("Z tego zgłoszenia faktura została już przygotowana. Nie można utworzyć drugiej faktury z tego samego zgłoszenia.");
+    pendingInvoiceRequestId = "";
+    return;
+  }
   const selectedRental = state.rentalLoans.find((entry) => entry.id === data.rentalId);
   if (data.rentalId && rentalInvoice(data.rentalId)) {
     alert("Do tego wypożyczenia faktura została już wystawiona.");
@@ -1543,6 +1551,20 @@ async function handleInvoice(event) {
     }
     const paymentResult = await addInvoicePaymentToSupabase({ ...invoice, id: savedInvoice.id });
     if (!paymentResult.ok) return;
+    if (sourceRequest) {
+      const requestUpdate = await supabaseClient
+        .from("invoice_requests")
+        .update({ status: "wystawiona" })
+        .eq("id", sourceRequest.id);
+      if (requestUpdate.error) {
+        console.error("Faktura została zapisana, ale nie udało się oznaczyć zgłoszenia jako wystawione.", requestUpdate.error);
+        showToast("Faktura zapisana, ale zgłoszenie nie zmieniło statusu", "error");
+      } else {
+        await logActivity("Faktury", "Utworzenie faktury ze zgłoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
+        await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
+      }
+      pendingInvoiceRequestId = "";
+    }
     event.target.reset();
     event.target.date.valueAsDate = new Date();
     event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
@@ -1553,6 +1575,12 @@ async function handleInvoice(event) {
   }
   state.invoices.push(invoice);
   addInvoicePaymentLocal(state.invoices.at(-1));
+  if (sourceRequest) {
+    sourceRequest.status = "wystawiona";
+    logActivity("Faktury", "Utworzenie faktury ze zgłoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
+    logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
+    pendingInvoiceRequestId = "";
+  }
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
@@ -2771,6 +2799,7 @@ function invoiceMatchesSearch(invoice, search) {
 
 function invoiceRequestRow(request) {
   const statusLabel = invoiceRequestStatusLabel(request.status);
+  if (editingInvoiceRequestId === request.id) return invoiceRequestEditForm(request);
   return `
     <div>
       <strong>ZGŁOSZENIE ZE STOISKA - ${escapeHtml(request.buyerName || "Brak nabywcy")} - ${money(request.gross)}</strong>
@@ -2785,13 +2814,47 @@ function invoiceRequestRow(request) {
       </small>
     </div>
     <div class="row-actions">
+      ${request.status !== "wystawiona" ? `<button class="small-button" onclick="prepareInvoiceFromRequest('${request.id}')">Utwórz fakturę</button>` : '<span class="badge paid">Faktura wystawiona</span>'}
       <button class="small-button" onclick="editInvoiceRequest('${request.id}')">Edytuj</button>
-      <button class="small-button" onclick="printInvoiceRequest('${request.id}')">Drukuj zgłoszenie</button>
       <button class="small-button" onclick="prepareInvoiceRequestEmail('${request.id}')">Przygotuj e-mail</button>
       ${request.status !== "w_trakcie" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'w_trakcie')">Oznacz jako w trakcie</button>` : ""}
-      ${request.status !== "wystawiona" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'wystawiona')">Oznacz jako wystawiona</button>` : ""}
+      <button class="small-button" onclick="printInvoiceRequest('${request.id}')">Drukuj zgłoszenie</button>
       ${request.status !== "anulowana" ? `<button class="delete-button" onclick="updateInvoiceRequestStatus('${request.id}', 'anulowana')">Anuluj zgłoszenie</button>` : ""}
     </div>
+  `;
+}
+
+function invoiceRequestEditForm(request) {
+  return `
+    <form class="invoice-request-edit" onsubmit="saveInvoiceRequestEdit(event, '${request.id}')">
+      <h3>Edytuj zgłoszenie ze stoiska</h3>
+      <div class="form-grid">
+        <input name="buyerName" required placeholder="Nabywca" value="${escapeHtml(request.buyerName || "")}" />
+        <input name="buyerNip" placeholder="NIP" value="${escapeHtml(request.buyerNip || "")}" />
+        <input name="buyerEmail" type="email" placeholder="E-mail" value="${escapeHtml(request.buyerEmail || "")}" />
+        <input name="buyerPhone" placeholder="Telefon" value="${escapeHtml(request.buyerPhone || "")}" />
+        <input name="gross" type="number" min="0" step="0.01" placeholder="Kwota brutto" value="${Number(request.gross || 0)}" />
+        <select name="paymentMethod">
+          <option value="">Forma płatności: brak</option>
+          <option value="cash" ${invoiceRequestPaymentCode(request.paymentMethod) === "cash" ? "selected" : ""}>Gotówka</option>
+          <option value="transfer" ${invoiceRequestPaymentCode(request.paymentMethod) === "transfer" ? "selected" : ""}>Przelew</option>
+          <option value="other" ${invoiceRequestPaymentCode(request.paymentMethod) === "other" ? "selected" : ""}>Płatność on-line / inna</option>
+        </select>
+        <select name="status">
+          <option value="do_wystawienia" ${request.status === "do_wystawienia" ? "selected" : ""}>Do wystawienia</option>
+          <option value="w_trakcie" ${request.status === "w_trakcie" ? "selected" : ""}>W trakcie</option>
+          <option value="wystawiona" ${request.status === "wystawiona" ? "selected" : ""}>Wystawiona</option>
+          <option value="anulowana" ${request.status === "anulowana" ? "selected" : ""}>Anulowana</option>
+        </select>
+      </div>
+      <input name="buyerAddress" placeholder="Adres" value="${escapeHtml(request.buyerAddress || "")}" />
+      <textarea name="itemDescription" placeholder="Opis zakupu">${escapeHtml(request.itemDescription || "")}</textarea>
+      <textarea name="notes" placeholder="Uwagi">${escapeHtml(request.notes || "")}</textarea>
+      <div class="row-actions">
+        <button class="small-button" type="submit">Zapisz zmiany</button>
+        <button class="small-button secondary-button" type="button" onclick="cancelInvoiceRequestEdit()">Anuluj</button>
+      </div>
+    </form>
   `;
 }
 
@@ -2822,7 +2885,7 @@ function invoiceRequestMatchesSearch(request, search) {
 }
 
 function invoiceRequestMatchesPaymentFilter(request, filter) {
-  if (filter === "all") return true;
+  if (filter === "all") return request.status !== "anulowana";
   if (filter === "paid") return request.status === "wystawiona";
   if (filter === "unpaid") return request.status === "do_wystawienia" || request.status === "w_trakcie";
   return false;
@@ -3504,6 +3567,9 @@ function downloadInvoicePdf(id) {
 async function editInvoiceRequest(id) {
   const request = state.invoiceRequests.find((entry) => entry.id === id);
   if (!request) return;
+  editingInvoiceRequestId = id;
+  renderInvoices();
+  return;
   const statusOptions = "do_wystawienia, w_trakcie, wystawiona, anulowana";
   const updated = {
     buyerName: prompt("Nabywca:", request.buyerName || "") ?? request.buyerName,
@@ -3565,6 +3631,109 @@ async function editInvoiceRequest(id) {
   render();
   await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
   showToast("Zapisano zmiany w zgłoszeniu");
+}
+
+function cancelInvoiceRequestEdit() {
+  editingInvoiceRequestId = "";
+  renderInvoices();
+}
+
+async function saveInvoiceRequestEdit(event, id) {
+  event.preventDefault();
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  const data = formData(event.target);
+  const amount = Number(String(data.gross || 0).replace(",", "."));
+  if (!Number.isFinite(amount) || amount < 0) {
+    alert("Podaj poprawną kwotę brutto.");
+    return;
+  }
+  const updated = {
+    buyerName: data.buyerName || "",
+    buyerNip: data.buyerNip || "",
+    buyerAddress: data.buyerAddress || "",
+    buyerEmail: data.buyerEmail || "",
+    buyerPhone: data.buyerPhone || "",
+    itemDescription: data.itemDescription || "",
+    gross: amount,
+    paymentMethod: data.paymentMethod || "",
+    notes: data.notes || "",
+    status: data.status || "do_wystawienia"
+  };
+  const payload = {
+    buyer_name: updated.buyerName,
+    buyer_nip: updated.buyerNip,
+    buyer_address: updated.buyerAddress,
+    buyer_email: updated.buyerEmail,
+    buyer_phone: updated.buyerPhone,
+    item_description: updated.itemDescription,
+    amount_brutto: updated.gross,
+    payment_method: updated.paymentMethod,
+    notes: updated.notes,
+    status: updated.status
+  };
+
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("invoice_requests")
+      .update(payload)
+      .eq("id", id);
+    if (error) {
+      console.error("Nie udało się edytować zgłoszenia ze stoiska.", { id, payload, error });
+      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      return;
+    }
+    editingInvoiceRequestId = "";
+    await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+    await refreshSupabaseData();
+    showToast("Zapisano zmiany w zgłoszeniu");
+    return;
+  }
+
+  Object.assign(request, updated);
+  editingInvoiceRequestId = "";
+  saveState();
+  render();
+  await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+  showToast("Zapisano zmiany w zgłoszeniu");
+}
+
+function prepareInvoiceFromRequest(id) {
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  if (request.status === "wystawiona") {
+    alert("To zgłoszenie jest już oznaczone jako wystawione. Nie można utworzyć drugiej faktury z tego samego zgłoszenia.");
+    return;
+  }
+  const form = document.querySelector("#invoiceForm");
+  if (!form) return;
+  const gross = Number(request.gross || 0);
+  const vatRate = 23;
+  const net = gross / (1 + vatRate / 100);
+  pendingInvoiceRequestId = id;
+  switchView("invoices");
+  form.rentalId.value = "";
+  form.number.value = "";
+  form.date.valueAsDate = new Date();
+  form.buyerName.value = request.buyerName || "";
+  form.buyerAddress.value = request.buyerAddress || "";
+  form.buyerNip.value = request.buyerNip || "";
+  form.source.value = "Sprzedaż";
+  form.itemName.value = request.itemDescription || "Sprzedaż ze stoiska";
+  form.quantity.value = 1;
+  form.unitPrice.value = net.toFixed(2);
+  form.vatRate.value = String(vatRate);
+  form.paymentStatus.value = "unpaid";
+  form.paymentMethod.value = invoiceRequestPaymentCode(request.paymentMethod) || "cash";
+  form.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
+  form.notes.value = [
+    request.buyerEmail ? `E-mail: ${request.buyerEmail}` : "",
+    request.buyerPhone ? `Telefon: ${request.buyerPhone}` : "",
+    request.notes ? `Uwagi zgłoszenia: ${request.notes}` : ""
+  ].filter(Boolean).join("\n");
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  form.number.focus();
+  showToast("Uzupełniono formularz faktury danymi ze zgłoszenia");
 }
 
 async function printInvoiceRequest(id) {

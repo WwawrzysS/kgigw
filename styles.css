@@ -738,6 +738,12 @@ textarea {
   background: #fbfaf7;
 }
 
+.invoice-request-edit {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+}
+
 .funding-details-panel {
   grid-column: 1 / -1;
 }
