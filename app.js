@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.27-11";
+const APP_VERSION = "2026.05.29-01";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -45,6 +45,7 @@ const starterData = {
   rentalLoans: [],
   docs: [],
   invoices: [],
+  invoiceRequests: [],
   board: [],
   auditLogs: []
 };
@@ -435,7 +436,7 @@ async function refreshSupabaseData() {
     return;
   }
 
-  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult] = await Promise.all([
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, board_role, created_at")
@@ -471,7 +472,11 @@ async function refreshSupabaseData() {
     loadSupabaseResult("invoices", supabaseClient
       .from("invoices")
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes, payment_status, payment_method, paid_at, payment_transaction_id, payment_due_date, bank_account")
-      .order("invoice_date", { ascending: false }))
+      .order("invoice_date", { ascending: false })),
+    loadSupabaseResult("invoice_requests", supabaseClient
+      .from("invoice_requests")
+      .select("id, created_at, buyer_name, buyer_nip, buyer_address, buyer_email, buyer_phone, item_description, amount_brutto, payment_method, notes, status, source, event_name, created_by")
+      .order("created_at", { ascending: false }))
   ]);
 
   if (rentalsResult.error) {
@@ -513,6 +518,10 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("Finansów", moneyResult.error);
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
+  logSupabaseLoadError("zgłoszeń faktur ze stoiska", invoiceRequestsResult.error);
+  if (invoiceRequestsResult.error) {
+    console.error("Nie udało się pobrać zgłoszeń ze stoiska z public.invoice_requests. Faktury będą działały dalej.", invoiceRequestsResult.error);
+  }
   if (!membersResult.error) state.members = (membersResult.data || []).map((member) => ({
     id: member.id,
     name: member.name,
@@ -672,6 +681,25 @@ async function refreshSupabaseData() {
       bankAccount: invoice.bank_account || ""
     };
   });
+
+  if (!invoiceRequestsResult.error) state.invoiceRequests = (invoiceRequestsResult.data || []).map((request) => ({
+    id: request.id,
+    createdAt: request.created_at || "",
+    date: request.created_at ? request.created_at.slice(0, 10) : "",
+    buyerName: request.buyer_name || "",
+    buyerNip: request.buyer_nip || "",
+    buyerAddress: request.buyer_address || "",
+    buyerEmail: request.buyer_email || "",
+    buyerPhone: request.buyer_phone || "",
+    itemDescription: request.item_description || "",
+    gross: Number(request.amount_brutto || 0),
+    paymentMethod: request.payment_method || "",
+    notes: request.notes || "",
+    status: request.status || "do_wystawienia",
+    source: request.source || "stoisko",
+    eventName: request.event_name || "",
+    createdBy: request.created_by || ""
+  }));
 
   supabaseDataReady = true;
   saveState();
@@ -1646,6 +1674,14 @@ function globalSearchResults(search) {
     `Faktura ${invoice.number}`,
     `${invoice.buyerName || "Brak nabywcy"} · ${money(invoice.gross)} · ${invoicePaymentStatusLabel(invoice.paymentStatus)}`,
     [invoice.number, `faktura ${invoice.number}`, invoice.buyerName, invoice.buyerAddress, invoice.buyerNip, invoice.gross, money(invoice.gross), invoicePaymentStatusLabel(invoice.paymentStatus), invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)), invoice.rentalLabel, invoice.notes]
+  ));
+
+  state.invoiceRequests.forEach((request) => addResult(
+    "Faktury",
+    "invoices",
+    `Zgłoszenie ze stoiska - ${request.buyerName || "Brak nabywcy"}`,
+    `${formatDate(request.date)} · ${money(request.gross)} · ${invoiceRequestStatusLabel(request.status)}`,
+    [request.buyerName, request.buyerNip, request.buyerAddress, request.buyerEmail, request.buyerPhone, request.itemDescription, request.gross, money(request.gross), invoiceRequestPaymentLabel(request.paymentMethod), invoiceRequestStatusLabel(request.status), request.eventName, request.notes]
   ));
 
   state.rentalLoans.forEach((loan) => addResult(
@@ -2648,7 +2684,7 @@ function renderStorageInfo() {
 
 function renderInvoices() {
   const invoices = filteredInvoices();
-  elements.invoicesList.innerHTML = invoices.length ? invoices.map((invoice) => `<div class="row">${invoiceRow(invoice)}</div>`).join("") : '<div class="row"><small>Brak faktur pasujących do filtrów.</small></div>';
+  elements.invoicesList.innerHTML = invoices.length ? invoices.map((invoice) => `<div class="row ${invoice.rowType === "request" ? "invoice-request-row" : ""}">${invoice.rowType === "request" ? invoiceRequestRow(invoice) : invoiceRow(invoice)}</div>`).join("") : '<div class="row"><small>Brak faktur pasujących do filtrów.</small></div>';
 }
 
 function invoiceRow(invoice) {
@@ -2678,15 +2714,20 @@ function filteredInvoices() {
   const dateFrom = elements.invoiceDateFrom?.value || "";
   const dateTo = elements.invoiceDateTo?.value || "";
   const sort = elements.invoiceSort?.value || "date_desc";
-  return [...state.invoices]
+  return [
+    ...state.invoices.map((invoice) => ({ ...invoice, rowType: "invoice" })),
+    ...state.invoiceRequests.map((request) => ({ ...request, rowType: "request" }))
+  ]
     .filter((invoice) => invoiceMatchesSearch(invoice, search))
     .filter((invoice) => {
+      if (invoice.rowType === "request") return invoiceRequestMatchesPaymentFilter(invoice, payment);
       if (payment === "all") return true;
       if (payment === "paid") return isInvoicePaid(invoice.paymentStatus);
       if (payment === "unpaid") return !isInvoicePaid(invoice.paymentStatus);
       return isInvoiceOverdue(invoice);
     })
     .filter((invoice) => {
+      if (invoice.rowType === "request") return invoiceRequestMatchesMethodFilter(invoice, method);
       const invoiceMethod = invoicePaymentMethodCode(invoice);
       if (method === "all") return true;
       if (method === "none") return !invoiceMethod;
@@ -2694,6 +2735,7 @@ function filteredInvoices() {
     })
     .filter((invoice) => {
       if (rental === "all") return true;
+      if (invoice.rowType === "request") return rental === "no_rental";
       return rental === "rental" ? Boolean(invoice.rentalId) : !invoice.rentalId;
     })
     .filter((invoice) => !dateFrom || String(invoice.date || "") >= dateFrom)
@@ -2702,6 +2744,7 @@ function filteredInvoices() {
 }
 
 function invoiceMatchesSearch(invoice, search) {
+  if (invoice.rowType === "request") return invoiceRequestMatchesSearch(invoice, search);
   if (!search) return true;
   const plainAmount = String(invoice.gross || "").replace(".", ",");
   const compactNip = String(invoice.buyerNip || "").replace(/\D/g, "");
@@ -2724,6 +2767,69 @@ function invoiceMatchesSearch(invoice, search) {
   ].map(normalizeSearchText).join(" ");
   const searchable = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
   return search.split(" ").filter(Boolean).every((term) => searchable.includes(term));
+}
+
+function invoiceRequestRow(request) {
+  const statusLabel = invoiceRequestStatusLabel(request.status);
+  return `
+    <div>
+      <strong>ZGŁOSZENIE ZE STOISKA - ${escapeHtml(request.buyerName || "Brak nabywcy")} - ${money(request.gross)}</strong>
+      <small>
+        ${formatDate(request.date)} - NIP: ${escapeHtml(request.buyerNip || "brak")} - E-mail: ${escapeHtml(request.buyerEmail || "brak")}<br>
+        Telefon: ${escapeHtml(request.buyerPhone || "brak")} - Płatność: ${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}<br>
+        Adres: ${escapeHtml(request.buyerAddress || "brak adresu")}<br>
+        Opis: ${escapeHtml(request.itemDescription || "brak opisu")}<br>
+        Status: <span class="badge ${invoiceRequestStatusClass(request.status)}">${escapeHtml(statusLabel)}</span>
+        <span class="badge neutral">Zgłoszenie</span>
+        ${request.notes ? `<br>Uwagi: ${escapeHtml(request.notes)}` : ""}
+      </small>
+    </div>
+    <div class="row-actions">
+      ${request.status !== "w_trakcie" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'w_trakcie')">Oznacz jako w trakcie</button>` : ""}
+      ${request.status !== "wystawiona" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'wystawiona')">Oznacz jako wystawiona</button>` : ""}
+      ${request.status !== "anulowana" ? `<button class="delete-button" onclick="updateInvoiceRequestStatus('${request.id}', 'anulowana')">Anuluj zgłoszenie</button>` : ""}
+    </div>
+  `;
+}
+
+function invoiceRequestMatchesSearch(request, search) {
+  if (!search) return true;
+  const plainAmount = String(request.gross || "").replace(".", ",");
+  const compactNip = String(request.buyerNip || "").replace(/\D/g, "");
+  const haystack = [
+    "zgłoszenie ze stoiska",
+    "zgloszenie ze stoiska",
+    request.buyerName,
+    request.buyerAddress,
+    request.buyerNip,
+    compactNip,
+    request.buyerEmail,
+    request.buyerPhone,
+    request.itemDescription,
+    money(request.gross),
+    String(request.gross || ""),
+    plainAmount,
+    invoiceRequestPaymentLabel(request.paymentMethod),
+    invoiceRequestStatusLabel(request.status),
+    request.eventName,
+    request.notes
+  ].map(normalizeSearchText).join(" ");
+  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  return search.split(" ").filter(Boolean).every((term) => searchable.includes(term));
+}
+
+function invoiceRequestMatchesPaymentFilter(request, filter) {
+  if (filter === "all") return true;
+  if (filter === "paid") return request.status === "wystawiona";
+  if (filter === "unpaid") return request.status === "do_wystawienia" || request.status === "w_trakcie";
+  return false;
+}
+
+function invoiceRequestMatchesMethodFilter(request, filter) {
+  const method = invoiceRequestPaymentCode(request.paymentMethod);
+  if (filter === "all") return true;
+  if (filter === "none") return !method;
+  return method === filter;
 }
 
 function invoiceSortComparator(sort) {
@@ -2758,6 +2864,39 @@ function invoicePaymentMethodCode(invoice) {
   if (value === "transfer" || value === "przelew") return "transfer";
   if (value === "other" || value.includes("inna") || value.includes("online") || value.includes("on-line")) return "other";
   return "";
+}
+
+function invoiceRequestStatusLabel(status) {
+  const labels = {
+    do_wystawienia: "Do wystawienia",
+    w_trakcie: "W trakcie",
+    wystawiona: "Wystawiona",
+    anulowana: "Anulowana"
+  };
+  return labels[status] || status || "Do wystawienia";
+}
+
+function invoiceRequestStatusClass(status) {
+  if (status === "wystawiona") return "paid";
+  if (status === "anulowana") return "due";
+  if (status === "w_trakcie") return "returned";
+  return "neutral";
+}
+
+function invoiceRequestPaymentCode(method) {
+  const value = normalizeText(method);
+  if (value === "cash" || value.includes("got")) return "cash";
+  if (value === "transfer" || value.includes("przelew")) return "transfer";
+  if (value === "other" || value.includes("inna") || value.includes("online") || value.includes("on-line")) return "other";
+  return "";
+}
+
+function invoiceRequestPaymentLabel(method) {
+  const code = invoiceRequestPaymentCode(method);
+  if (code === "cash") return "Gotówka";
+  if (code === "transfer") return "Przelew";
+  if (code === "other") return "Płatność on-line / inna";
+  return method || "brak";
 }
 
 function isInvoiceOverdue(invoice) {
@@ -3415,6 +3554,38 @@ async function markInvoicePaid(id) {
   render();
   logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
   showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
+}
+
+async function updateInvoiceRequestStatus(id, status) {
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  const label = invoiceRequestStatusLabel(status);
+  if (status === "anulowana") {
+    const confirmed = confirm("Anulować to zgłoszenie ze stoiska?");
+    if (!confirmed) return;
+  }
+
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("invoice_requests")
+      .update({ status })
+      .eq("id", id);
+    if (error) {
+      console.error("Nie udało się zmienić statusu zgłoszenia ze stoiska.", { id, status, error });
+      alert(`Nie udało się zmienić statusu zgłoszenia: ${error.message}`);
+      return;
+    }
+    await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
+    await refreshSupabaseData();
+    showToast(`Zmieniono status zgłoszenia: ${label}`);
+    return;
+  }
+
+  request.status = status;
+  saveState();
+  render();
+  await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
+  showToast(`Zmieniono status zgłoszenia: ${label}`);
 }
 
 async function openDocumentAttachment(id) {
@@ -4439,6 +4610,7 @@ function exportAdminData(kind) {
       inventory: state.rentalInventory,
       rentals: state.rentalLoans,
       invoices: state.invoices,
+      invoice_requests: state.invoiceRequests,
       documents: state.docs,
       events: state.events,
       board: boardMembers()

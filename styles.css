@@ -734,6 +734,10 @@ textarea {
   flex-wrap: wrap;
 }
 
+.invoice-request-row {
+  background: #fbfaf7;
+}
+
 .funding-details-panel {
   grid-column: 1 / -1;
 }
