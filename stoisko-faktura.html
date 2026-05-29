@@ -17,6 +17,9 @@
       --muted: #66756b;
       --border: #dbe7dd;
       --danger: #b42318;
+      --blue: #2563eb;
+      --orange-bg: #fff7ed;
+      --orange-border: #fed7aa;
     }
 
     * {
@@ -32,7 +35,7 @@
 
     .page {
       min-height: 100vh;
-      padding: 18px;
+      padding: 14px;
       display: flex;
       justify-content: center;
       align-items: flex-start;
@@ -78,8 +81,8 @@
     }
 
     .warning {
-      background: #fff7ed;
-      border: 1px solid #fed7aa;
+      background: var(--orange-bg);
+      border: 1px solid var(--orange-border);
       border-radius: 14px;
       padding: 12px;
       margin: 12px 0;
@@ -107,7 +110,7 @@
     }
 
     textarea {
-      min-height: 90px;
+      min-height: 86px;
       resize: vertical;
     }
 
@@ -124,7 +127,8 @@
       flex-wrap: wrap;
     }
 
-    button {
+    button,
+    .sms-button {
       border: 0;
       border-radius: 12px;
       padding: 12px 16px;
@@ -133,6 +137,11 @@
       cursor: pointer;
       background: var(--green);
       color: #fff;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
     }
 
     button.secondary {
@@ -143,6 +152,10 @@
     button.danger {
       background: var(--danger);
       color: #fff;
+    }
+
+    .sms-button {
+      background: var(--blue);
     }
 
     button:disabled {
@@ -174,6 +187,26 @@
       color: #991b1b;
     }
 
+    .sms-box {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 14px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+    }
+
+    .sms-preview {
+      background: #ffffff;
+      border: 1px solid #dbeafe;
+      border-radius: 12px;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 14px;
+      line-height: 1.4;
+      color: #1e3a8a;
+      white-space: pre-wrap;
+    }
+
     .small {
       color: var(--muted);
       font-size: 13px;
@@ -198,7 +231,8 @@
         grid-template-columns: 1fr;
       }
 
-      button {
+      button,
+      .sms-button {
         width: 100%;
       }
     }
@@ -234,7 +268,7 @@
 
       <section id="formBox" class="hidden">
         <div class="notice">
-          Wpisz dane dokładnie tak, jak podał klient. Po zapisaniu dane trafią do zgłoszeń do faktury.
+          Wpisz dane dokładnie tak, jak podał klient. Po zapisaniu dane trafią do zgłoszeń do faktury w panelu KGiGW.
         </div>
 
         <h2>Dane kupującego</h2>
@@ -257,7 +291,7 @@
         <label for="buyerAddress">Adres</label>
         <textarea id="buyerAddress" placeholder="Ulica, kod pocztowy, miejscowość"></textarea>
 
-        <label for="buyerPhone">Telefon opcjonalnie</label>
+        <label for="buyerPhone">Telefon do SMS</label>
         <input id="buyerPhone" type="tel" placeholder="np. 501234567" />
 
         <h2>Dane zakupu</h2>
@@ -295,6 +329,18 @@
 
         <div id="saveMessage" class="message hidden"></div>
 
+        <div id="smsBox" class="sms-box hidden">
+          <strong>SMS do klienta</strong>
+          <p class="small">
+            Zgłoszenie jest zapisane. Możesz teraz wysłać klientowi SMS z telefonu.
+            Telefon otworzy wiadomość, a Ty tylko klikniesz „Wyślij”.
+          </p>
+
+          <a id="smsLink" class="sms-button" href="#">Wyślij SMS do klienta</a>
+
+          <div id="smsPreview" class="sms-preview"></div>
+        </div>
+
         <p class="small">
           Po zapisaniu poinformuj klienta: „Dane zostały przyjęte. Faktura zostanie przygotowana i wysłana po sprawdzeniu.”
         </p>
@@ -322,6 +368,10 @@
     const clearBtn = document.getElementById("clearBtn");
     const logoutBtn = document.getElementById("logoutBtn");
     const saveMessage = document.getElementById("saveMessage");
+
+    const smsBox = document.getElementById("smsBox");
+    const smsLink = document.getElementById("smsLink");
+    const smsPreview = document.getElementById("smsPreview");
 
     const fields = {
       buyerName: document.getElementById("buyerName"),
@@ -360,11 +410,62 @@
       return Math.round(parsed * 100) / 100;
     }
 
+    function normalizePhone(value) {
+      return String(value || "")
+        .replace(/\s/g, "")
+        .replace(/-/g, "")
+        .replace(/\(/g, "")
+        .replace(/\)/g, "");
+    }
+
+    function smsSeparator() {
+      const userAgent = navigator.userAgent || "";
+      const isIOS = /iPad|iPhone|iPod/.test(userAgent);
+      return isIOS ? "&" : "?";
+    }
+
+    function buildSmsText(email) {
+      const safeEmail = email || "podany adres e-mail";
+      return "Dziekujemy. Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: "
+        + safeEmail
+        + ". KGiGW we Wlosani";
+    }
+
+    function prepareSms(phone, email) {
+      const cleanPhone = normalizePhone(phone);
+      const text = buildSmsText(email);
+      const encodedText = encodeURIComponent(text);
+
+      smsPreview.textContent = text;
+
+      if (!cleanPhone) {
+        smsLink.removeAttribute("href");
+        smsLink.textContent = "Brak numeru telefonu - SMS niedostępny";
+        smsLink.style.opacity = "0.6";
+        smsLink.style.pointerEvents = "none";
+        smsBox.classList.remove("hidden");
+        return;
+      }
+
+      smsLink.href = "sms:" + cleanPhone + smsSeparator() + "body=" + encodedText;
+      smsLink.textContent = "Wyślij SMS do klienta";
+      smsLink.style.opacity = "1";
+      smsLink.style.pointerEvents = "auto";
+      smsBox.classList.remove("hidden");
+    }
+
+    function clearSms() {
+      smsBox.classList.add("hidden");
+      smsLink.href = "#";
+      smsPreview.textContent = "";
+    }
+
     function clearForm() {
       Object.values(fields).forEach((field) => {
         field.value = "";
       });
       hideMessage(saveMessage);
+      clearSms();
     }
 
     function validateEmail(value) {
@@ -450,6 +551,7 @@
 
     saveBtn.addEventListener("click", async () => {
       hideMessage(saveMessage);
+      clearSms();
 
       const { data: userData, error: userError } = await client.auth.getUser();
 
@@ -466,6 +568,7 @@
 
       const buyerName = fields.buyerName.value.trim();
       const buyerEmail = fields.buyerEmail.value.trim();
+      const buyerPhone = fields.buyerPhone.value.trim();
       const itemDescription = fields.itemDescription.value.trim();
       const amount = parseMoney(fields.amountBrutto.value);
 
@@ -489,7 +592,7 @@
         buyer_nip: fields.buyerNip.value.trim() || null,
         buyer_address: fields.buyerAddress.value.trim() || null,
         buyer_email: buyerEmail || null,
-        buyer_phone: fields.buyerPhone.value.trim() || null,
+        buyer_phone: buyerPhone || null,
         item_description: itemDescription,
         amount_brutto: amount,
         payment_method: fields.paymentMethod.value || null,
@@ -519,13 +622,10 @@
       showMessage(
         saveMessage,
         "ok",
-        "Zgłoszenie zapisane. Poinformuj klienta, że dane zostały przyjęte, a faktura zostanie przygotowana po sprawdzeniu."
+        "Zgłoszenie zapisane. Możesz wysłać klientowi SMS z potwierdzeniem."
       );
 
-      clearTimeout(window.__clearTimer);
-      window.__clearTimer = setTimeout(() => {
-        clearForm();
-      }, 2500);
+      prepareSms(buyerPhone, buyerEmail);
     });
 
     clearBtn.addEventListener("click", clearForm);
