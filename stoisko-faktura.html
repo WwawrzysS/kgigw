@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>KGiGW we Włosani - dane do faktury</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    :root {
+      --green: #1f7a3f;
+      --green-dark: #14592d;
+      --bg: #f3f7f2;
+      --card: #ffffff;
+      --text: #17251b;
+      --muted: #66756b;
+      --border: #dbe7dd;
+      --danger: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .page {
+      min-height: 100vh;
+      padding: 18px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 720px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      color: var(--green-dark);
+    }
+
+    h2 {
+      margin: 18px 0 10px;
+      font-size: 18px;
+      color: var(--green-dark);
+    }
+
+    .subtitle {
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .notice {
+      background: #eef8ef;
+      border: 1px solid #cce8d1;
+      border-radius: 14px;
+      padding: 12px;
+      margin: 12px 0;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .warning {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 14px;
+      padding: 12px;
+      margin: 12px 0;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 16px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--green);
+      color: #fff;
+    }
+
+    button.secondary {
+      background: #e8f1ea;
+      color: var(--green-dark);
+    }
+
+    button.danger {
+      background: var(--danger);
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .message {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .message.ok {
+      background: #ecfdf3;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+    }
+
+    .message.error {
+      background: #fef3f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 620px) {
+      .page {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 14px;
+        border-radius: 14px;
+      }
+
+      h1 {
+        font-size: 21px;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <main class="card">
+      <h1>KGiGW we Włosani</h1>
+      <p class="subtitle">Stoisko - zgłoszenie danych do faktury</p>
+
+      <div class="warning">
+        To nie wystawia faktury automatycznie. Formularz zapisuje dane do sprawdzenia.
+        Faktura zostanie przygotowana później przez Agatę albo Tomka.
+      </div>
+
+      <section id="loginBox">
+        <h2>Logowanie obsługi stoiska</h2>
+
+        <label for="loginEmail">E-mail użytkownika</label>
+        <input id="loginEmail" type="email" autocomplete="username" placeholder="np. faktura@kgigw.local" />
+
+        <label for="loginPassword">Hasło</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Hasło" />
+
+        <div class="buttons">
+          <button id="loginBtn" type="button">Zaloguj</button>
+        </div>
+
+        <div id="loginMessage" class="message hidden"></div>
+      </section>
+
+      <section id="formBox" class="hidden">
+        <div class="notice">
+          Wpisz dane dokładnie tak, jak podał klient. Po zapisaniu dane trafią do zgłoszeń do faktury.
+        </div>
+
+        <h2>Dane kupującego</h2>
+
+        <label for="buyerName">Nabywca / firma *</label>
+        <input id="buyerName" type="text" placeholder="Nazwa firmy lub imię i nazwisko" />
+
+        <div class="grid">
+          <div>
+            <label for="buyerNip">NIP</label>
+            <input id="buyerNip" type="text" inputmode="numeric" placeholder="np. 1234567890" />
+          </div>
+
+          <div>
+            <label for="buyerEmail">E-mail kupującego</label>
+            <input id="buyerEmail" type="email" placeholder="email@przyklad.pl" />
+          </div>
+        </div>
+
+        <label for="buyerAddress">Adres</label>
+        <textarea id="buyerAddress" placeholder="Ulica, kod pocztowy, miejscowość"></textarea>
+
+        <label for="buyerPhone">Telefon opcjonalnie</label>
+        <input id="buyerPhone" type="tel" placeholder="np. 501234567" />
+
+        <h2>Dane zakupu</h2>
+
+        <label for="itemDescription">Co kupił klient / opis *</label>
+        <textarea id="itemDescription" placeholder="np. produkty ze stoiska Majówka, ciasta, rękodzieło..."></textarea>
+
+        <div class="grid">
+          <div>
+            <label for="amountBrutto">Kwota brutto</label>
+            <input id="amountBrutto" type="text" inputmode="decimal" placeholder="np. 120,00" />
+          </div>
+
+          <div>
+            <label for="paymentMethod">Forma płatności</label>
+            <select id="paymentMethod">
+              <option value="">brak / nie wiem</option>
+              <option value="gotówka">gotówka</option>
+              <option value="przelew">przelew</option>
+              <option value="blik">BLIK</option>
+              <option value="karta">karta</option>
+              <option value="inne">inne</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="notes">Uwagi</label>
+        <textarea id="notes" placeholder="Np. klient prosi o wysyłkę faktury na e-mail, dodatkowe dane, poprawki..."></textarea>
+
+        <div class="buttons">
+          <button id="saveBtn" type="button">Zapisz zgłoszenie</button>
+          <button id="clearBtn" class="secondary" type="button">Wyczyść formularz</button>
+          <button id="logoutBtn" class="danger" type="button">Wyloguj</button>
+        </div>
+
+        <div id="saveMessage" class="message hidden"></div>
+
+        <p class="small">
+          Po zapisaniu poinformuj klienta: „Dane zostały przyjęte. Faktura zostanie przygotowana i wysłana po sprawdzeniu.”
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    /*
+      WAŻNE:
+      Wklej tutaj dane z Twojego projektu Supabase.
+      To są dane publiczne anon, takie jak masz już w swoim programie.
+      Nie wklejaj service_role.
+    */
+    const SUPABASE_URL = "https://iwopaapilfnzlknjwtse.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_Ny5yMxH-Ww25xLk9fGN0jA_X2g-amvS";
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const loginBox = document.getElementById("loginBox");
+    const formBox = document.getElementById("formBox");
+
+    const loginEmail = document.getElementById("loginEmail");
+    const loginPassword = document.getElementById("loginPassword");
+    const loginBtn = document.getElementById("loginBtn");
+    const loginMessage = document.getElementById("loginMessage");
+
+    const saveBtn = document.getElementById("saveBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const saveMessage = document.getElementById("saveMessage");
+
+    const fields = {
+      buyerName: document.getElementById("buyerName"),
+      buyerNip: document.getElementById("buyerNip"),
+      buyerAddress: document.getElementById("buyerAddress"),
+      buyerEmail: document.getElementById("buyerEmail"),
+      buyerPhone: document.getElementById("buyerPhone"),
+      itemDescription: document.getElementById("itemDescription"),
+      amountBrutto: document.getElementById("amountBrutto"),
+      paymentMethod: document.getElementById("paymentMethod"),
+      notes: document.getElementById("notes")
+    };
+
+    function showMessage(el, type, text) {
+      el.className = "message " + type;
+      el.textContent = text;
+      el.classList.remove("hidden");
+    }
+
+    function hideMessage(el) {
+      el.classList.add("hidden");
+      el.textContent = "";
+    }
+
+    function parseMoney(value) {
+      const clean = String(value || "")
+        .replace(/\s/g, "")
+        .replace(",", ".")
+        .replace(/[^\d.]/g, "");
+
+      if (!clean) return null;
+
+      const parsed = Number(clean);
+      if (!Number.isFinite(parsed)) return null;
+
+      return Math.round(parsed * 100) / 100;
+    }
+
+    function clearForm() {
+      Object.values(fields).forEach((field) => {
+        field.value = "";
+      });
+      hideMessage(saveMessage);
+    }
+
+    function validateEmail(value) {
+      if (!value) return true;
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+    }
+
+    async function checkSession() {
+      const { data } = await client.auth.getSession();
+      if (data.session) {
+        loginBox.classList.add("hidden");
+        formBox.classList.remove("hidden");
+      }
+    }
+
+    loginBtn.addEventListener("click", async () => {
+      hideMessage(loginMessage);
+
+      const email = loginEmail.value.trim();
+      const password = loginPassword.value;
+
+      if (!email || !password) {
+        showMessage(loginMessage, "error", "Podaj e-mail i hasło.");
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = "Logowanie...";
+
+      const { error } = await client.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      loginBtn.disabled = false;
+      loginBtn.textContent = "Zaloguj";
+
+      if (error) {
+        showMessage(loginMessage, "error", "Nie udało się zalogować. Sprawdź e-mail i hasło.");
+        console.error("Błąd logowania:", error);
+        return;
+      }
+
+      loginBox.classList.add("hidden");
+      formBox.classList.remove("hidden");
+      hideMessage(loginMessage);
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      hideMessage(saveMessage);
+
+      const buyerName = fields.buyerName.value.trim();
+      const buyerEmail = fields.buyerEmail.value.trim();
+      const itemDescription = fields.itemDescription.value.trim();
+      const amount = parseMoney(fields.amountBrutto.value);
+
+      if (!buyerName) {
+        showMessage(saveMessage, "error", "Wpisz nabywcę / firmę.");
+        return;
+      }
+
+      if (!itemDescription) {
+        showMessage(saveMessage, "error", "Wpisz opis zakupu.");
+        return;
+      }
+
+      if (!validateEmail(buyerEmail)) {
+        showMessage(saveMessage, "error", "E-mail kupującego wygląda niepoprawnie.");
+        return;
+      }
+
+      const { data: userData, error: userError } = await client.auth.getUser();
+
+      if (userError || !userData.user) {
+        showMessage(saveMessage, "error", "Sesja wygasła. Zaloguj się ponownie.");
+        console.error("Brak użytkownika:", userError);
+        return;
+      }
+
+      const payload = {
+        buyer_name: buyerName,
+        buyer_nip: fields.buyerNip.value.trim() || null,
+        buyer_address: fields.buyerAddress.value.trim() || null,
+        buyer_email: buyerEmail || null,
+        buyer_phone: fields.buyerPhone.value.trim() || null,
+        item_description: itemDescription,
+        amount_brutto: amount,
+        payment_method: fields.paymentMethod.value || null,
+        notes: fields.notes.value.trim() || null,
+        status: "do_wystawienia",
+        source: "stoisko",
+        event_name: "Majówka",
+        created_by: userData.user.id
+      };
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Zapisywanie...";
+
+      const { error } = await client
+        .from("invoice_requests")
+        .insert(payload);
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Zapisz zgłoszenie";
+
+      if (error) {
+        showMessage(saveMessage, "error", "Nie udało się zapisać zgłoszenia. Sprawdź internet i spróbuj ponownie.");
+        console.error("Błąd zapisu invoice_requests:", error);
+        return;
+      }
+
+      showMessage(
+        saveMessage,
+        "ok",
+        "Zgłoszenie zapisane. Poinformuj klienta, że dane zostały przyjęte, a faktura zostanie przygotowana po sprawdzeniu."
+      );
+
+      clearTimeout(window.__clearTimer);
+      window.__clearTimer = setTimeout(() => {
+        clearForm();
+      }, 2500);
+    });
+
+    clearBtn.addEventListener("click", clearForm);
+
+    logoutBtn.addEventListener("click", async () => {
+      await client.auth.signOut();
+      clearForm();
+      formBox.classList.add("hidden");
+      loginBox.classList.remove("hidden");
+      loginPassword.value = "";
+    });
+
+    checkSession();
+  </script>
+</body>
+</html>
