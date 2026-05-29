@@ -454,6 +454,15 @@
       smsBox.classList.remove("hidden");
     }
 
+    function scrollToSmsBox() {
+      setTimeout(() => {
+        smsBox.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+      }, 250);
+    }
+
     function clearSms() {
       smsBox.classList.add("hidden");
       smsLink.href = "#";
@@ -626,6 +635,7 @@
       );
 
       prepareSms(buyerPhone, buyerEmail);
+      scrollToSmsBox();
     });
 
     clearBtn.addEventListener("click", clearForm);
