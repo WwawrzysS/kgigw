@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.29-01";
+const APP_VERSION = "2026.05.29-02";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -2785,6 +2785,9 @@ function invoiceRequestRow(request) {
       </small>
     </div>
     <div class="row-actions">
+      <button class="small-button" onclick="editInvoiceRequest('${request.id}')">Edytuj</button>
+      <button class="small-button" onclick="printInvoiceRequest('${request.id}')">Drukuj zgłoszenie</button>
+      <button class="small-button" onclick="prepareInvoiceRequestEmail('${request.id}')">Przygotuj e-mail</button>
       ${request.status !== "w_trakcie" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'w_trakcie')">Oznacz jako w trakcie</button>` : ""}
       ${request.status !== "wystawiona" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'wystawiona')">Oznacz jako wystawiona</button>` : ""}
       ${request.status !== "anulowana" ? `<button class="delete-button" onclick="updateInvoiceRequestStatus('${request.id}', 'anulowana')">Anuluj zgłoszenie</button>` : ""}
@@ -3496,6 +3499,100 @@ function printInvoice(id) {
 
 function downloadInvoicePdf(id) {
   printInvoice(id);
+}
+
+async function editInvoiceRequest(id) {
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  const statusOptions = "do_wystawienia, w_trakcie, wystawiona, anulowana";
+  const updated = {
+    buyerName: prompt("Nabywca:", request.buyerName || "") ?? request.buyerName,
+    buyerNip: prompt("NIP:", request.buyerNip || "") ?? request.buyerNip,
+    buyerAddress: prompt("Adres:", request.buyerAddress || "") ?? request.buyerAddress,
+    buyerEmail: prompt("E-mail:", request.buyerEmail || "") ?? request.buyerEmail,
+    buyerPhone: prompt("Telefon:", request.buyerPhone || "") ?? request.buyerPhone,
+    itemDescription: prompt("Opis zakupu:", request.itemDescription || "") ?? request.itemDescription,
+    gross: request.gross,
+    paymentMethod: prompt("Forma płatności:", request.paymentMethod || "") ?? request.paymentMethod,
+    notes: prompt("Uwagi:", request.notes || "") ?? request.notes,
+    status: prompt(`Status (${statusOptions}):`, request.status || "do_wystawienia") ?? request.status
+  };
+  const amountInput = prompt("Kwota brutto:", String(request.gross || 0).replace(".", ","));
+  if (amountInput !== null) {
+    const amount = Number(String(amountInput).replace(",", "."));
+    if (!Number.isFinite(amount) || amount < 0) {
+      alert("Podaj poprawną kwotę brutto.");
+      return;
+    }
+    updated.gross = amount;
+  }
+  if (!["do_wystawienia", "w_trakcie", "wystawiona", "anulowana"].includes(updated.status)) {
+    alert(`Status musi mieć jedną z wartości: ${statusOptions}.`);
+    return;
+  }
+
+  const payload = {
+    buyer_name: updated.buyerName || "",
+    buyer_nip: updated.buyerNip || "",
+    buyer_address: updated.buyerAddress || "",
+    buyer_email: updated.buyerEmail || "",
+    buyer_phone: updated.buyerPhone || "",
+    item_description: updated.itemDescription || "",
+    amount_brutto: updated.gross || 0,
+    payment_method: updated.paymentMethod || "",
+    notes: updated.notes || "",
+    status: updated.status || "do_wystawienia"
+  };
+
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("invoice_requests")
+      .update(payload)
+      .eq("id", id);
+    if (error) {
+      console.error("Nie udało się edytować zgłoszenia ze stoiska.", { id, payload, error });
+      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      return;
+    }
+    await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+    await refreshSupabaseData();
+    showToast("Zapisano zmiany w zgłoszeniu");
+    return;
+  }
+
+  Object.assign(request, updated);
+  saveState();
+  render();
+  await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+  showToast("Zapisano zmiany w zgłoszeniu");
+}
+
+async function printInvoiceRequest(id) {
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  document.title = "Zgłoszenie danych do faktury";
+  elements.printSheet.innerHTML = invoiceRequestPrintHtml(request);
+  await logActivity("Faktury", "Druk zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
+  window.print();
+}
+
+async function prepareInvoiceRequestEmail(id) {
+  const request = state.invoiceRequests.find((entry) => entry.id === id);
+  if (!request) return;
+  if (!request.buyerEmail) {
+    alert("Brak adresu e-mail w zgłoszeniu.");
+    return;
+  }
+  const subject = "Przyjęcie danych do faktury - KGiGW we Włosani";
+  const body = [
+    "Dzień dobry,",
+    "potwierdzamy przyjęcie danych do wystawienia faktury.",
+    "Faktura zostanie przygotowana po sprawdzeniu danych.",
+    "",
+    "KGiGW we Włosani"
+  ].join("\n");
+  await logActivity("Faktury", "Przygotowanie e-maila do zgłoszenia", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
+  window.location.href = `mailto:${encodeURIComponent(request.buyerEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
 async function markInvoicePaid(id) {
@@ -4555,6 +4652,33 @@ function invoicePrintHtml(invoice) {
     <div class="print-signatures">
       <div class="signature-line">Wystawił/a</div>
       <div class="signature-line">Odebrał/a</div>
+    </div>
+  `;
+}
+
+function invoiceRequestPrintHtml(request) {
+  return `
+    ${organizationHeaderHtml()}
+    <h1>Zgłoszenie danych do faktury ze stoiska</h1>
+    <p><strong>To jest zgłoszenie danych do faktury, a nie faktura.</strong></p>
+    <table>
+      <tbody>
+        <tr><th>Data zgłoszenia</th><td>${formatDate(request.date)}</td></tr>
+        <tr><th>Nabywca</th><td>${escapeHtml(request.buyerName || "brak")}</td></tr>
+        <tr><th>NIP</th><td>${escapeHtml(request.buyerNip || "brak")}</td></tr>
+        <tr><th>Adres</th><td>${escapeHtml(request.buyerAddress || "brak")}</td></tr>
+        <tr><th>E-mail</th><td>${escapeHtml(request.buyerEmail || "brak")}</td></tr>
+        <tr><th>Telefon</th><td>${escapeHtml(request.buyerPhone || "brak")}</td></tr>
+        <tr><th>Opis zakupu</th><td>${escapeHtml(request.itemDescription || "brak")}</td></tr>
+        <tr><th>Kwota brutto</th><td>${money(request.gross)}</td></tr>
+        <tr><th>Forma płatności</th><td>${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}</td></tr>
+        <tr><th>Status</th><td>${escapeHtml(invoiceRequestStatusLabel(request.status))}</td></tr>
+        <tr><th>Uwagi</th><td>${escapeHtml(request.notes || "brak")}</td></tr>
+      </tbody>
+    </table>
+    <div class="print-signatures">
+      <div class="signature-line">Podpis / zgłaszający</div>
+      <div class="signature-line">Sprawdził/a</div>
     </div>
   `;
 }
