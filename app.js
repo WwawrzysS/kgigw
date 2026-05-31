@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-12";
+const APP_VERSION = "2026.05.31-13";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -1157,7 +1157,11 @@ async function handleFee(event) {
   }
   const year = feeYear(data.period);
   const dueAmount = ANNUAL_FEE;
-  const paidAmount = Number(data.amount || 0);
+  const paidAmount = Number(data.amount);
+  if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+    alert("Wpisz kwotę wpłaty większą niż 0 zł.");
+    return;
+  }
   const paidAt = new Date().toISOString().slice(0, 10);
   const moneyTitle = `Składka członkowska ${year} - ${member.name}`;
   if (supabaseClient && currentRole) {
