@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-11";
+const APP_VERSION = "2026.05.31-12";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -34,10 +34,10 @@ const STAND_INVOICE_DEFAULTS = {
   disabledMessage: "Strona zgłoszeń faktur jest obecnie wyłączona. Skontaktuj się z Administratorem KGiGW."
 };
 const DOC_SECTION_DEFAULT = "Dokumenty";
-const DOC_SECTIONS = ["Dokumenty", "Dokumentacja", "Wzory", "Notatki"];
+const DOC_SECTIONS = ["Dokumenty", "Dokumentacja KGiGW", "Wzory", "Notatki"];
 const DOC_SECTION_TABS = {
   documents: "Dokumenty",
-  documentation: "Dokumentacja",
+  documentation: "Dokumentacja KGiGW",
   templates: "Wzory",
   notes: "Notatki"
 };
@@ -3044,7 +3044,7 @@ function renderRentalItemInputs() {
 function renderDocs() {
   renderStorageInfo();
   renderDocSectionList(elements.docsList, "Dokumenty");
-  renderDocSectionList(elements.docsDocumentationList, "Dokumentacja");
+  renderDocSectionList(elements.docsDocumentationList, "Dokumentacja KGiGW");
   renderDocSectionList(elements.docsTemplatesList, "Wzory");
   renderDocSectionList(elements.docsNotesList, "Notatki");
 }
@@ -3071,6 +3071,7 @@ function docRowHtml(item) {
 
 function normalizeDocSection(value) {
   const normalized = String(value || "").trim();
+  if (normalized === "Dokumentacja") return "Dokumentacja KGiGW";
   return DOC_SECTIONS.includes(normalized) ? normalized : DOC_SECTION_DEFAULT;
 }
 
