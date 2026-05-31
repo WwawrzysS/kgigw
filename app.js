@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-08";
+const APP_VERSION = "2026.05.31-09";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -2197,10 +2197,19 @@ function renderFees() {
 
 function visibleFeeRows() {
   const search = normalizeSearchText(elements.feeSearch?.value || "");
-  const status = elements.feeStatusFilter?.value || "all";
-  const type = elements.feeTypeFilter?.value || "all";
-  const memberStatus = elements.feeMemberStatusFilter?.value || "all";
-  const sort = elements.feeSort?.value || "status_late_first";
+  const status = feeFilterValue(elements.feeStatusFilter?.value, ["all", "late", "paid"], "all");
+  const type = feeFilterValue(elements.feeTypeFilter?.value, ["all", "zwyczajny", "wspierający"], "all");
+  const memberStatus = feeFilterValue(elements.feeMemberStatusFilter?.value, ["all", "active", "inactive"], "all");
+  const sort = feeFilterValue(elements.feeSort?.value, [
+    "status_late_first",
+    "status_paid_first",
+    "name_asc",
+    "name_desc",
+    "due_desc",
+    "due_asc",
+    "paid_desc",
+    "paid_asc"
+  ], "status_late_first");
 
   return feeMemberRows()
     .filter((item) => feeMatchesSearch(item, search))
@@ -2208,13 +2217,30 @@ function visibleFeeRows() {
       if (status === "all") return true;
       return status === "late" ? item.isLate : !item.isLate;
     })
-    .filter((item) => type === "all" || normalizeText(item.membershipType) === normalizeText(type))
+    .filter((item) => type === "all" || feeMembershipTypeValue(item.membershipType) === type)
     .filter((item) => {
       if (memberStatus === "all") return true;
-      const isActive = normalizeText(item.memberStatus || "Aktywny") !== "nieaktywny";
+      const isActive = feeMemberIsActive(item.memberStatus);
       return memberStatus === "active" ? isActive : !isActive;
     })
     .sort(feeSortComparator(sort));
+}
+
+function feeFilterValue(value, allowed, fallback) {
+  const normalized = normalizeSearchText(value || "");
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function feeMembershipTypeValue(value) {
+  const normalized = normalizeSearchText(value || "Zwyczajny");
+  if (normalized.includes("wspier")) return "wspierający";
+  return "zwyczajny";
+}
+
+function feeMemberIsActive(status) {
+  const normalized = normalizeSearchText(status || "");
+  if (!normalized) return true;
+  return !["nieaktywny", "nieaktywna", "zarchiwizowany", "archiwalny", "archiwalne"].includes(normalized);
 }
 
 function feeMatchesSearch(item, search) {
@@ -3332,12 +3358,30 @@ function renderFeeOptions() {
 }
 
 function feeMemberRows() {
-  const knownNames = new Set(state.members.map((member) => member.name));
-  const feeOnlyNames = state.fees.map((fee) => fee.member).filter((name) => !knownNames.has(name));
-  const memberNames = [...state.members.map((member) => member.name), ...new Set(feeOnlyNames)];
-  return memberNames.map((name) => {
-    const member = state.members.find((entry) => entry.name === name);
-    const fees = state.fees.filter((fee) => fee.member === name && feeYear(fee.year || fee.period) === FEE_YEAR);
+  const memberRows = state.members.map((member) => feeMemberRowData(member));
+  const knownNames = new Set(state.members.map((member) => normalizeSearchText(member.name)));
+  const feeOnlyNames = state.fees
+    .map((fee) => fee.member)
+    .filter((name) => name && !knownNames.has(normalizeSearchText(name)));
+  const legacyRows = [...new Set(feeOnlyNames)].map((name) => feeMemberRowData({
+    id: "",
+    name,
+    phone: "",
+    email: "",
+    membershipType: "Zwyczajny",
+    status: "Aktywny"
+  }));
+  return [...memberRows, ...legacyRows].sort(feeSortComparator("status_late_first"));
+}
+
+function feeMemberRowData(member) {
+  const name = member?.name || "Bez nazwy";
+  const fees = state.fees.filter((fee) => {
+    const feeYearMatches = feeYear(fee.year || fee.period) === FEE_YEAR;
+    if (!feeYearMatches) return false;
+    if (member?.id && fee.memberId) return fee.memberId === member.id;
+    return normalizeSearchText(fee.member) === normalizeSearchText(name);
+  });
     const paid = fees.reduce((sum, fee) => sum + Number(fee.amount || 0), 0);
     const due = Math.max(0, ANNUAL_FEE - paid);
     const stages = feeStages(paid);
@@ -3348,29 +3392,24 @@ function feeMemberRows() {
       .map((fee) => fee.paidAt || fee.date || "")
       .filter(Boolean)
       .sort((a, b) => String(b).localeCompare(String(a)))[0] || "";
-    return {
-      name,
-      phone: member?.phone || "",
-      email: member?.email || "",
-      membershipType: member?.membershipType || "Zwyczajny",
-      memberStatus: member?.status || "Aktywny",
-      fees,
-      due,
-      currentDue,
-      paid,
-      paidUntil,
-      currentRequired,
-      required: ANNUAL_FEE,
-      latestPaymentDate,
-      hasDue: due > 0,
-      isLate: currentDue > 0,
-      stages
-    };
-  }).sort((a, b) => {
-    if (a.isLate !== b.isLate) return a.isLate ? -1 : 1;
-    if (b.currentDue !== a.currentDue) return b.currentDue - a.currentDue;
-    return a.name.localeCompare(b.name);
-  });
+  return {
+    name,
+    phone: member?.phone || "",
+    email: member?.email || "",
+    membershipType: member?.membershipType || "Zwyczajny",
+    memberStatus: member?.status || "Aktywny",
+    fees,
+    due,
+    currentDue,
+    paid,
+    paidUntil,
+    currentRequired,
+    required: ANNUAL_FEE,
+    latestPaymentDate,
+    hasDue: due > 0,
+    isLate: currentDue > 0,
+    stages
+  };
 }
 
 function feeDueAmount(fee) {
