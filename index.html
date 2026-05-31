@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-05" />
+    <link rel="stylesheet" href="styles.css?v=20260531-06" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -615,6 +615,7 @@
             <button class="active" type="button" data-admin-tab="program">Program</button>
             <button type="button" data-admin-tab="export">Eksport</button>
             <button type="button" data-admin-tab="files">Pliki</button>
+            <button type="button" data-admin-tab="stand-invoice">Stoisko faktura</button>
             <button type="button" data-admin-tab="logs">Logi</button>
           </div>
 
@@ -626,7 +627,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-05</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-06</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -703,6 +704,56 @@
             </div>
           </section>
 
+          <section class="panel admin-tab-panel" data-admin-panel="stand-invoice" hidden>
+            <div class="panel-head">
+              <h2>Stoisko faktura</h2>
+            </div>
+            <form id="standInvoiceForm" class="admin-settings-form">
+              <div class="settings-note">
+                <strong>Strona mobilna zgłoszeń faktur</strong>
+                <small>Tu włączysz lub wyłączysz formularz dla stoiska i ustawisz treść SMS.</small>
+              </div>
+
+              <fieldset class="inline-radio-group">
+                <legend>Status strony mobilnej</legend>
+                <label><input type="radio" name="enabled" value="true" /> Aktywna</label>
+                <label><input type="radio" name="enabled" value="false" checked /> Nieaktywna</label>
+              </fieldset>
+
+              <div class="form-grid">
+                <label>
+                  Nazwa wydarzenia
+                  <input name="eventName" type="text" placeholder="np. Majówka, Kiermasz, Dzień Dziecka" />
+                </label>
+                <label>
+                  Telefon kontaktowy do SMS
+                  <input name="contactPhone" type="tel" placeholder="513518769" />
+                </label>
+              </div>
+
+              <label>
+                Treść SMS
+                <textarea name="smsTemplate" rows="4"></textarea>
+                <small>Zmienne: [EMAIL], [PHONE], [EVENT]</small>
+              </label>
+
+              <label>
+                Komunikat dla wyłączonej strony
+                <textarea name="disabledMessage" rows="3"></textarea>
+              </label>
+
+              <div class="settings-link-row">
+                <span>Link do strony:</span>
+                <a id="standInvoiceUrl" href="https://wwawrzyss.github.io/kgigw/stoisko-faktura.html" target="_blank" rel="noopener">https://wwawrzyss.github.io/kgigw/stoisko-faktura.html</a>
+              </div>
+
+              <div class="form-actions">
+                <button class="small-button" type="submit">Zapisz ustawienia</button>
+                <button id="openStandInvoicePage" class="small-button secondary-button" type="button">Otwórz stronę stoiska</button>
+              </div>
+            </form>
+          </section>
+
           <section class="panel admin-tab-panel" data-admin-panel="logs" hidden>
             <div class="panel-head">
               <h2>Logi aktywności</h2>
@@ -734,6 +785,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-05"></script>
+    <script src="app.js?v=20260531-06"></script>
   </body>
 </html>

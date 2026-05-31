@@ -266,6 +266,8 @@
         <div id="loginMessage" class="message hidden"></div>
       </section>
 
+      <section id="disabledBox" class="message error hidden"></section>
+
       <section id="formBox" class="hidden">
         <div class="notice">
           Wpisz dane dokładnie tak, jak podał klient. Po zapisaniu dane trafią do zgłoszeń do faktury w panelu KGiGW.
@@ -353,11 +355,20 @@
     const SUPABASE_ANON_KEY = "sb_publishable_Ny5yMxH-Ww25xLk9fGN0jA_X2g-amvS";
 
     const ALLOWED_EMAIL = "faktura@kgigw.local";
+    const STAND_DEFAULTS = {
+      enabled: false,
+      eventName: "Stoisko",
+      contactPhone: "513518769",
+      smsTemplate: "Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: [EMAIL]. KGiGW we Wlosani. Dziekujemy / tel: [PHONE]",
+      disabledMessage: "Strona zgłoszeń faktur jest obecnie wyłączona. Skontaktuj się z Administratorem KGiGW."
+    };
 
     const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     const loginBox = document.getElementById("loginBox");
     const formBox = document.getElementById("formBox");
+    const disabledBox = document.getElementById("disabledBox");
+    let standSettings = { ...STAND_DEFAULTS };
 
     const loginEmail = document.getElementById("loginEmail");
     const loginPassword = document.getElementById("loginPassword");
@@ -424,11 +435,38 @@
       return isIOS ? "&" : "?";
     }
 
+    async function loadStandSettings() {
+      const { data, error } = await client
+        .from("organization_settings")
+        .select("stand_invoice_enabled, stand_invoice_event_name, stand_invoice_contact_phone, stand_invoice_sms_template, stand_invoice_disabled_message")
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Nie udało się pobrać ustawień strony stoiska z organization_settings.", error);
+        standSettings = { ...STAND_DEFAULTS };
+        return standSettings;
+      }
+
+      standSettings = {
+        enabled: Boolean(data?.stand_invoice_enabled),
+        eventName: data?.stand_invoice_event_name || STAND_DEFAULTS.eventName,
+        contactPhone: data?.stand_invoice_contact_phone || STAND_DEFAULTS.contactPhone,
+        smsTemplate: data?.stand_invoice_sms_template || STAND_DEFAULTS.smsTemplate,
+        disabledMessage: data?.stand_invoice_disabled_message || STAND_DEFAULTS.disabledMessage
+      };
+      return standSettings;
+    }
+
+    function applySmsTemplate(template, email) {
+      return String(template || STAND_DEFAULTS.smsTemplate)
+        .replaceAll("[EMAIL]", email || "podany adres e-mail")
+        .replaceAll("[PHONE]", standSettings.contactPhone || STAND_DEFAULTS.contactPhone)
+        .replaceAll("[EVENT]", standSettings.eventName || STAND_DEFAULTS.eventName);
+    }
+
     function buildSmsText(email) {
-      const safeEmail = email || "podany adres e-mail";
-      return "Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: "
-        + safeEmail
-        + ". KGiGW we Wlosani. Dziękujemy / tel: 513518769";
+      return applySmsTemplate(standSettings.smsTemplate, email);
     }
 
     function prepareSms(phone, email) {
@@ -484,6 +522,7 @@
 
     async function showLogin(message) {
       formBox.classList.add("hidden");
+      disabledBox.classList.add("hidden");
       loginBox.classList.remove("hidden");
 
       if (message) {
@@ -492,7 +531,16 @@
     }
 
     async function showForm() {
+      const settings = await loadStandSettings();
       loginBox.classList.add("hidden");
+      if (!settings.enabled) {
+        formBox.classList.add("hidden");
+        disabledBox.textContent = settings.disabledMessage || STAND_DEFAULTS.disabledMessage;
+        disabledBox.classList.remove("hidden");
+        hideMessage(loginMessage);
+        return;
+      }
+      disabledBox.classList.add("hidden");
       formBox.classList.remove("hidden");
       hideMessage(loginMessage);
     }
@@ -608,7 +656,7 @@
         notes: fields.notes.value.trim() || null,
         status: "do_wystawienia",
         source: "stoisko",
-        event_name: "Majówka",
+        event_name: standSettings.eventName || STAND_DEFAULTS.eventName,
         created_by: userData.user.id
       };
 
@@ -644,6 +692,7 @@
       await client.auth.signOut();
       clearForm();
       formBox.classList.add("hidden");
+      disabledBox.classList.add("hidden");
       loginBox.classList.remove("hidden");
       loginPassword.value = "";
       hideMessage(loginMessage);

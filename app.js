@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-05";
+const APP_VERSION = "2026.05.31-06";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -25,6 +25,14 @@ const ORGANIZATION = {
   nip: "0000000000",
   logo: "KGiGW.jpg"
 };
+const STAND_INVOICE_URL = "https://wwawrzyss.github.io/kgigw/stoisko-faktura.html";
+const STAND_INVOICE_DEFAULTS = {
+  enabled: false,
+  eventName: "Stoisko",
+  contactPhone: "513518769",
+  smsTemplate: "Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: [EMAIL]. KGiGW we Wlosani. Dziekujemy / tel: [PHONE]",
+  disabledMessage: "Strona zgłoszeń faktur jest obecnie wyłączona. Skontaktuj się z Administratorem KGiGW."
+};
 
 const starterData = {
   members: [],
@@ -47,7 +55,8 @@ const starterData = {
   invoices: [],
   invoiceRequests: [],
   board: [],
-  auditLogs: []
+  auditLogs: [],
+  organizationSettings: { ...STAND_INVOICE_DEFAULTS }
 };
 
 prepareLocalVersion();
@@ -181,7 +190,10 @@ const elements = {
   mailboxInfo: document.querySelector("#mailboxInfo"),
   adminTabs: document.querySelectorAll("[data-admin-tab]"),
   adminPanels: document.querySelectorAll("[data-admin-panel]"),
-  auditLogList: document.querySelector("#auditLogList")
+  auditLogList: document.querySelector("#auditLogList"),
+  standInvoiceForm: document.querySelector("#standInvoiceForm"),
+  openStandInvoicePage: document.querySelector("#openStandInvoicePage"),
+  standInvoiceUrl: document.querySelector("#standInvoiceUrl")
 };
 
 document.body.classList.toggle("locked", !currentRole);
@@ -264,6 +276,8 @@ elements.clearInvoiceFilters?.addEventListener("click", clearInvoiceFilters);
 document.querySelectorAll("[data-admin-export]").forEach((button) => {
   button.addEventListener("click", () => exportAdminData(button.dataset.adminExport));
 });
+elements.standInvoiceForm?.addEventListener("submit", handleStandInvoiceSettings);
+elements.openStandInvoicePage?.addEventListener("click", () => window.open(STAND_INVOICE_URL, "_blank", "noopener"));
 document.querySelector("#refreshProgram")?.addEventListener("click", refreshProgram);
 document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgram);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
@@ -454,7 +468,7 @@ async function refreshSupabaseData() {
     return;
   }
 
-  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult] = await Promise.all([
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, membership_type, board_role, created_at")
@@ -494,7 +508,12 @@ async function refreshSupabaseData() {
     loadSupabaseResult("invoice_requests", supabaseClient
       .from("invoice_requests")
       .select("id, created_at, buyer_name, buyer_nip, buyer_address, buyer_email, buyer_phone, item_description, amount_brutto, payment_method, notes, status, source, event_name, created_by")
-      .order("created_at", { ascending: false }))
+      .order("created_at", { ascending: false })),
+    loadSupabaseResult("organization_settings", supabaseClient
+      .from("organization_settings")
+      .select("id, stand_invoice_enabled, stand_invoice_event_name, stand_invoice_contact_phone, stand_invoice_sms_template, stand_invoice_disabled_message, updated_at")
+      .limit(1)
+      .maybeSingle())
   ]);
 
   if (membersResult.error) {
@@ -546,6 +565,7 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("dokumentów", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
   logSupabaseLoadError("zgłoszeń faktur ze stoiska", invoiceRequestsResult.error);
+  logSupabaseLoadError("ustawień strony stoiska", settingsResult.error);
   if (invoiceRequestsResult.error) {
     console.error("Nie udało się pobrać zgłoszeń ze stoiska z public.invoice_requests. Faktury będą działały dalej.", invoiceRequestsResult.error);
   }
@@ -729,6 +749,10 @@ async function refreshSupabaseData() {
     createdBy: request.created_by || ""
   }));
 
+  if (!settingsResult.error && settingsResult.data) {
+    state.organizationSettings = normalizeStandInvoiceSettings(settingsResult.data);
+  }
+
   supabaseDataReady = true;
   saveState();
   render();
@@ -850,6 +874,53 @@ async function refreshProgram() {
   window.location.reload();
 }
 
+async function handleStandInvoiceSettings(event) {
+  event.preventDefault();
+  if (!isAdmin()) {
+    alert("Te ustawienia może zmieniać tylko Administrator.");
+    return;
+  }
+  if (!supabaseClient || !currentRole) {
+    alert("Brak połączenia z Supabase. Nie można zapisać ustawień strony stoiska.");
+    return;
+  }
+
+  const data = formData(event.target);
+  const payload = {
+    stand_invoice_enabled: data.enabled === "true",
+    stand_invoice_event_name: String(data.eventName || "").trim() || STAND_INVOICE_DEFAULTS.eventName,
+    stand_invoice_contact_phone: String(data.contactPhone || "").trim() || STAND_INVOICE_DEFAULTS.contactPhone,
+    stand_invoice_sms_template: String(data.smsTemplate || "").trim() || STAND_INVOICE_DEFAULTS.smsTemplate,
+    stand_invoice_disabled_message: String(data.disabledMessage || "").trim() || STAND_INVOICE_DEFAULTS.disabledMessage,
+    updated_at: new Date().toISOString()
+  };
+
+  const settingsId = state.organizationSettings?.id || "";
+  const result = settingsId
+    ? await supabaseClient.from("organization_settings").update(payload).eq("id", settingsId)
+    : await supabaseClient.from("organization_settings").insert(payload).select("id").single();
+
+  if (result.error) {
+    console.error("Nie udało się zapisać ustawień strony stoiska w public.organization_settings.", {
+      payload,
+      error: result.error
+    });
+    alert(`Nie udało się zapisać ustawień strony stoiska: ${result.error.message}`);
+    return;
+  }
+
+  state.organizationSettings = normalizeStandInvoiceSettings({
+    id: settingsId || result.data?.id || "",
+    ...payload
+  });
+  await logActivity("Administracja", "Zmiana ustawień strony stoiska", {
+    summary: `${payload.stand_invoice_enabled ? "aktywna" : "nieaktywna"} - ${payload.stand_invoice_event_name}`
+  });
+  saveState();
+  renderStandInvoiceSettings();
+  showToast("Zapisano ustawienia strony stoiska");
+}
+
 function toggleMobileMenu() {
   const open = document.body.classList.toggle("mobile-menu-open");
   elements.mobileMenuButton.setAttribute("aria-label", open ? "Zamknij menu" : "Otwórz menu");
@@ -953,6 +1024,7 @@ function switchAdminTab(tabName) {
     panel.style.display = active ? "" : "none";
   });
   if (tabName === "logs") renderAuditLogs();
+  if (tabName === "stand-invoice") renderStandInvoiceSettings();
 }
 
 function switchDocTab(tabName) {
@@ -1644,6 +1716,24 @@ function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
 }
 
+function normalizeStandInvoiceSettings(row = {}) {
+  return {
+    id: row.id || "",
+    enabled: Boolean(row.stand_invoice_enabled),
+    eventName: row.stand_invoice_event_name || STAND_INVOICE_DEFAULTS.eventName,
+    contactPhone: row.stand_invoice_contact_phone || STAND_INVOICE_DEFAULTS.contactPhone,
+    smsTemplate: row.stand_invoice_sms_template || STAND_INVOICE_DEFAULTS.smsTemplate,
+    disabledMessage: row.stand_invoice_disabled_message || STAND_INVOICE_DEFAULTS.disabledMessage
+  };
+}
+
+function currentStandInvoiceSettings() {
+  return {
+    ...STAND_INVOICE_DEFAULTS,
+    ...(state.organizationSettings || {})
+  };
+}
+
 function render() {
   renderDashboard();
   renderMembers();
@@ -1657,11 +1747,27 @@ function render() {
   renderInvoices();
   renderBoard();
   renderAuditLogs();
+  renderStandInvoiceSettings();
   renderFeeOptions();
   renderEventOptions();
   renderFundingSourceOptions();
   renderInvoiceRentalOptions();
   renderGlobalSearchResults();
+}
+
+function renderStandInvoiceSettings() {
+  if (!elements.standInvoiceForm) return;
+  const settings = currentStandInvoiceSettings();
+  const form = elements.standInvoiceForm;
+  form.elements.enabled.value = settings.enabled ? "true" : "false";
+  form.elements.eventName.value = settings.eventName || "";
+  form.elements.contactPhone.value = settings.contactPhone || "";
+  form.elements.smsTemplate.value = settings.smsTemplate || "";
+  form.elements.disabledMessage.value = settings.disabledMessage || "";
+  if (elements.standInvoiceUrl) {
+    elements.standInvoiceUrl.href = STAND_INVOICE_URL;
+    elements.standInvoiceUrl.textContent = STAND_INVOICE_URL;
+  }
 }
 
 function showToast(message, type = "success") {
