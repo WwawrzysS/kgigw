@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260529-03" />
+    <link rel="stylesheet" href="styles.css?v=20260531-01" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -125,13 +125,18 @@
               <option>Zarchiwizowany</option>
             </select>
             <label>
+              Typ członkostwa
+              <select name="membershipType">
+                <option>Zwyczajny</option>
+                <option>Wspierający</option>
+              </select>
+            </label>
+            <label>
               Funkcja w kole
               <select name="boardRole">
                 <option>Brak</option>
                 <option>Przewodnicząca</option>
                 <option>Wiceprzewodnicząca</option>
-                <option>Skarbnik</option>
-                <option>Sekretarz</option>
                 <option>Członek zarządu</option>
               </select>
             </label>
@@ -146,6 +151,24 @@
                   <input id="showInactiveMembers" type="checkbox" />
                   Pokaż nieaktywnych
                 </label>
+                <select id="memberStatusFilter" aria-label="Filtr statusu">
+                  <option value="all">Status: wszyscy</option>
+                  <option value="active">Aktywni</option>
+                  <option value="inactive">Nieaktywni</option>
+                </select>
+                <select id="memberTypeFilter" aria-label="Filtr typu członkostwa">
+                  <option value="all">Typ: wszyscy</option>
+                  <option value="Zwyczajny">Zwyczajny</option>
+                  <option value="Wspierający">Wspierający</option>
+                </select>
+                <select id="memberRoleFilter" aria-label="Filtr funkcji">
+                  <option value="all">Funkcja: wszyscy</option>
+                  <option value="none">Bez funkcji</option>
+                  <option value="board">Zarząd</option>
+                  <option value="Przewodnicząca">Przewodnicząca</option>
+                  <option value="Wiceprzewodnicząca">Wiceprzewodnicząca</option>
+                  <option value="Członek zarządu">Członek zarządu</option>
+                </select>
                 <button id="toggleMemberExport" class="small-button" type="button">Eksport członków</button>
               </div>
             </div>
@@ -156,6 +179,7 @@
                 <label><input type="checkbox" class="member-export-field" value="phone" checked /> Telefon</label>
                 <label><input type="checkbox" class="member-export-field" value="email" checked /> E-mail</label>
                 <label><input type="checkbox" class="member-export-field" value="status" checked /> Status</label>
+                <label><input type="checkbox" class="member-export-field" value="membershipType" checked /> Typ członkostwa</label>
                 <label><input type="checkbox" class="member-export-field" value="boardRole" checked /> Funkcja w kole</label>
               </div>
               <div class="member-export-group">
@@ -599,7 +623,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.29-03</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-01</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -690,6 +714,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260529-03"></script>
+    <script src="app.js?v=20260531-01"></script>
   </body>
 </html>

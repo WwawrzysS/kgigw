@@ -619,6 +619,10 @@ textarea {
   width: auto;
 }
 
+.panel-head-actions select {
+  min-width: 150px;
+}
+
 .admin-shell {
   display: grid;
   gap: 14px;

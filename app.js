@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.29-03";
+const APP_VERSION = "2026.05.31-01";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -112,6 +112,9 @@ const elements = {
   membersList: document.querySelector("#membersList"),
   memberDetails: document.querySelector("#memberDetails"),
   showInactiveMembers: document.querySelector("#showInactiveMembers"),
+  memberStatusFilter: document.querySelector("#memberStatusFilter"),
+  memberTypeFilter: document.querySelector("#memberTypeFilter"),
+  memberRoleFilter: document.querySelector("#memberRoleFilter"),
   toggleMemberExport: document.querySelector("#toggleMemberExport"),
   memberExportPanel: document.querySelector("#memberExportPanel"),
   downloadMembersCsv: document.querySelector("#downloadMembersCsv"),
@@ -187,6 +190,9 @@ document.querySelector("#mobileMenuButton").addEventListener("click", toggleMobi
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
 document.querySelector("#cancelMemberEdit").addEventListener("click", cancelMemberEdit);
 document.querySelector("#showInactiveMembers").addEventListener("change", renderMembers);
+elements.memberStatusFilter?.addEventListener("change", renderMembers);
+elements.memberTypeFilter?.addEventListener("change", renderMembers);
+elements.memberRoleFilter?.addEventListener("change", renderMembers);
 document.querySelector("#toggleMemberExport").addEventListener("click", toggleMemberExportPanel);
 document.querySelector("#downloadMembersCsv").addEventListener("click", exportMembersCsv);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
@@ -441,7 +447,7 @@ async function refreshSupabaseData() {
   let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
       .from("members")
-      .select("id, name, phone, email, status, board_role, created_at")
+      .select("id, name, phone, email, status, membership_type, board_role, created_at")
       .order("name", { ascending: true })),
     loadSupabaseResult("fees", supabaseClient
       .from("fees")
@@ -480,6 +486,15 @@ async function refreshSupabaseData() {
       .select("id, created_at, buyer_name, buyer_nip, buyer_address, buyer_email, buyer_phone, item_description, amount_brutto, payment_method, notes, status, source, event_name, created_by")
       .order("created_at", { ascending: false }))
   ]);
+
+  if (membersResult.error) {
+    console.error("Nie udało się pobrać członków z polem membership_type. Próba pobrania podstawowego widoku.", membersResult.error);
+    const fallbackMembers = await loadSupabaseResult("members fallback", supabaseClient
+      .from("members")
+      .select("id, name, phone, email, status, board_role, created_at")
+      .order("name", { ascending: true }));
+    if (!fallbackMembers.error) membersResult = fallbackMembers;
+  }
 
   if (rentalsResult.error) {
     console.error("Nie udało się pobrać wypożyczeń z nowymi polami płatności. Próba pobrania podstawowego widoku.", rentalsResult.error);
@@ -530,6 +545,7 @@ async function refreshSupabaseData() {
     phone: member.phone || "",
     email: member.email || "",
     status: member.status || "Aktywny",
+    membershipType: member.membership_type || "Zwyczajny",
     boardRole: member.board_role || "Brak"
   }));
 
@@ -940,6 +956,9 @@ async function handleMember(event) {
   event.preventDefault();
   const data = formData(event.target);
   const memberId = data.id || "";
+  data.membershipType = data.membershipType || "Zwyczajny";
+  data.boardRole = data.boardRole || "Brak";
+  const existingMember = memberId ? state.members.find((entry) => entry.id === memberId) : null;
   const memberMessage = memberId ? "Zapisano zmiany członka" : "Zapisano członka";
   if (supabaseClient && currentRole) {
     const payload = {
@@ -947,6 +966,7 @@ async function handleMember(event) {
       phone: data.phone || null,
       email: data.email || null,
       status: data.status || "Aktywny",
+      membership_type: data.membershipType || "Zwyczajny",
       board_role: data.boardRole || "Brak"
     };
     const { error } = memberId
@@ -957,7 +977,7 @@ async function handleMember(event) {
       return;
     }
     resetMemberForm(event.target);
-    await logActivity("Członkowie", memberId ? "Edycja członka" : "Dodanie członka", { summary: data.name });
+    await logMemberChanges(existingMember, data, memberId);
     await refreshSupabaseData();
     showToast(memberMessage);
     return;
@@ -968,15 +988,30 @@ async function handleMember(event) {
     resetMemberForm(event.target);
     saveState();
     render();
-    logActivity("Członkowie", "Edycja członka", { summary: data.name });
+    logMemberChanges(existingMember, data, memberId);
     showToast(memberMessage);
     return;
   }
   delete data.id;
   state.members.push({ id: makeId(), ...data });
   finishForm(event.target);
-  logActivity("Członkowie", "Dodanie członka", { summary: data.name });
+  logMemberChanges(null, data, "");
   showToast(memberMessage);
+}
+
+async function logMemberChanges(previous, data, memberId) {
+  const summary = `${data.name} - typ: ${data.membershipType || "Zwyczajny"} - funkcja: ${data.boardRole || "Brak"}`;
+  if (!memberId) {
+    await logActivity("Członkowie", "Dodanie członka z typem członkostwa i funkcją", { summary });
+    return;
+  }
+  await logActivity("Członkowie", "Edycja członka", { summary: data.name });
+  if (previous && (previous.membershipType || "Zwyczajny") !== (data.membershipType || "Zwyczajny")) {
+    await logActivity("Członkowie", "Zmiana typu członkostwa", { summary: `${data.name} - z ${previous.membershipType || "Zwyczajny"} na ${data.membershipType || "Zwyczajny"}` });
+  }
+  if (previous && (previous.boardRole || "Brak") !== (data.boardRole || "Brak")) {
+    await logActivity("Członkowie", "Zmiana funkcji w kole", { summary: `${data.name} - z ${previous.boardRole || "Brak"} na ${data.boardRole || "Brak"}` });
+  }
 }
 
 async function handleFee(event) {
@@ -1676,8 +1711,8 @@ function globalSearchResults(search) {
     "Członkowie",
     "members",
     member.name || "Członek",
-    [member.phone, member.email, member.status, member.boardRole].filter(Boolean).join(" · "),
-    [member.name, member.phone, member.email, member.status, member.boardRole]
+    [member.phone, member.email, member.status, member.membershipType, member.boardRole].filter(Boolean).join(" · "),
+    [member.name, member.phone, member.email, member.status, member.membershipType, member.boardRole]
   ));
 
   state.fees.forEach((fee) => addResult(
@@ -1858,11 +1893,22 @@ function renderDashboard() {
 
 function renderMembers() {
   const showInactive = elements.showInactiveMembers?.checked;
-  const visibleMembers = state.members.filter((item) => showInactive || (item.status || "Aktywny") === "Aktywny");
+  const statusFilter = elements.memberStatusFilter?.value || "all";
+  const typeFilter = elements.memberTypeFilter?.value || "all";
+  const roleFilter = elements.memberRoleFilter?.value || "all";
+  const visibleMembers = state.members
+    .filter((item) => showInactive || statusFilter !== "all" || (item.status || "Aktywny") === "Aktywny")
+    .filter((item) => {
+      if (statusFilter === "all") return true;
+      const active = (item.status || "Aktywny") === "Aktywny";
+      return statusFilter === "active" ? active : !active;
+    })
+    .filter((item) => typeFilter === "all" || (item.membershipType || "Zwyczajny") === typeFilter)
+    .filter((item) => memberMatchesRoleFilter(item, roleFilter));
   elements.membersList.innerHTML = rows(filterItems(visibleMembers), (item) => `
     <div>
       <button class="link-button" type="button" onclick="showMemberDetails('${item.id}')">${escapeHtml(item.name)}</button>
-      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status)}${memberBoardRoleText(item)}</small>
+      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status || "Aktywny")} · Typ: ${escapeHtml(item.membershipType || "Zwyczajny")}${memberBoardRoleText(item)}</small>
     </div>
     <div class="row-actions">
       <button class="small-button" onclick="showMemberDetails('${item.id}')">Szczegóły</button>
@@ -1895,6 +1941,7 @@ function showMemberDetails(id) {
       <div><span>Telefon</span><strong>${escapeHtml(member.phone || "Brak telefonu")}</strong></div>
       <div><span>E-mail</span><strong>${escapeHtml(member.email || "Brak e-maila")}</strong></div>
       <div><span>Status</span><strong>${escapeHtml(member.status || "Aktywny")}</strong></div>
+      <div><span>Typ członkostwa</span><strong>${escapeHtml(member.membershipType || "Zwyczajny")}</strong></div>
       <div><span>Funkcja w kole</span><strong>${escapeHtml(member.boardRole || "Brak")}</strong></div>
       <div><span>Suma wpłat ${FEE_YEAR}</span><strong>${money(feeRow?.paid || 0)}</strong></div>
       <div><span>Status składek</span><strong>${escapeHtml(feeStatus)}</strong></div>
@@ -1949,6 +1996,7 @@ function editMember(id) {
   form.phone.value = member.phone || "";
   form.email.value = member.email || "";
   form.status.value = member.status || "Aktywny";
+  form.membershipType.value = member.membershipType || "Zwyczajny";
   form.boardRole.value = member.boardRole || "Brak";
   elements.memberFormTitle.textContent = "Edytuj członka";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
@@ -1964,6 +2012,7 @@ function resetMemberForm(form) {
   if (!form) return;
   form.reset();
   form.id.value = "";
+  form.membershipType.value = "Zwyczajny";
   form.boardRole.value = "Brak";
   elements.memberFormTitle.textContent = "Dodaj członka";
   form.querySelector('button[type="submit"]').textContent = "Dodaj";
@@ -1973,6 +2022,18 @@ function resetMemberForm(form) {
 function memberBoardRoleText(member) {
   const role = member.boardRole || "Brak";
   return role === "Brak" ? "" : ` · Funkcja: ${escapeHtml(role)}`;
+}
+
+function isBoardRole(role) {
+  return ["Przewodnicząca", "Wiceprzewodnicząca", "Członek zarządu"].includes(role || "Brak");
+}
+
+function memberMatchesRoleFilter(member, filter) {
+  const role = member.boardRole || "Brak";
+  if (filter === "all") return true;
+  if (filter === "none") return role === "Brak";
+  if (filter === "board") return isBoardRole(role);
+  return role === filter;
 }
 
 function renderFees() {
@@ -2982,13 +3043,23 @@ function invoicePaymentAction(invoice) {
 }
 
 function renderBoard() {
-  const boardMembers = state.members.filter((member) => (member.boardRole || "Brak") !== "Brak");
-  elements.boardList.innerHTML = rows(filterItems(boardMembers), (item) => `
+  const boardMembers = state.members.filter((member) => isBoardRole(member.boardRole));
+  if (!boardMembers.length) {
+    elements.boardList.innerHTML = `
+      <div class="notice">Zarząd jest tworzony automatycznie na podstawie funkcji ustawionej w module Członkowie.</div>
+      <div class="row"><small>Brak osób z przypisaną funkcją w zarządzie. Funkcję można nadać w module Członkowie.</small></div>
+    `;
+    return;
+  }
+  elements.boardList.innerHTML = `
+    <div class="notice">Zarząd jest tworzony automatycznie na podstawie funkcji ustawionej w module Członkowie.</div>
+    ${rows(filterItems(boardMembers), (item) => `
     <div>
       <strong>${escapeHtml(item.boardRole)}: ${escapeHtml(item.name)}</strong>
       <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status || "Aktywny")}</small>
     </div>
-  `);
+  `)}
+  `;
 }
 
 function renderFeeOptions() {
@@ -4964,6 +5035,7 @@ function adminExportConfig() {
         { label: "Telefon", value: (item) => item.phone, type: "phone" },
         { label: "E-mail", value: (item) => item.email },
         { label: "Status", value: (item) => item.status },
+        { label: "Typ członkostwa", value: (item) => item.membershipType || "Zwyczajny" },
         { label: "Funkcja w kole", value: (item) => item.boardRole },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
@@ -5089,7 +5161,7 @@ function adminExportConfig() {
 }
 
 function boardMembers() {
-  return state.members.filter((member) => (member.boardRole || "Brak") !== "Brak");
+  return state.members.filter((member) => isBoardRole(member.boardRole));
 }
 
 function rentalItemsText(items = []) {
@@ -5150,6 +5222,7 @@ function memberCsvColumns() {
     { key: "phone", label: "Telefon", value: (member) => member.phone },
     { key: "email", label: "E-mail", value: (member) => member.email },
     { key: "status", label: "Status", value: (member) => member.status || "Aktywny" },
+    { key: "membershipType", label: "Typ członkostwa", value: (member) => member.membershipType || "Zwyczajny" },
     { key: "boardRole", label: "Funkcja w kole", value: (member) => member.boardRole || "Brak" },
     { key: "feePaid", label: "Suma wpłat w bieżącym roku", value: (member, feeRow) => money(feeRow?.paid || 0) },
     { key: "feeStatus", label: "Status składek", value: (member, feeRow) => feeRow?.isLate ? "Zaległość" : "Opłacone" },
