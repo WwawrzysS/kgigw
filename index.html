@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-06" />
+    <link rel="stylesheet" href="styles.css?v=20260531-08" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -220,6 +220,35 @@
                 <button id="sendFeeSms" class="small-button">SMS do zaległych</button>
                 <button id="printFees" class="small-button" type="button">Drukuj</button>
               </div>
+            </div>
+            <div class="fee-controls">
+              <input id="feeSearch" type="search" placeholder="Szukaj w składkach..." />
+              <select id="feeSort">
+                <option value="status_late_first">Status: zaległe u góry</option>
+                <option value="name_asc">Nazwisko A-Z</option>
+                <option value="name_desc">Nazwisko Z-A</option>
+                <option value="due_desc">Zaległość: największa</option>
+                <option value="due_asc">Zaległość: najmniejsza</option>
+                <option value="paid_desc">Zapłacono: największa</option>
+                <option value="paid_asc">Zapłacono: najmniejsza</option>
+                <option value="status_paid_first">Status: opłacone u góry</option>
+              </select>
+              <select id="feeStatusFilter">
+                <option value="all">Status składki: wszystkie</option>
+                <option value="late">Zaległe</option>
+                <option value="paid">Opłacone</option>
+              </select>
+              <select id="feeTypeFilter">
+                <option value="all">Typ członkostwa: wszyscy</option>
+                <option value="Zwyczajny">Zwyczajny</option>
+                <option value="Wspierający">Wspierający</option>
+              </select>
+              <select id="feeMemberStatusFilter">
+                <option value="all">Status członka: wszyscy</option>
+                <option value="active">Aktywni</option>
+                <option value="inactive">Nieaktywni</option>
+              </select>
+              <button id="clearFeeFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
             </div>
             <div id="feesList" class="table"></div>
           </section>
@@ -627,7 +656,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-06</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-08</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -785,6 +814,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-06"></script>
+    <script src="app.js?v=20260531-08"></script>
   </body>
 </html>

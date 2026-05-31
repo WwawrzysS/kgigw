@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-06";
+const APP_VERSION = "2026.05.31-08";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -135,6 +135,12 @@ const elements = {
   feePrintModal: document.querySelector("#feePrintModal"),
   feePrintCancel: document.querySelector("#feePrintCancel"),
   feePrintConfirm: document.querySelector("#feePrintConfirm"),
+  feeSearch: document.querySelector("#feeSearch"),
+  feeSort: document.querySelector("#feeSort"),
+  feeStatusFilter: document.querySelector("#feeStatusFilter"),
+  feeTypeFilter: document.querySelector("#feeTypeFilter"),
+  feeMemberStatusFilter: document.querySelector("#feeMemberStatusFilter"),
+  clearFeeFilters: document.querySelector("#clearFeeFilters"),
   moneyEvent: document.querySelector("#moneyEvent"),
   moneyFundingSource: document.querySelector("#moneyFundingSource"),
   moneySearch: document.querySelector("#moneySearch"),
@@ -219,6 +225,20 @@ elements.feePrintModal?.addEventListener("click", (event) => {
   if (event.target === elements.feePrintModal) closeFeePrintModal();
 });
 elements.feePrintConfirm?.addEventListener("click", printFeesReport);
+[
+  elements.feeSearch,
+  elements.feeSort,
+  elements.feeStatusFilter,
+  elements.feeTypeFilter,
+  elements.feeMemberStatusFilter
+].forEach((control) => control?.addEventListener("input", renderFees));
+[
+  elements.feeSort,
+  elements.feeStatusFilter,
+  elements.feeTypeFilter,
+  elements.feeMemberStatusFilter
+].forEach((control) => control?.addEventListener("change", renderFees));
+elements.clearFeeFilters?.addEventListener("click", clearFeeFilters);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
 document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
 [
@@ -2155,7 +2175,7 @@ function memberMatchesRoleFilter(member, filter) {
 function renderFees() {
   const visibleRows = visibleFeeRows();
   if (!visibleRows.length) {
-    elements.feesList.innerHTML = '<div class="row"><small>Brak wpisów pasujących do wyszukiwania.</small></div>';
+    elements.feesList.innerHTML = '<div class="row"><small>Brak składek pasujących do filtrów.</small></div>';
     return;
   }
 
@@ -2176,7 +2196,90 @@ function renderFees() {
 }
 
 function visibleFeeRows() {
-  return filterItems(feeMemberRows());
+  const search = normalizeSearchText(elements.feeSearch?.value || "");
+  const status = elements.feeStatusFilter?.value || "all";
+  const type = elements.feeTypeFilter?.value || "all";
+  const memberStatus = elements.feeMemberStatusFilter?.value || "all";
+  const sort = elements.feeSort?.value || "status_late_first";
+
+  return feeMemberRows()
+    .filter((item) => feeMatchesSearch(item, search))
+    .filter((item) => {
+      if (status === "all") return true;
+      return status === "late" ? item.isLate : !item.isLate;
+    })
+    .filter((item) => type === "all" || normalizeText(item.membershipType) === normalizeText(type))
+    .filter((item) => {
+      if (memberStatus === "all") return true;
+      const isActive = normalizeText(item.memberStatus || "Aktywny") !== "nieaktywny";
+      return memberStatus === "active" ? isActive : !isActive;
+    })
+    .sort(feeSortComparator(sort));
+}
+
+function feeMatchesSearch(item, search) {
+  if (!search) return true;
+  const statusText = item.isLate ? "zaległe zaległość" : "opłacone";
+  const haystack = [
+    item.name,
+    item.phone,
+    item.email,
+    item.membershipType,
+    item.memberStatus,
+    statusText,
+    FEE_YEAR,
+    item.paid,
+    item.currentDue,
+    item.required,
+    money(item.paid),
+    money(item.currentDue),
+    item.paidUntil
+  ].map(normalizeSearchText).join(" ");
+  return haystack.includes(search);
+}
+
+function feeSortComparator(sort) {
+  const collator = new Intl.Collator("pl", { sensitivity: "base", numeric: true });
+  const byName = (a, b) => collator.compare(surnameSortValue(a.name), surnameSortValue(b.name));
+  const byDue = (a, b) => Number(a.currentDue || 0) - Number(b.currentDue || 0);
+  const byPaid = (a, b) => Number(a.paid || 0) - Number(b.paid || 0);
+  const byStatusLate = (a, b) => {
+    if (a.isLate !== b.isLate) return a.isLate ? -1 : 1;
+    return byName(a, b);
+  };
+  const byStatusPaid = (a, b) => {
+    if (a.isLate !== b.isLate) return a.isLate ? 1 : -1;
+    return byName(a, b);
+  };
+  if (sort === "name_asc") return byName;
+  if (sort === "name_desc") return (a, b) => byName(b, a);
+  if (sort === "due_desc") return (a, b) => byDue(b, a) || byName(a, b);
+  if (sort === "due_asc") return (a, b) => byDue(a, b) || byName(a, b);
+  if (sort === "paid_desc") return (a, b) => byPaid(b, a) || byName(a, b);
+  if (sort === "paid_asc") return (a, b) => byPaid(a, b) || byName(a, b);
+  if (sort === "status_paid_first") return byStatusPaid;
+  return byStatusLate;
+}
+
+function surnameSortValue(name) {
+  const cleanName = String(name || "")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/[.,;:()]/g, " ")
+    .trim();
+  const parts = cleanName.split(/\s+/).filter((part) => part && part !== "-");
+  if (!parts.length) return "";
+  const surnameParts = parts.slice(1);
+  const surname = surnameParts.length ? surnameParts.join(" ") : parts[0];
+  return `${surname} ${parts.join(" ")}`;
+}
+
+function clearFeeFilters() {
+  if (elements.feeSearch) elements.feeSearch.value = "";
+  if (elements.feeSort) elements.feeSort.value = "status_late_first";
+  if (elements.feeStatusFilter) elements.feeStatusFilter.value = "all";
+  if (elements.feeTypeFilter) elements.feeTypeFilter.value = "all";
+  if (elements.feeMemberStatusFilter) elements.feeMemberStatusFilter.value = "all";
+  renderFees();
 }
 
 function feeMemberRowHtml(item) {
@@ -3250,6 +3353,7 @@ function feeMemberRows() {
       phone: member?.phone || "",
       email: member?.email || "",
       membershipType: member?.membershipType || "Zwyczajny",
+      memberStatus: member?.status || "Aktywny",
       fees,
       due,
       currentDue,
