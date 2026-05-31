@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-15" />
+    <link rel="stylesheet" href="styles.css?v=20260531-17" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -520,9 +520,10 @@
             <div id="storageInfo" class="storage-info">
               <div>
                 <strong>Miejsce na PDF</strong>
-                <small id="storageText">0 MB / 1024 MB</small>
+                <small id="storageText" data-storage-text>0 MB / 1024 MB</small>
               </div>
-              <div class="storage-bar"><span id="storageBar"></span></div>
+              <div class="storage-bar"><span id="storageBar" data-storage-bar></span></div>
+              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
             </div>
             <div id="docsList" class="table"></div>
           </section>
@@ -572,6 +573,14 @@
             <div class="panel-head">
               <h2>Lista dokumentacji KGiGW</h2>
             </div>
+            <div class="storage-info">
+              <div>
+                <strong>Miejsce na PDF</strong>
+                <small data-storage-text>0 MB / 1024 MB</small>
+              </div>
+              <div class="storage-bar"><span data-storage-bar></span></div>
+              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+            </div>
             <div class="documentation-controls">
               <input id="documentationSearch" type="search" placeholder="Szukaj w dokumentacji..." />
               <select id="documentationKindFilter">
@@ -597,11 +606,27 @@
             <div class="panel-head">
               <h2>Wzory</h2>
             </div>
+            <div class="storage-info">
+              <div>
+                <strong>Miejsce na PDF</strong>
+                <small data-storage-text>0 MB / 1024 MB</small>
+              </div>
+              <div class="storage-bar"><span data-storage-bar></span></div>
+              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+            </div>
             <div id="docsTemplatesList" class="table"></div>
           </section>
           <section class="panel doc-tab-panel" data-doc-panel="notes" hidden>
             <div class="panel-head">
               <h2>Notatki</h2>
+            </div>
+            <div class="storage-info">
+              <div>
+                <strong>Miejsce na PDF</strong>
+                <small data-storage-text>0 MB / 1024 MB</small>
+              </div>
+              <div class="storage-bar"><span data-storage-bar></span></div>
+              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
             </div>
             <div id="docsNotesList" class="table"></div>
           </section>
@@ -727,7 +752,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-16</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-17</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -885,6 +910,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-16"></script>
+    <script src="app.js?v=20260531-17"></script>
   </body>
 </html>

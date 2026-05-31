@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-16";
+const APP_VERSION = "2026.05.31-17";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -208,8 +208,8 @@ const elements = {
   clearDocumentationFilters: document.querySelector("#clearDocumentationFilters"),
   docsTemplatesList: document.querySelector("#docsTemplatesList"),
   docsNotesList: document.querySelector("#docsNotesList"),
-  storageText: document.querySelector("#storageText"),
-  storageBar: document.querySelector("#storageBar"),
+  storageTexts: document.querySelectorAll("[data-storage-text]"),
+  storageBars: document.querySelectorAll("[data-storage-bar]"),
   appVersion: document.querySelector("#appVersion"),
   boardList: document.querySelector("#boardList"),
   feeMember: document.querySelector("#feeMember"),
@@ -3372,12 +3372,16 @@ function resetDocForm(form) {
 }
 
 function renderStorageInfo() {
-  if (!elements.storageText || !elements.storageBar) return;
+  if (!elements.storageTexts?.length || !elements.storageBars?.length) return;
   const used = state.docs.reduce((sum, doc) => sum + docFileSize(doc), 0);
   const percent = Math.min(100, Math.round((used / STORAGE_LIMIT_BYTES) * 100));
-  elements.storageText.textContent = `${formatBytes(used)} / ${formatBytes(STORAGE_LIMIT_BYTES)} (${percent}%)`;
-  elements.storageBar.style.width = `${percent}%`;
-  elements.storageBar.className = percent >= 90 ? "danger" : percent >= 70 ? "warning" : "";
+  elements.storageTexts.forEach((item) => {
+    item.textContent = `${formatBytes(used)} / ${formatBytes(STORAGE_LIMIT_BYTES)} (${percent}%)`;
+  });
+  elements.storageBars.forEach((item) => {
+    item.style.width = `${percent}%`;
+    item.className = percent >= 90 ? "danger" : percent >= 70 ? "warning" : "";
+  });
 }
 
 function renderInvoices() {

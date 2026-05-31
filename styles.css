@@ -1587,6 +1587,10 @@ textarea {
   color: var(--ink);
 }
 
+.storage-info small:last-child {
+  color: var(--muted);
+}
+
 .storage-bar {
   height: 10px;
   border-radius: 999px;
