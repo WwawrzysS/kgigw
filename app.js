@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-04";
+const APP_VERSION = "2026.05.31-05";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -2396,6 +2396,7 @@ function fundingSourceRow(source) {
       <button class="small-button" onclick="showFundingSettlement('${source.id}')">Rozliczenie</button>
       ${canCorrect() ? `<button class="small-button" onclick="editFundingSource('${source.id}')">Edytuj</button>` : ""}
       ${canCorrect() && source.status !== "archiwalne" ? `<button class="delete-button" onclick="archiveFundingSource('${source.id}')">Archiwizuj</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="deleteFundingSource('${source.id}')">Usuń</button>` : ""}
     </div>
   `;
 }
@@ -2578,6 +2579,47 @@ async function archiveFundingSource(id) {
   render();
   logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
   showToast("Źródło finansowania zostało zarchiwizowane");
+}
+
+async function deleteFundingSource(id) {
+  if (!isAdmin()) {
+    alert("Usuwanie źródeł finansowania jest dostępne tylko dla Administratora.");
+    return;
+  }
+  const source = state.fundingSources.find((entry) => entry.id === id);
+  if (!source) return;
+  const linkedMoney = state.money.some((entry) => entry.fundingSourceId === id);
+  const linkedDocs = state.docs.some((doc) => doc.fundingSourceId === id);
+  if (linkedMoney || linkedDocs) {
+    alert("Tego źródła nie można bezpiecznie usunąć, ponieważ jest powiązane z finansami lub dokumentami. Użyj opcji Archiwizuj albo najpierw odłącz wpisy.");
+    return;
+  }
+  const confirmed = confirm("Czy na pewno usunąć źródło finansowania? Tej operacji nie można cofnąć.");
+  if (!confirmed) return;
+
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient
+      .from("funding_sources")
+      .delete()
+      .eq("id", id);
+    if (error) {
+      console.error("Nie udało się usunąć źródła finansowania.", { id, source, error });
+      alert("Nie udało się usunąć źródła finansowania. Sprawdź uprawnienia Administratora.");
+      return;
+    }
+    await logActivity("Źródła finansowania", "Usunięcie źródła finansowania", { summary: source.name });
+    if (selectedFundingSourceId === id) selectedFundingSourceId = "";
+    await refreshSupabaseData();
+    showToast("Źródło finansowania zostało usunięte");
+    return;
+  }
+
+  state.fundingSources = state.fundingSources.filter((entry) => entry.id !== id);
+  if (selectedFundingSourceId === id) selectedFundingSourceId = "";
+  saveState();
+  render();
+  await logActivity("Źródła finansowania", "Usunięcie źródła finansowania", { summary: source.name });
+  showToast("Źródło finansowania zostało usunięte");
 }
 
 function renderEvents() {
