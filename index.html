@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-01" />
+    <link rel="stylesheet" href="styles.css?v=20260531-04" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -216,7 +216,10 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Składki członkowskie - zaległości u góry</h2>
-              <button id="sendFeeSms" class="small-button">SMS do zaległych</button>
+              <div class="panel-head-actions">
+                <button id="sendFeeSms" class="small-button">SMS do zaległych</button>
+                <button id="printFees" class="small-button" type="button">Drukuj</button>
+              </div>
             </div>
             <div id="feesList" class="table"></div>
           </section>
@@ -623,7 +626,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-01</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-04</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -710,10 +713,27 @@
       </section>
     </main>
 
+    <div id="feePrintModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="feePrintTitle">
+      <div class="modal-panel">
+        <h2 id="feePrintTitle">Druk listy składek</h2>
+        <p>Wybierz, co chcesz wydrukować:</p>
+        <div class="modal-options">
+          <label><input type="radio" name="feePrintScope" value="all" checked /> Wszystkie składki</label>
+          <label><input type="radio" name="feePrintScope" value="late" /> Tylko zaległe</label>
+          <label><input type="radio" name="feePrintScope" value="paid" /> Tylko opłacone</label>
+          <label><input type="radio" name="feePrintScope" value="visible" /> Aktualnie widoczna lista</label>
+        </div>
+        <div class="modal-actions">
+          <button id="feePrintCancel" class="small-button secondary-button" type="button">Anuluj</button>
+          <button id="feePrintConfirm" class="small-button" type="button">Drukuj</button>
+        </div>
+      </div>
+    </div>
+
     <section id="printSheet" class="print-sheet"></section>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-01"></script>
+    <script src="app.js?v=20260531-04"></script>
   </body>
 </html>

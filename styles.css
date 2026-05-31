@@ -1180,6 +1180,65 @@ textarea {
   display: none;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(35, 45, 39, 0.36);
+}
+
+.modal-panel {
+  width: min(460px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.modal-panel h2 {
+  margin: 0 0 8px;
+}
+
+.modal-panel p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.modal-options {
+  display: grid;
+  gap: 10px;
+}
+
+.modal-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-options input {
+  width: auto;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal-actions .secondary-button {
+  background: #ece7df;
+  color: var(--ink);
+}
+
+.modal-actions .secondary-button:hover {
+  background: #ded8cf;
+}
+
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1254,7 +1313,7 @@ textarea {
 .fee-payment-list,
 .fee-contact-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   margin-top: 8px;
 }
 
@@ -1268,10 +1327,23 @@ textarea {
 
 .fee-payment-item,
 .fee-contact-entry {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(130px, 0.8fr) minmax(240px, 1fr);
   align-items: center;
   gap: 8px;
+}
+
+.fee-contact-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.fee-contact-name,
+.fee-contact-due {
+  min-width: 0;
 }
 
 .fee-delete-button,
@@ -1561,6 +1633,11 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .fee-contact-entry {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
   .member-details-head {
     flex-direction: column;
   }
@@ -1579,6 +1656,11 @@ textarea {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body {
     display: block;
     background: #fff;
@@ -1593,7 +1675,7 @@ textarea {
     display: block;
     color: #000;
     font-family: Arial, sans-serif;
-    padding: 18mm;
+    padding: 0;
   }
 
   .print-sheet h1 {
@@ -1637,5 +1719,85 @@ textarea {
     border-top: 1px solid #000;
     padding-top: 6px;
     text-align: center;
+  }
+
+  .fees-print-document {
+    max-width: 186mm;
+    margin: 0 auto;
+    font-size: 10.5px;
+  }
+
+  .fees-print-document h1,
+  .fees-print-document h2 {
+    text-align: center;
+  }
+
+  .fees-print-document h1 {
+    font-size: 18px;
+    margin: 0 0 3mm;
+  }
+
+  .fees-print-document h2 {
+    font-size: 15px;
+    margin: 0 0 5mm;
+  }
+
+  .fees-print-document p {
+    margin: 2mm 0;
+  }
+
+  .fees-print-document table {
+    table-layout: fixed;
+    margin: 5mm 0;
+    font-size: 9.5px;
+  }
+
+  .fees-print-document th,
+  .fees-print-document td {
+    padding: 4px 5px;
+    vertical-align: top;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .fees-print-document th:nth-child(1),
+  .fees-print-document td:nth-child(1) {
+    width: 6%;
+    text-align: center;
+  }
+
+  .fees-print-document th:nth-child(2),
+  .fees-print-document td:nth-child(2) {
+    width: 25%;
+  }
+
+  .fees-print-document th:nth-child(3),
+  .fees-print-document td:nth-child(3) {
+    width: 13%;
+  }
+
+  .fees-print-document th:nth-child(4),
+  .fees-print-document td:nth-child(4),
+  .fees-print-document th:nth-child(5),
+  .fees-print-document td:nth-child(5),
+  .fees-print-document th:nth-child(6),
+  .fees-print-document td:nth-child(6) {
+    width: 11%;
+    white-space: nowrap;
+  }
+
+  .fees-print-document th:nth-child(7),
+  .fees-print-document td:nth-child(7) {
+    width: 12%;
+    white-space: nowrap;
+  }
+
+  .fees-print-document th:nth-child(8),
+  .fees-print-document td:nth-child(8) {
+    width: 11%;
+  }
+
+  .fees-print-document .print-signatures {
+    margin-top: 16mm;
   }
 }

@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-01";
+const APP_VERSION = "2026.05.31-04";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -122,6 +122,10 @@ const elements = {
   cancelMemberEdit: document.querySelector("#cancelMemberEdit"),
   feesList: document.querySelector("#feesList"),
   sendFeeSms: document.querySelector("#sendFeeSms"),
+  printFees: document.querySelector("#printFees"),
+  feePrintModal: document.querySelector("#feePrintModal"),
+  feePrintCancel: document.querySelector("#feePrintCancel"),
+  feePrintConfirm: document.querySelector("#feePrintConfirm"),
   moneyEvent: document.querySelector("#moneyEvent"),
   moneyFundingSource: document.querySelector("#moneyFundingSource"),
   moneySearch: document.querySelector("#moneySearch"),
@@ -197,6 +201,12 @@ document.querySelector("#toggleMemberExport").addEventListener("click", toggleMe
 document.querySelector("#downloadMembersCsv").addEventListener("click", exportMembersCsv);
 document.querySelector("#feeForm").addEventListener("submit", handleFee);
 document.querySelector("#sendFeeSms").addEventListener("click", sendFeeSmsReminders);
+elements.printFees?.addEventListener("click", openFeePrintModal);
+elements.feePrintCancel?.addEventListener("click", closeFeePrintModal);
+elements.feePrintModal?.addEventListener("click", (event) => {
+  if (event.target === elements.feePrintModal) closeFeePrintModal();
+});
+elements.feePrintConfirm?.addEventListener("click", printFeesReport);
 document.querySelector("#moneyForm").addEventListener("submit", handleMoney);
 document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoneyEdit);
 [
@@ -2037,7 +2047,7 @@ function memberMatchesRoleFilter(member, filter) {
 }
 
 function renderFees() {
-  const visibleRows = filterItems(feeMemberRows());
+  const visibleRows = visibleFeeRows();
   if (!visibleRows.length) {
     elements.feesList.innerHTML = '<div class="row"><small>Brak wpisów pasujących do wyszukiwania.</small></div>';
     return;
@@ -2057,6 +2067,10 @@ function renderFees() {
       ${paidRows.length ? paidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osób z opłaconą składką.</small></div>'}
     </section>
   `;
+}
+
+function visibleFeeRows() {
+  return filterItems(feeMemberRows());
 }
 
 function feeMemberRowHtml(item) {
@@ -3079,7 +3093,27 @@ function feeMemberRows() {
     const currentRequired = requiredFeeToday();
     const currentDue = Math.max(0, currentRequired - paid);
     const paidUntil = paidUntilLabel(paid);
-    return { name, phone: member?.phone || "", email: member?.email || "", fees, due, currentDue, paid, paidUntil, currentRequired, required: ANNUAL_FEE, hasDue: due > 0, isLate: currentDue > 0, stages };
+    const latestPaymentDate = fees
+      .map((fee) => fee.paidAt || fee.date || "")
+      .filter(Boolean)
+      .sort((a, b) => String(b).localeCompare(String(a)))[0] || "";
+    return {
+      name,
+      phone: member?.phone || "",
+      email: member?.email || "",
+      membershipType: member?.membershipType || "Zwyczajny",
+      fees,
+      due,
+      currentDue,
+      paid,
+      paidUntil,
+      currentRequired,
+      required: ANNUAL_FEE,
+      latestPaymentDate,
+      hasDue: due > 0,
+      isLate: currentDue > 0,
+      stages
+    };
   }).sort((a, b) => {
     if (a.isLate !== b.isLate) return a.isLate ? -1 : 1;
     if (b.currentDue !== a.currentDue) return b.currentDue - a.currentDue;
@@ -3158,8 +3192,9 @@ function feeContactPanel(rows) {
       <div class="fee-contact-list">
         ${rows.map((item) => `
           <div class="fee-contact-entry">
-            <span>${escapeHtml(item.name)} · zaległość: ${money(item.currentDue)}</span>
-            ${feeContactLinks(item)}
+            <span class="fee-contact-name">${escapeHtml(item.name)}</span>
+            <span class="fee-contact-due">zaległość: ${money(item.currentDue)}</span>
+            <span class="fee-contact-actions">${feeContactLinks(item)}</span>
           </div>
         `).join("")}
       </div>
@@ -3199,9 +3234,9 @@ function sendFeeSmsReminders() {
     alert("Brak osób z zaległością na dziś.");
     return;
   }
-  showFeeContactPanel = true;
+  showFeeContactPanel = !showFeeContactPanel;
   renderFees();
-  showToast("Przygotowano listę kontaktów do osób z zaległością");
+  showToast(showFeeContactPanel ? "Pokazano listę kontaktów do osób z zaległością" : "Schowano listę kontaktów");
 }
 
 function renderEventOptions() {
@@ -3612,6 +3647,30 @@ function printReturn(id) {
 
 function printMoneyReport() {
   elements.printSheet.innerHTML = moneyReportHtml();
+  window.print();
+}
+
+function openFeePrintModal() {
+  elements.feePrintModal?.classList.remove("hidden");
+}
+
+function closeFeePrintModal() {
+  elements.feePrintModal?.classList.add("hidden");
+}
+
+async function printFeesReport() {
+  const scopes = {
+    all: { key: "all", label: "Wszystkie składki" },
+    late: { key: "late", label: "Tylko zaległe" },
+    paid: { key: "paid", label: "Tylko opłacone" },
+    visible: { key: "visible", label: "Aktualnie widoczna lista" }
+  };
+  const selected = document.querySelector('input[name="feePrintScope"]:checked')?.value || "all";
+  const scope = scopes[selected] || scopes.all;
+  const rows = feeRowsForPrint(scope.key);
+  elements.printSheet.innerHTML = feesReportHtml(rows, scope.label);
+  closeFeePrintModal();
+  await logActivity("Składki", "Druk listy składek", { summary: scope.label });
   window.print();
 }
 
@@ -4665,6 +4724,66 @@ function moneyReportHtml(items = filteredMoneyItems()) {
     <div class="print-signatures">
       <div class="signature-line">Sporządził/a</div>
       <div class="signature-line">Zatwierdził/a</div>
+    </div>
+  `;
+}
+
+function feeRowsForPrint(scope) {
+  const rows = scope === "visible" ? visibleFeeRows() : feeMemberRows();
+  if (scope === "late") return rows.filter((item) => item.isLate);
+  if (scope === "paid") return rows.filter((item) => !item.isLate);
+  return rows;
+}
+
+function feesReportHtml(rows, scopeLabel) {
+  const totals = rows.reduce((summary, row) => ({
+    due: summary.due + Number(row.required || 0),
+    paid: summary.paid + Number(row.paid || 0),
+    late: summary.late + Number(row.currentDue || 0)
+  }), { due: 0, paid: 0, late: 0 });
+  const rowsHtml = rows.map((row, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.membershipType || "Zwyczajny")}</td>
+      <td>${money(row.required || ANNUAL_FEE)}</td>
+      <td>${money(row.paid || 0)}</td>
+      <td>${money(row.currentDue || 0)}</td>
+      <td>${row.latestPaymentDate ? formatDate(row.latestPaymentDate) : "—"}</td>
+      <td>${row.currentDue > 0 ? "Zaległość" : "Opłacone"}</td>
+    </tr>
+  `).join("");
+
+  return `
+    <div class="fees-print-document">
+    <h1>KGiGW we Włosani</h1>
+    <h2>Lista składek członkowskich</h2>
+    <p><strong>Data wydruku:</strong> ${new Intl.DateTimeFormat("pl-PL").format(new Date())}</p>
+    <p><strong>Zakres wydruku:</strong> ${escapeHtml(scopeLabel)}</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Lp.</th>
+          <th>Członek</th>
+          <th>Typ</th>
+          <th>Należne</th>
+          <th>Zapłacono</th>
+          <th>Zaległość</th>
+          <th>Data wpłaty</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml || '<tr><td colspan="8">Brak pozycji w wybranym zakresie.</td></tr>'}</tbody>
+    </table>
+    <h3>Podsumowanie</h3>
+    <p><strong>Liczba pozycji:</strong> ${rows.length}</p>
+    <p><strong>Suma należna:</strong> ${money(totals.due)}</p>
+    <p><strong>Suma zapłacono:</strong> ${money(totals.paid)}</p>
+    <p><strong>Suma zaległości:</strong> ${money(totals.late)}</p>
+    <div class="print-signatures">
+      <div class="signature-line">Sporządził/a</div>
+      <div class="signature-line">Sprawdził/a</div>
+    </div>
     </div>
   `;
 }
