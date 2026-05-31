@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-18" />
+    <link rel="stylesheet" href="styles.css?v=20260531-20" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -338,7 +338,18 @@
             <div class="panel-head">
               <h2>Wydarzenia</h2>
             </div>
-            <div id="eventsList" class="table"></div>
+            <div class="event-controls">
+              <input id="eventSearch" type="search" placeholder="Szukaj w wydarzeniach..." />
+              <select id="eventSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="name_asc">Nazwa A-Z</option>
+                <option value="name_desc">Nazwa Z-A</option>
+                <option value="place_asc">Miejsce A-Z</option>
+              </select>
+              <button id="clearEventFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
+            </div>
+            <div id="eventsList" class="table event-list-scroll"></div>
           </section>
         </div>
       </section>
@@ -391,7 +402,39 @@
             <div class="panel-head">
               <h2>Lista źródeł finansowania</h2>
             </div>
-            <div id="fundingSourcesList" class="table"></div>
+            <div class="funding-controls">
+              <input id="fundingSearch" type="search" placeholder="Szukaj w źródłach finansowania..." />
+              <select id="fundingSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="name_asc">Nazwa A-Z</option>
+                <option value="name_desc">Nazwa Z-A</option>
+                <option value="amount_desc">Kwota: największa</option>
+                <option value="amount_asc">Kwota: najmniejsza</option>
+                <option value="status_asc">Status</option>
+              </select>
+              <select id="fundingStatusFilter">
+                <option value="all">Status: wszystkie</option>
+                <option value="aktywne">aktywne</option>
+                <option value="zakończone">zakończone</option>
+                <option value="archiwalne">archiwalne</option>
+              </select>
+              <select id="fundingTypeFilter">
+                <option value="all">Typ: wszystkie</option>
+                <option>Dotacja ARiMR</option>
+                <option>Program grantowy</option>
+                <option>Fundacja / firma</option>
+                <option>Samorząd</option>
+                <option>LGD</option>
+                <option>Konkurs</option>
+                <option>Kiermasz</option>
+                <option>Darowizna celowa</option>
+                <option>Fundusz własny koła</option>
+                <option>Inne</option>
+              </select>
+              <button id="clearFundingFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
+            </div>
+            <div id="fundingSourcesList" class="table funding-list-scroll"></div>
           </section>
           <section id="fundingDetailsPanel" class="panel funding-details-panel hidden">
             <div id="fundingDetails" class="funding-details"></div>
@@ -814,7 +857,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-19</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-20</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -972,6 +1015,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-19"></script>
+    <script src="app.js?v=20260531-20"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-19";
+const APP_VERSION = "2026.05.31-20";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -164,6 +164,11 @@ const elements = {
   fundingFormTitle: document.querySelector("#fundingFormTitle"),
   cancelFundingEdit: document.querySelector("#cancelFundingEdit"),
   fundingSourcesList: document.querySelector("#fundingSourcesList"),
+  fundingSearch: document.querySelector("#fundingSearch"),
+  fundingSort: document.querySelector("#fundingSort"),
+  fundingStatusFilter: document.querySelector("#fundingStatusFilter"),
+  fundingTypeFilter: document.querySelector("#fundingTypeFilter"),
+  clearFundingFilters: document.querySelector("#clearFundingFilters"),
   fundingDetailsPanel: document.querySelector("#fundingDetailsPanel"),
   fundingDetails: document.querySelector("#fundingDetails"),
   docEvent: document.querySelector("#docEvent"),
@@ -174,6 +179,9 @@ const elements = {
   overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
   moneyList: document.querySelector("#moneyList"),
   eventsList: document.querySelector("#eventsList"),
+  eventSearch: document.querySelector("#eventSearch"),
+  eventSort: document.querySelector("#eventSort"),
+  clearEventFilters: document.querySelector("#clearEventFilters"),
   inventoryAddForm: document.querySelector("#inventoryAddForm"),
   rentalInventory: document.querySelector("#rentalInventory"),
   rentalItemsForm: document.querySelector("#rentalItemsForm"),
@@ -292,8 +300,26 @@ document.querySelector("#cancelMoneyEdit").addEventListener("click", cancelMoney
 elements.clearMoneyFilters?.addEventListener("click", clearMoneyFilters);
 document.querySelector("#fundingForm").addEventListener("submit", handleFundingSource);
 document.querySelector("#cancelFundingEdit").addEventListener("click", cancelFundingEdit);
+[
+  elements.fundingSearch,
+  elements.fundingSort,
+  elements.fundingStatusFilter,
+  elements.fundingTypeFilter
+].forEach((control) => control?.addEventListener("input", renderFundingSources));
+[
+  elements.fundingSort,
+  elements.fundingStatusFilter,
+  elements.fundingTypeFilter
+].forEach((control) => control?.addEventListener("change", renderFundingSources));
+elements.clearFundingFilters?.addEventListener("click", clearFundingFilters);
 document.querySelector("#printMoneyReport").addEventListener("click", printMoneyReport);
 document.querySelector("#eventForm").addEventListener("submit", handleEvent);
+[
+  elements.eventSearch,
+  elements.eventSort
+].forEach((control) => control?.addEventListener("input", renderEvents));
+elements.eventSort?.addEventListener("change", renderEvents);
+elements.clearEventFilters?.addEventListener("click", clearEventFilters);
 document.querySelector("#inventoryAddForm").addEventListener("submit", handleInventoryAdd);
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
@@ -2909,11 +2935,61 @@ function invoiceDueBadge(invoice) {
 
 function renderFundingSources() {
   if (!elements.fundingSourcesList) return;
-  const sortedSources = [...filterItems(state.fundingSources || [])].sort((a, b) => {
+  const sources = filteredFundingSources();
+  elements.fundingSourcesList.innerHTML = sources.length
+    ? sources.map((source) => `<div class="row">${fundingSourceRow(source)}</div>`).join("")
+    : '<div class="row"><small>Brak źródeł finansowania pasujących do filtrów.</small></div>';
+}
+
+function filteredFundingSources() {
+  const search = normalizeSearchText(elements.fundingSearch?.value || "");
+  const sort = elements.fundingSort?.value || "date_desc";
+  const statusFilter = elements.fundingStatusFilter?.value || "all";
+  const typeFilter = elements.fundingTypeFilter?.value || "all";
+  return [...(state.fundingSources || [])]
+    .filter((source) => statusFilter === "all" || fundingStatusValue(source.status) === normalizeText(statusFilter))
+    .filter((source) => typeFilter === "all" || (source.type || "Inne") === typeFilter)
+    .filter((source) => {
+      if (!search) return true;
+      return [
+        source.name,
+        source.type,
+        source.plannedAmount,
+        money(source.plannedAmount || 0),
+        source.status,
+        source.dateFrom,
+        source.dateTo,
+        formatDate(source.dateFrom),
+        formatDate(source.dateTo),
+        source.description
+      ].map(normalizeSearchText).join(" ").includes(search);
+    })
+    .sort(fundingSourceSortComparator(sort));
+}
+
+function fundingSourceSortComparator(sort) {
+  const byDate = (a, b) => String(a.dateFrom || a.dateTo || "").localeCompare(String(b.dateFrom || b.dateTo || ""));
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pl");
+  const byAmount = (a, b) => Number(a.plannedAmount || 0) - Number(b.plannedAmount || 0);
+  const byStatus = (a, b) => {
     const statusOrder = { aktywne: 0, zakończone: 1, archiwalne: 2 };
-    return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9) || a.name.localeCompare(b.name);
-  });
-  elements.fundingSourcesList.innerHTML = rows(sortedSources, fundingSourceRow);
+    return (statusOrder[fundingStatusValue(a.status)] ?? 9) - (statusOrder[fundingStatusValue(b.status)] ?? 9) || byName(a, b);
+  };
+  if (sort === "date_asc") return byDate;
+  if (sort === "name_asc") return byName;
+  if (sort === "name_desc") return (a, b) => byName(b, a);
+  if (sort === "amount_desc") return (a, b) => byAmount(b, a);
+  if (sort === "amount_asc") return byAmount;
+  if (sort === "status_asc") return byStatus;
+  return (a, b) => byDate(b, a) || byName(a, b);
+}
+
+function clearFundingFilters() {
+  if (elements.fundingSearch) elements.fundingSearch.value = "";
+  if (elements.fundingSort) elements.fundingSort.value = "date_desc";
+  if (elements.fundingStatusFilter) elements.fundingStatusFilter.value = "all";
+  if (elements.fundingTypeFilter) elements.fundingTypeFilter.value = "all";
+  renderFundingSources();
 }
 
 function fundingSourceRow(source) {
@@ -3158,7 +3234,8 @@ async function deleteFundingSource(id) {
 }
 
 function renderEvents() {
-  elements.eventsList.innerHTML = rows(filterItems(state.events), (item) => `
+  const events = filteredEvents();
+  elements.eventsList.innerHTML = events.length ? events.map((item) => `<div class="row">
     <div>
       <details class="event-details">
         <summary>
@@ -3173,7 +3250,41 @@ function renderEvents() {
       </details>
     </div>
     ${deleteAction("events", item.id)}
-  `);
+  </div>`).join("") : '<div class="row"><small>Brak wydarzeń pasujących do wyszukiwania.</small></div>';
+}
+
+function filteredEvents() {
+  const search = normalizeSearchText(elements.eventSearch?.value || "");
+  const sort = elements.eventSort?.value || "date_desc";
+  return [...state.events]
+    .filter((eventItem) => {
+      if (!search) return true;
+      return [
+        eventItem.name,
+        eventItem.place,
+        eventItem.date,
+        formatDate(eventItem.date),
+        eventItem.notes
+      ].map(normalizeSearchText).join(" ").includes(search);
+    })
+    .sort(eventSortComparator(sort));
+}
+
+function eventSortComparator(sort) {
+  const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pl");
+  const byPlace = (a, b) => String(a.place || "").localeCompare(String(b.place || ""), "pl") || byName(a, b);
+  if (sort === "date_asc") return byDate;
+  if (sort === "name_asc") return byName;
+  if (sort === "name_desc") return (a, b) => byName(b, a);
+  if (sort === "place_asc") return byPlace;
+  return (a, b) => byDate(b, a) || byName(a, b);
+}
+
+function clearEventFilters() {
+  if (elements.eventSearch) elements.eventSearch.value = "";
+  if (elements.eventSort) elements.eventSort.value = "date_desc";
+  renderEvents();
 }
 
 function renderRentals() {

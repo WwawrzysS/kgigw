@@ -737,11 +737,17 @@ textarea {
 
 .money-controls,
 .invoice-controls,
-.fee-controls {
+.fee-controls,
+.event-controls,
+.funding-controls {
   margin: 14px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.funding-controls {
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr)) auto;
 }
 
 .fee-controls {
@@ -768,6 +774,10 @@ textarea {
 .money-controls select,
 .invoice-controls input,
 .invoice-controls select,
+.event-controls input,
+.event-controls select,
+.funding-controls input,
+.funding-controls select,
 .fee-controls input,
 .fee-controls select {
   min-width: 0;
@@ -775,6 +785,8 @@ textarea {
 
 .money-controls .small-button,
 .invoice-controls .small-button,
+.event-controls .small-button,
+.funding-controls .small-button,
 .fee-controls .small-button {
   justify-self: start;
 }
@@ -785,6 +797,8 @@ textarea {
 
 .money-list-scroll,
 .invoice-list-scroll,
+.event-list-scroll,
+.funding-list-scroll,
 #feesList {
   max-height: 560px;
   overflow-y: auto;
@@ -1788,6 +1802,8 @@ textarea {
 
   .money-controls,
   .invoice-controls,
+  .event-controls,
+  .funding-controls,
   .documentation-controls,
   .section-doc-controls,
   .section-doc-controls-compact {
