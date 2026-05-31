@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-10";
+const APP_VERSION = "2026.05.31-11";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -32,6 +32,14 @@ const STAND_INVOICE_DEFAULTS = {
   contactPhone: "513518769",
   smsTemplate: "Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: [EMAIL]. KGiGW we Wlosani. Dziekujemy / tel: [PHONE]",
   disabledMessage: "Strona zgłoszeń faktur jest obecnie wyłączona. Skontaktuj się z Administratorem KGiGW."
+};
+const DOC_SECTION_DEFAULT = "Dokumenty";
+const DOC_SECTIONS = ["Dokumenty", "Dokumentacja", "Wzory", "Notatki"];
+const DOC_SECTION_TABS = {
+  documents: "Dokumenty",
+  documentation: "Dokumentacja",
+  templates: "Wzory",
+  notes: "Notatki"
 };
 
 const starterData = {
@@ -185,9 +193,13 @@ const elements = {
   rentalReturnsList: document.querySelector("#rentalReturnsList"),
   rentalSubtabs: document.querySelectorAll("[data-rental-tab]"),
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
+  docTabs: document.querySelectorAll("[data-doc-tab]"),
   docPanels: document.querySelectorAll("[data-doc-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
+  docsDocumentationList: document.querySelector("#docsDocumentationList"),
+  docsTemplatesList: document.querySelector("#docsTemplatesList"),
+  docsNotesList: document.querySelector("#docsNotesList"),
   storageText: document.querySelector("#storageText"),
   storageBar: document.querySelector("#storageBar"),
   appVersion: document.querySelector("#appVersion"),
@@ -328,6 +340,10 @@ elements.navSubitems.forEach((button) => {
 
 elements.rentalSubtabs.forEach((button) => {
   button.addEventListener("click", () => switchRentalTab(button.dataset.rentalTab));
+});
+
+elements.docTabs.forEach((button) => {
+  button.addEventListener("click", () => switchDocTab(button.dataset.docTab));
 });
 
 elements.adminTabs.forEach((button) => {
@@ -519,7 +535,7 @@ async function refreshSupabaseData() {
       .order("transaction_date", { ascending: false })),
     loadSupabaseResult("documents", supabaseClient
       .from("documents")
-      .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
+      .select("id, title, sender, category, document_section, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
       .order("document_date", { ascending: false })),
     loadSupabaseResult("invoices", supabaseClient
       .from("invoices")
@@ -570,6 +586,15 @@ async function refreshSupabaseData() {
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
       .order("invoice_date", { ascending: false }));
     if (!fallbackInvoices.error) invoicesResult = fallbackInvoices;
+  }
+
+  if (docsResult.error) {
+    console.error("Nie udało się pobrać dokumentów z polem document_section. Próba pobrania podstawowego widoku.", docsResult.error);
+    const fallbackDocs = await loadSupabaseResult("documents fallback", supabaseClient
+      .from("documents")
+      .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
+      .order("document_date", { ascending: false }));
+    if (!fallbackDocs.error) docsResult = fallbackDocs;
   }
 
   logSupabaseLoadError("członków", membersResult.error);
@@ -709,6 +734,7 @@ async function refreshSupabaseData() {
     title: doc.title,
     sender: doc.sender || "",
     category: doc.category,
+    section: normalizeDocSection(doc.document_section),
     date: doc.document_date,
     notes: doc.notes || "",
     filePath: doc.file_path || "",
@@ -1048,9 +1074,14 @@ function switchAdminTab(tabName) {
 }
 
 function switchDocTab(tabName) {
-  elements.docPanels.forEach((panel) => panel.classList.toggle("active-doc-panel", panel.dataset.docPanel === tabName));
-  elements.navSubitems.forEach((item) => {
-    if (item.dataset.docTab) item.classList.toggle("active", item.dataset.docTab === tabName);
+  elements.docPanels.forEach((panel) => {
+    const active = panel.dataset.docPanel === tabName;
+    panel.classList.toggle("active-doc-panel", active);
+    panel.hidden = !active;
+    panel.style.display = active ? "" : "none";
+  });
+  elements.docTabs.forEach((item) => {
+    item.classList.toggle("active", item.dataset.docTab === tabName);
   });
 }
 
@@ -1473,9 +1504,12 @@ async function handleDoc(event) {
   const data = formData(event.target);
   const docId = data.id || "";
   const existingDoc = docId ? state.docs.find((item) => item.id === docId) : null;
+  data.section = normalizeDocSection(data.section);
   const oldFundingName = fundingSourceName(existingDoc?.fundingSourceId);
   const newFundingName = fundingSourceName(data.fundingSourceId);
   const fundingChanged = docId && (existingDoc?.fundingSourceId || "") !== (data.fundingSourceId || "");
+  const oldDocSection = normalizeDocSection(existingDoc?.section);
+  const sectionChanged = docId && oldDocSection !== data.section;
   const shouldAddExpense = !docId && data.documentMoneyAction === "add_expense";
   const documentExpenseAmount = Number(data.expenseAmount || 0);
   const file = event.target.file.files[0];
@@ -1510,6 +1544,7 @@ async function handleDoc(event) {
       title: data.title,
       sender: data.sender || null,
       category: data.category,
+      document_section: data.section,
       document_date: data.date,
       notes: data.notes || null,
       event_id: data.eventId || null,
@@ -1553,7 +1588,7 @@ async function handleDoc(event) {
         .single();
       if (expenseError) {
         alert(`Dokument zapisano, ale nie udało się dodać wydatku do Finansów: ${expenseError.message}`);
-        await logActivity("Dokumenty", "Dodanie dokumentu", { summary: docLogSummary(data) });
+        await logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
         await refreshSupabaseData();
         return;
       }
@@ -1573,8 +1608,12 @@ async function handleDoc(event) {
     resetDocForm(event.target);
     if (fundingChanged) {
       await logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
-    } else {
-      await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu", { summary: docLogSummary(data) });
+    }
+    if (sectionChanged) {
+      await logActivity("Dokumenty", "Zmiana sekcji/kategorii dokumentu", { summary: `${data.title} - z ${oldDocSection} na ${data.section}` });
+    }
+    if (!fundingChanged && !sectionChanged) {
+      await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
     }
     await refreshSupabaseData();
     showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
@@ -1588,6 +1627,7 @@ async function handleDoc(event) {
     if (doc) Object.assign(doc, {
       ...data,
       id: docId,
+      section: data.section,
       fundingSourceId: data.fundingSourceId || "",
       fundingSourceName: newFundingName,
       attachment: attachment || doc.attachment
@@ -1597,7 +1637,11 @@ async function handleDoc(event) {
     render();
     if (fundingChanged) {
       logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
-    } else {
+    }
+    if (sectionChanged) {
+      logActivity("Dokumenty", "Zmiana sekcji/kategorii dokumentu", { summary: `${data.title} - z ${oldDocSection} na ${data.section}` });
+    }
+    if (!fundingChanged && !sectionChanged) {
       logActivity("Dokumenty", "Edycja dokumentu", { summary: docLogSummary(data) });
     }
     showToast("Zapisano dokument");
@@ -1625,10 +1669,10 @@ async function handleDoc(event) {
     logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
     logActivity("Dokumenty", "Powiązanie dokumentu z wpisem Finansów", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
   }
-  state.docs.push({ id: localDocId, ...data, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, transactionId, attachment });
+  state.docs.push({ id: localDocId, ...data, section: data.section, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, transactionId, attachment });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
-  logActivity("Dokumenty", "Dodanie dokumentu", { summary: docLogSummary(data) });
+  logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
   showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
 }
 
@@ -1896,9 +1940,9 @@ function globalSearchResults(search) {
     "Dokumenty",
     "docs",
     doc.title || "Dokument",
-    `${formatDate(doc.date)} · ${doc.category || "Dokument"} · ${doc.sender || "Brak nadawcy"}${doc.fundingSourceName ? ` · ${doc.fundingSourceName}` : ""}`,
-    [doc.title, doc.sender, doc.category, doc.date, doc.notes, doc.fileName, doc.eventName, doc.fundingSourceName],
-    "documents"
+    `${formatDate(doc.date)} · ${doc.category || "Dokument"} · ${normalizeDocSection(doc.section)} · ${doc.sender || "Brak nadawcy"}${doc.fundingSourceName ? ` · ${doc.fundingSourceName}` : ""}`,
+    [doc.title, doc.sender, doc.category, normalizeDocSection(doc.section), doc.date, doc.notes, doc.fileName, doc.eventName, doc.fundingSourceName],
+    docTabForSection(doc.section)
   ));
 
   state.events.forEach((event) => addResult(
@@ -2999,17 +3043,40 @@ function renderRentalItemInputs() {
 
 function renderDocs() {
   renderStorageInfo();
-  elements.docsList.innerHTML = rows(filterItems(state.docs), (item) => `
+  renderDocSectionList(elements.docsList, "Dokumenty");
+  renderDocSectionList(elements.docsDocumentationList, "Dokumentacja");
+  renderDocSectionList(elements.docsTemplatesList, "Wzory");
+  renderDocSectionList(elements.docsNotesList, "Notatki");
+}
+
+function renderDocSectionList(container, sectionName) {
+  if (!container) return;
+  const docs = filterItems(state.docs.filter((item) => normalizeDocSection(item.section) === sectionName));
+  container.innerHTML = docs.length ? docs.map((item) => `<div class="row">${docRowHtml(item)}</div>`).join("") : '<div class="row"><small>Brak dokumentów w tej sekcji.</small></div>';
+}
+
+function docRowHtml(item) {
+  return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span><br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
       ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz PDF</button>` : ""}
       ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
-  `);
+  `;
+}
+
+function normalizeDocSection(value) {
+  const normalized = String(value || "").trim();
+  return DOC_SECTIONS.includes(normalized) ? normalized : DOC_SECTION_DEFAULT;
+}
+
+function docTabForSection(section) {
+  const normalized = normalizeDocSection(section);
+  return Object.entries(DOC_SECTION_TABS).find(([, label]) => label === normalized)?.[0] || "documents";
 }
 
 function editDoc(id) {
@@ -3021,6 +3088,7 @@ function editDoc(id) {
   form.title.value = doc.title || "";
   form.sender.value = doc.sender || "";
   form.category.value = doc.category || "Pismo";
+  form.section.value = normalizeDocSection(doc.section);
   form.date.value = doc.date || new Date().toISOString().slice(0, 10);
   form.eventId.value = doc.eventId || "";
   renderFundingSourceOptions(doc.fundingSourceId || "");
@@ -3032,6 +3100,7 @@ function editDoc(id) {
   elements.docFormTitle.textContent = "Edytuj dokument";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   elements.cancelDocEdit.classList.remove("hidden");
+  switchDocTab("documents");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -3043,6 +3112,7 @@ function resetDocForm(form) {
   if (!form) return;
   form.reset();
   form.id.value = "";
+  form.section.value = DOC_SECTION_DEFAULT;
   form.date.valueAsDate = new Date();
   form.fundingSourceId.value = "";
   form.documentMoneyAction.value = "save_only";
@@ -4835,7 +4905,7 @@ function docHasFile(doc) {
 
 function docLogSummary(doc) {
   const sourceName = fundingSourceName(doc.fundingSourceId);
-  return `${doc.title || "Dokument"}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
+  return `${doc.title || "Dokument"} - Sekcja: ${normalizeDocSection(doc.section)}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
 }
 
 function readPdfAttachment(file) {
@@ -5545,6 +5615,7 @@ function adminExportConfig() {
         { label: "Tytuł", value: (item) => item.title },
         { label: "Nadawca", value: (item) => item.sender },
         { label: "Typ", value: (item) => item.category },
+        { label: "Sekcja", value: (item) => normalizeDocSection(item.section) },
         { label: "Data", value: (item) => item.date, type: "date" },
         { label: "Kwota wpływ", value: (item) => item.incomeAmount, type: "money" },
         { label: "Kwota wydatek", value: (item) => item.expenseAmount, type: "money" },

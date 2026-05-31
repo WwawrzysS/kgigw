@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-10" />
+    <link rel="stylesheet" href="styles.css?v=20260531-11" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -51,6 +51,9 @@
         <div id="docsSubnav" class="nav-submenu">
           <button class="nav-subitem" data-view="docs" data-doc-tab="documents">Dokumenty</button>
           <button class="nav-subitem" data-view="docs" data-doc-tab="mail">Poczta</button>
+          <button class="nav-subitem" data-view="docs" data-doc-tab="documentation">Dokumentacja</button>
+          <button class="nav-subitem" data-view="docs" data-doc-tab="templates">Wzory</button>
+          <button class="nav-subitem" data-view="docs" data-doc-tab="notes">Notatki</button>
         </div>
         <button class="nav-item" data-view="board">Zarząd</button>
         <button class="nav-item admin-role-only hidden-role" data-view="administration" hidden>Administracja</button>
@@ -458,6 +461,13 @@
       </section>
 
       <section id="docs" class="view">
+        <div class="subtabs doc-tabs" role="tablist" aria-label="Dokumenty">
+          <button class="active" type="button" data-doc-tab="documents">Dokumenty</button>
+          <button type="button" data-doc-tab="mail">Poczta</button>
+          <button type="button" data-doc-tab="documentation">Dokumentacja</button>
+          <button type="button" data-doc-tab="templates">Wzory</button>
+          <button type="button" data-doc-tab="notes">Notatki</button>
+        </div>
         <div class="workspace">
           <form id="docForm" class="form-panel doc-tab-panel active-doc-panel" data-doc-panel="documents">
             <h2 id="docFormTitle">Dodaj dokument lub wiadomość</h2>
@@ -470,6 +480,12 @@
               <option>Paragon</option>
               <option>Dotacja</option>
               <option>Korespondencja</option>
+            </select>
+            <select name="section">
+              <option>Dokumenty</option>
+              <option>Dokumentacja</option>
+              <option>Wzory</option>
+              <option>Notatki</option>
             </select>
             <input name="date" type="date" required />
             <input name="file" type="file" accept="application/pdf" />
@@ -533,6 +549,24 @@
                 </div>
               </div>
             </div>
+          </section>
+          <section class="panel doc-tab-panel" data-doc-panel="documentation" hidden>
+            <div class="panel-head">
+              <h2>Dokumentacja</h2>
+            </div>
+            <div id="docsDocumentationList" class="table"></div>
+          </section>
+          <section class="panel doc-tab-panel" data-doc-panel="templates" hidden>
+            <div class="panel-head">
+              <h2>Wzory</h2>
+            </div>
+            <div id="docsTemplatesList" class="table"></div>
+          </section>
+          <section class="panel doc-tab-panel" data-doc-panel="notes" hidden>
+            <div class="panel-head">
+              <h2>Notatki</h2>
+            </div>
+            <div id="docsNotesList" class="table"></div>
           </section>
         </div>
       </section>
@@ -656,7 +690,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-10</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-11</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -814,6 +848,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-10"></script>
+    <script src="app.js?v=20260531-11"></script>
   </body>
 </html>
