@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-17" />
+    <link rel="stylesheet" href="styles.css?v=20260531-18" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -602,9 +602,28 @@
             </div>
             <div id="docsDocumentationList" class="table"></div>
           </section>
-          <section class="panel doc-tab-panel" data-doc-panel="templates" hidden>
+          <form id="templateForm" class="form-panel doc-tab-panel section-doc-form" data-doc-panel="templates" hidden>
+            <h2 id="templateFormTitle">Dodaj wzór</h2>
+            <input name="id" type="hidden" />
+            <input name="title" required placeholder="Tytuł wzoru" />
+            <select name="category" required>
+              <option>Formularz</option>
+              <option>Umowa</option>
+              <option>Oświadczenie</option>
+              <option>Pismo</option>
+              <option>Inne</option>
+            </select>
+            <input name="date" type="date" required />
+            <textarea name="notes" placeholder="Krótki opis / notatka"></textarea>
+            <input name="file" type="file" accept="application/pdf" />
+            <div class="form-actions">
+              <button class="small-button" type="submit">Zapisz wzór</button>
+              <button id="clearTemplateForm" class="small-button secondary-button" type="button">Wyczyść</button>
+            </div>
+          </form>
+          <section class="panel doc-tab-panel section-doc-list-panel" data-doc-panel="templates" hidden>
             <div class="panel-head">
-              <h2>Wzory</h2>
+              <h2>Lista wzorów</h2>
             </div>
             <div class="storage-info">
               <div>
@@ -613,12 +632,43 @@
               </div>
               <div class="storage-bar"><span data-storage-bar></span></div>
               <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+            </div>
+            <div class="section-doc-controls">
+              <input id="templateSearch" type="search" placeholder="Szukaj we wzorach..." />
+              <select id="templateCategoryFilter">
+                <option value="all">Rodzaj: wszystkie</option>
+                <option>Formularz</option>
+                <option>Umowa</option>
+                <option>Oświadczenie</option>
+                <option>Pismo</option>
+                <option>Inne</option>
+              </select>
+              <select id="templateSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="title_asc">Tytuł A-Z</option>
+                <option value="title_desc">Tytuł Z-A</option>
+              </select>
+              <button id="clearTemplateFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
             </div>
             <div id="docsTemplatesList" class="table"></div>
           </section>
-          <section class="panel doc-tab-panel" data-doc-panel="notes" hidden>
+          <form id="noteForm" class="form-panel doc-tab-panel section-doc-form" data-doc-panel="notes" hidden>
+            <h2 id="noteFormTitle">Dodaj notatkę</h2>
+            <input name="id" type="hidden" />
+            <input name="title" required placeholder="Tytuł notatki" />
+            <input name="category" type="hidden" value="Notatka" />
+            <input name="date" type="date" required />
+            <textarea name="notes" placeholder="Treść / notatka"></textarea>
+            <input name="file" type="file" accept="application/pdf" />
+            <div class="form-actions">
+              <button class="small-button" type="submit">Zapisz notatkę</button>
+              <button id="clearNoteForm" class="small-button secondary-button" type="button">Wyczyść</button>
+            </div>
+          </form>
+          <section class="panel doc-tab-panel section-doc-list-panel" data-doc-panel="notes" hidden>
             <div class="panel-head">
-              <h2>Notatki</h2>
+              <h2>Lista notatek</h2>
             </div>
             <div class="storage-info">
               <div>
@@ -627,6 +677,16 @@
               </div>
               <div class="storage-bar"><span data-storage-bar></span></div>
               <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+            </div>
+            <div class="section-doc-controls section-doc-controls-compact">
+              <input id="noteSearch" type="search" placeholder="Szukaj w notatkach..." />
+              <select id="noteSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="title_asc">Tytuł A-Z</option>
+                <option value="title_desc">Tytuł Z-A</option>
+              </select>
+              <button id="clearNoteFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
             </div>
             <div id="docsNotesList" class="table"></div>
           </section>
@@ -752,7 +812,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-17</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-18</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -910,6 +970,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-17"></script>
+    <script src="app.js?v=20260531-18"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-17";
+const APP_VERSION = "2026.05.31-18";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -206,6 +206,19 @@ const elements = {
   documentationKindFilter: document.querySelector("#documentationKindFilter"),
   documentationSort: document.querySelector("#documentationSort"),
   clearDocumentationFilters: document.querySelector("#clearDocumentationFilters"),
+  templateForm: document.querySelector("#templateForm"),
+  templateFormTitle: document.querySelector("#templateFormTitle"),
+  clearTemplateForm: document.querySelector("#clearTemplateForm"),
+  templateSearch: document.querySelector("#templateSearch"),
+  templateCategoryFilter: document.querySelector("#templateCategoryFilter"),
+  templateSort: document.querySelector("#templateSort"),
+  clearTemplateFilters: document.querySelector("#clearTemplateFilters"),
+  noteForm: document.querySelector("#noteForm"),
+  noteFormTitle: document.querySelector("#noteFormTitle"),
+  clearNoteForm: document.querySelector("#clearNoteForm"),
+  noteSearch: document.querySelector("#noteSearch"),
+  noteSort: document.querySelector("#noteSort"),
+  clearNoteFilters: document.querySelector("#clearNoteFilters"),
   docsTemplatesList: document.querySelector("#docsTemplatesList"),
   docsNotesList: document.querySelector("#docsNotesList"),
   storageTexts: document.querySelectorAll("[data-storage-text]"),
@@ -298,6 +311,26 @@ elements.clearDocumentationForm?.addEventListener("click", () => resetDocumentat
   elements.documentationSort
 ].forEach((control) => control?.addEventListener("change", renderDocs));
 elements.clearDocumentationFilters?.addEventListener("click", clearDocumentationFilters);
+elements.templateForm?.addEventListener("submit", (event) => handleSectionDoc(event, "Wzory"));
+elements.clearTemplateForm?.addEventListener("click", () => resetSectionDocForm(elements.templateForm, "Wzory"));
+[
+  elements.templateSearch,
+  elements.templateCategoryFilter,
+  elements.templateSort
+].forEach((control) => control?.addEventListener("input", renderDocs));
+[
+  elements.templateCategoryFilter,
+  elements.templateSort
+].forEach((control) => control?.addEventListener("change", renderDocs));
+elements.clearTemplateFilters?.addEventListener("click", () => clearSectionDocFilters("Wzory"));
+elements.noteForm?.addEventListener("submit", (event) => handleSectionDoc(event, "Notatki"));
+elements.clearNoteForm?.addEventListener("click", () => resetSectionDocForm(elements.noteForm, "Notatki"));
+[
+  elements.noteSearch,
+  elements.noteSort
+].forEach((control) => control?.addEventListener("input", renderDocs));
+elements.noteSort?.addEventListener("change", renderDocs);
+elements.clearNoteFilters?.addEventListener("click", () => clearSectionDocFilters("Notatki"));
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
 [
@@ -391,6 +424,8 @@ document.querySelector('#feeForm input[name="period"]').value = FEE_YEAR;
 document.querySelector('#eventForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#docForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#documentationForm input[name="date"]').valueAsDate = new Date();
+document.querySelector('#templateForm input[name="date"]').valueAsDate = new Date();
+document.querySelector('#noteForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#invoiceForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#invoiceForm input[name="paymentDueDate"]').value = dateOffset(new Date().toISOString().slice(0, 10), 7);
 document.querySelector('#rentalForm input[name="dateFrom"]').valueAsDate = new Date();
@@ -1798,6 +1833,105 @@ async function handleDocumentationDoc(event) {
   showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
 }
 
+async function handleSectionDoc(event, sectionName) {
+  event.preventDefault();
+  if (!canCorrect()) {
+    alert("Dodawanie i edycja dokumentów jest dostępna tylko dla osób z uprawnieniami.");
+    return;
+  }
+  const form = event.target;
+  const data = formData(form);
+  const docId = data.id || "";
+  const file = form.file.files[0];
+  if (file && file.type !== "application/pdf") {
+    alert("Można dodać tylko plik PDF.");
+    return;
+  }
+  const category = data.category || (sectionName === "Notatki" ? "Notatka" : "Inne");
+  const singular = sectionName === "Wzory" ? "wzór" : "notatkę";
+  const singularTitle = sectionName === "Wzory" ? "wzoru" : "notatki";
+  let filePath = "";
+  let fileName = "";
+  let fileSize = 0;
+  let mimeType = "";
+
+  if (supabaseClient && currentRole) {
+    if (file) {
+      fileName = file.name;
+      fileSize = file.size;
+      mimeType = file.type;
+      filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(filePath, file, { contentType: file.type, upsert: false });
+      if (uploadError) {
+        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        return;
+      }
+    }
+    const payload = {
+      title: data.title,
+      sender: "KGiGW",
+      category,
+      document_section: sectionName,
+      document_date: data.date,
+      notes: data.notes || null
+    };
+    if (file) {
+      payload.file_path = filePath || null;
+      payload.file_name = fileName || null;
+      payload.file_size = fileSize || null;
+      payload.mime_type = mimeType || null;
+    }
+    const { error } = docId
+      ? await supabaseClient.from("documents").update(payload).eq("id", docId)
+      : await supabaseClient.from("documents").insert(payload);
+    if (error) {
+      alert(`Nie udało się zapisać ${singularTitle}: ${error.message}`);
+      return;
+    }
+    await logActivity("Dokumenty", docId ? `Edycja ${singularTitle}` : `Dodanie ${singularTitle}`, {
+      summary: `${data.title} - ${category}`
+    });
+    resetSectionDocForm(form, sectionName);
+    await refreshSupabaseData();
+    showToast(docId ? `Zapisano zmiany ${singularTitle}` : `Zapisano ${singular}`);
+    return;
+  }
+
+  const attachment = file ? await readPdfAttachment(file) : null;
+  if (docId) {
+    const doc = state.docs.find((item) => item.id === docId);
+    if (doc) Object.assign(doc, {
+      title: data.title,
+      sender: "KGiGW",
+      category,
+      section: sectionName,
+      date: data.date,
+      notes: data.notes || "",
+      attachment: attachment || doc.attachment
+    });
+  } else {
+    state.docs.push({
+      id: makeId(),
+      title: data.title,
+      sender: "KGiGW",
+      category,
+      section: sectionName,
+      date: data.date,
+      notes: data.notes || "",
+      attachment
+    });
+  }
+  saveState();
+  resetSectionDocForm(form, sectionName);
+  renderDocs();
+  logActivity("Dokumenty", docId ? `Edycja ${singularTitle}` : `Dodanie ${singularTitle}`, {
+    summary: `${data.title} - ${category}`
+  });
+  showToast(docId ? `Zapisano zmiany ${singularTitle}` : `Zapisano ${singular}`);
+}
+
 async function handleInvoice(event) {
   event.preventDefault();
   const data = formData(event.target);
@@ -3167,8 +3301,8 @@ function renderDocs() {
   renderStorageInfo();
   renderDocSectionList(elements.docsList, "Dokumenty");
   renderDocumentationDocs();
-  renderDocSectionList(elements.docsTemplatesList, "Wzory");
-  renderDocSectionList(elements.docsNotesList, "Notatki");
+  renderSectionDocs("Wzory");
+  renderSectionDocs("Notatki");
 }
 
 function renderDocumentationDocs() {
@@ -3221,6 +3355,63 @@ function documentationRowHtml(item) {
       ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz / Pobierz</button>` : ""}
       ${canCorrect() ? `<button class="small-button" onclick="editDocumentationDoc('${item.id}')">Edytuj</button>` : ""}
       ${isAdmin() ? `<button class="delete-button" onclick="deleteDocumentationDoc('${item.id}')">Usuń</button>` : ""}
+    </div>
+  `;
+}
+
+function renderSectionDocs(sectionName) {
+  const container = sectionName === "Wzory" ? elements.docsTemplatesList : elements.docsNotesList;
+  if (!container) return;
+  const docs = filteredSectionDocs(sectionName);
+  const emptyText = sectionName === "Wzory" ? "Brak wzorów w tej sekcji." : "Brak notatek w tej sekcji.";
+  container.innerHTML = docs.length
+    ? docs.map((item) => `<div class="row section-doc-row">${sectionDocRowHtml(item, sectionName)}</div>`).join("")
+    : `<div class="row"><small>${emptyText}</small></div>`;
+}
+
+function filteredSectionDocs(sectionName) {
+  const isTemplate = sectionName === "Wzory";
+  const search = normalizeSearchText(isTemplate ? elements.templateSearch?.value || "" : elements.noteSearch?.value || "");
+  const category = isTemplate ? elements.templateCategoryFilter?.value || "all" : "all";
+  const sort = isTemplate ? elements.templateSort?.value || "date_desc" : elements.noteSort?.value || "date_desc";
+  return state.docs
+    .filter((item) => normalizeDocSection(item.section) === sectionName)
+    .filter((item) => category === "all" || item.category === category)
+    .filter((item) => {
+      if (!search) return true;
+      return [item.title, item.category, item.date, item.notes, docFileName(item)]
+        .map(normalizeSearchText)
+        .join(" ")
+        .includes(search);
+    })
+    .sort(sectionDocSortComparator(sort));
+}
+
+function sectionDocSortComparator(sort) {
+  const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pl");
+  if (sort === "date_asc") return byDate;
+  if (sort === "title_asc") return byTitle;
+  if (sort === "title_desc") return (a, b) => byTitle(b, a);
+  return (a, b) => byDate(b, a);
+}
+
+function sectionDocRowHtml(item, sectionName) {
+  const fileName = docFileName(item);
+  const openText = sectionName === "Wzory" ? "Otwórz PDF" : "Otwórz plik";
+  return `
+    <div>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>
+        ${formatDate(item.date)}${sectionName === "Wzory" ? ` · <span class="badge neutral">${escapeHtml(item.category || "Wzór")}</span>` : ""}<br>
+        ${escapeHtml(item.notes || "")}
+        ${fileName ? `<br>PDF: ${escapeHtml(fileName)} (${formatBytes(docFileSize(item))})` : ""}
+      </small>
+    </div>
+    <div class="row-actions">
+      ${canCorrect() ? `<button class="small-button" onclick="${sectionName === "Wzory" ? "editTemplateDoc" : "editNoteDoc"}('${item.id}')">Edytuj</button>` : ""}
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">${openText}</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
   `;
 }
@@ -3298,6 +3489,34 @@ function editDocumentationDoc(id) {
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function editTemplateDoc(id) {
+  editSectionDoc(id, "Wzory");
+}
+
+function editNoteDoc(id) {
+  editSectionDoc(id, "Notatki");
+}
+
+function editSectionDoc(id, sectionName) {
+  if (!canCorrect()) return;
+  const doc = state.docs.find((item) => item.id === id);
+  const form = sectionName === "Wzory" ? elements.templateForm : elements.noteForm;
+  if (!doc || !form) return;
+  switchDocTab(sectionName === "Wzory" ? "templates" : "notes");
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  if (sectionName === "Wzory") {
+    form.category.value = doc.category || "Formularz";
+  }
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.notes.value = doc.notes || "";
+  form.file.value = "";
+  const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
+  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Edytuj wzór" : "Edytuj notatkę";
+  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz zmiany" : "Zapisz zmiany";
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function resetDocumentationForm(form) {
   if (!form) return;
   form.reset();
@@ -3311,6 +3530,29 @@ function clearDocumentationFilters() {
   if (elements.documentationSearch) elements.documentationSearch.value = "";
   if (elements.documentationKindFilter) elements.documentationKindFilter.value = "all";
   if (elements.documentationSort) elements.documentationSort.value = "date_desc";
+  renderDocs();
+}
+
+function resetSectionDocForm(form, sectionName) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  form.date.valueAsDate = new Date();
+  if (sectionName === "Notatki" && form.category) form.category.value = "Notatka";
+  const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
+  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Dodaj wzór" : "Dodaj notatkę";
+  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz wzór" : "Zapisz notatkę";
+}
+
+function clearSectionDocFilters(sectionName) {
+  if (sectionName === "Wzory") {
+    if (elements.templateSearch) elements.templateSearch.value = "";
+    if (elements.templateCategoryFilter) elements.templateCategoryFilter.value = "all";
+    if (elements.templateSort) elements.templateSort.value = "date_desc";
+  } else {
+    if (elements.noteSearch) elements.noteSearch.value = "";
+    if (elements.noteSort) elements.noteSort.value = "date_desc";
+  }
   renderDocs();
 }
 

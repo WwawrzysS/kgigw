@@ -825,21 +825,25 @@ textarea {
   gap: 10px;
 }
 
-.documentation-form {
+.documentation-form,
+.section-doc-form {
   display: grid;
   gap: 12px;
   padding: 18px;
 }
 
-.documentation-form h2 {
+.documentation-form h2,
+.section-doc-form h2 {
   margin: 0;
 }
 
-.documentation-list-panel {
+.documentation-list-panel,
+.section-doc-list-panel {
   min-width: 0;
 }
 
-.documentation-controls {
+.documentation-controls,
+.section-doc-controls {
   margin: 14px 14px 8px;
   display: grid;
   grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(150px, 1fr)) auto;
@@ -847,25 +851,46 @@ textarea {
   align-items: stretch;
 }
 
+.section-doc-controls-compact {
+  grid-template-columns: minmax(220px, 2fr) minmax(150px, 1fr) auto;
+}
+
 .documentation-controls input,
-.documentation-controls select {
+.documentation-controls select,
+.section-doc-controls input,
+.section-doc-controls select {
   min-width: 0;
 }
 
-.documentation-controls .small-button {
+.documentation-controls .small-button,
+.section-doc-controls .small-button {
   width: 100%;
   justify-content: center;
 }
 
-#docsDocumentationList {
+#docsDocumentationList,
+#docsTemplatesList,
+#docsNotesList {
   max-height: 560px;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 14px 14px;
 }
 
-.documentation-row {
+.documentation-row,
+.section-doc-row {
   gap: 14px;
+}
+
+.documentation-row > div:first-child,
+.section-doc-row > div:first-child {
+  min-width: 0;
+}
+
+.documentation-row small,
+.section-doc-row small {
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .funding-details-panel {
@@ -1763,7 +1788,9 @@ textarea {
 
   .money-controls,
   .invoice-controls,
-  .documentation-controls {
+  .documentation-controls,
+  .section-doc-controls,
+  .section-doc-controls-compact {
     grid-template-columns: 1fr;
   }
 
