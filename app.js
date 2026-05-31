@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-09";
+const APP_VERSION = "2026.05.31-10";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -2266,7 +2266,7 @@ function feeMatchesSearch(item, search) {
 
 function feeSortComparator(sort) {
   const collator = new Intl.Collator("pl", { sensitivity: "base", numeric: true });
-  const byName = (a, b) => collator.compare(surnameSortValue(a.name), surnameSortValue(b.name));
+  const byName = (a, b) => collator.compare(feeSurnameKey(a.name), feeSurnameKey(b.name));
   const byDue = (a, b) => Number(a.currentDue || 0) - Number(b.currentDue || 0);
   const byPaid = (a, b) => Number(a.paid || 0) - Number(b.paid || 0);
   const byStatusLate = (a, b) => {
@@ -2287,16 +2287,16 @@ function feeSortComparator(sort) {
   return byStatusLate;
 }
 
-function surnameSortValue(name) {
+function feeSurnameKey(name) {
   const cleanName = String(name || "")
     .replace(/\s*-\s*/g, "-")
     .replace(/[.,;:()]/g, " ")
     .trim();
   const parts = cleanName.split(/\s+/).filter((part) => part && part !== "-");
   if (!parts.length) return "";
-  const surnameParts = parts.slice(1);
-  const surname = surnameParts.length ? surnameParts.join(" ") : parts[0];
-  return `${surname} ${parts.join(" ")}`;
+  const firstName = parts[0] || "";
+  const surname = parts.length > 1 ? parts.slice(1).join(" ") : parts[0];
+  return `${surname} ${firstName} ${parts.join(" ")}`;
 }
 
 function clearFeeFilters() {

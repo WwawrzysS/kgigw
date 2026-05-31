@@ -736,11 +736,21 @@ textarea {
 }
 
 .money-controls,
-.invoice-controls {
+.invoice-controls,
+.fee-controls {
   margin: 14px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.fee-controls {
+  align-items: stretch;
+}
+
+.fee-controls .small-button {
+  width: 100%;
+  justify-content: center;
 }
 
 .invoice-search-row {
@@ -757,12 +767,15 @@ textarea {
 .money-controls input,
 .money-controls select,
 .invoice-controls input,
-.invoice-controls select {
+.invoice-controls select,
+.fee-controls input,
+.fee-controls select {
   min-width: 0;
 }
 
 .money-controls .small-button,
-.invoice-controls .small-button {
+.invoice-controls .small-button,
+.fee-controls .small-button {
   justify-self: start;
 }
 
@@ -771,12 +784,17 @@ textarea {
 }
 
 .money-list-scroll,
-.invoice-list-scroll {
+.invoice-list-scroll,
+#feesList {
   max-height: 560px;
   overflow-y: auto;
   overscroll-behavior: contain;
   border-top: 1px solid var(--line);
   margin-top: 0;
+}
+
+#feesList {
+  border-top: 0;
 }
 
 .invoice-list-scroll .row {
@@ -1629,6 +1647,10 @@ textarea {
     justify-content: flex-start;
     flex-wrap: wrap;
   }
+
+  .fee-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -1669,6 +1691,7 @@ textarea {
   }
 
   .form-grid,
+  .fee-controls,
   .rental-item-line,
   .inventory-edit,
   .return-form,
