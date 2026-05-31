@@ -1,0 +1,23 @@
+{
+  "name": "Stoisko KGiGW we Włosani",
+  "short_name": "KGiGW Stoisko",
+  "start_url": "/kgigw/stoisko-faktura.html",
+  "scope": "/kgigw/",
+  "display": "standalone",
+  "background_color": "#f3f7f2",
+  "theme_color": "#1f7a3f",
+  "icons": [
+    {
+      "src": "/kgigw/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/kgigw/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
