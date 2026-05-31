@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-18";
+const APP_VERSION = "2026.05.31-19";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -35,7 +35,7 @@ const STAND_INVOICE_DEFAULTS = {
 };
 const DOC_SECTION_DEFAULT = "Dokumenty";
 const DOC_SECTIONS = ["Dokumenty", "Dokumentacja KGiGW", "Wzory", "Notatki"];
-const DOCUMENTATION_KGIGW_TYPES = ["Statut", "Uchwały", "Protokoły", "Sprawozdania", "Lista obecności"];
+const DOCUMENTATION_KGIGW_TYPES = ["Statut", "Uchwały", "Protokoły", "Sprawozdania", "Lista obecności", "Inne"];
 const DOC_SECTION_TABS = {
   documents: "Dokumenty",
   documentation: "Dokumentacja KGiGW",
