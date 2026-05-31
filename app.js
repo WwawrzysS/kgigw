@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.05.31-13";
+const APP_VERSION = "2026.05.31-14";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -35,6 +35,7 @@ const STAND_INVOICE_DEFAULTS = {
 };
 const DOC_SECTION_DEFAULT = "Dokumenty";
 const DOC_SECTIONS = ["Dokumenty", "Dokumentacja KGiGW", "Wzory", "Notatki"];
+const DOCUMENTATION_KGIGW_TYPES = ["Statut", "Uchwały", "Protokoły", "Sprawozdania", "Lista obecności"];
 const DOC_SECTION_TABS = {
   documents: "Dokumenty",
   documentation: "Dokumentacja KGiGW",
@@ -197,7 +198,14 @@ const elements = {
   docPanels: document.querySelectorAll("[data-doc-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
+  documentationForm: document.querySelector("#documentationForm"),
+  documentationFormTitle: document.querySelector("#documentationFormTitle"),
+  clearDocumentationForm: document.querySelector("#clearDocumentationForm"),
   docsDocumentationList: document.querySelector("#docsDocumentationList"),
+  documentationSearch: document.querySelector("#documentationSearch"),
+  documentationKindFilter: document.querySelector("#documentationKindFilter"),
+  documentationSort: document.querySelector("#documentationSort"),
+  clearDocumentationFilters: document.querySelector("#clearDocumentationFilters"),
   docsTemplatesList: document.querySelector("#docsTemplatesList"),
   docsNotesList: document.querySelector("#docsNotesList"),
   storageText: document.querySelector("#storageText"),
@@ -278,6 +286,18 @@ document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#cancelDocEdit").addEventListener("click", cancelDocEdit);
+elements.documentationForm?.addEventListener("submit", handleDocumentationDoc);
+elements.clearDocumentationForm?.addEventListener("click", () => resetDocumentationForm(elements.documentationForm));
+[
+  elements.documentationSearch,
+  elements.documentationKindFilter,
+  elements.documentationSort
+].forEach((control) => control?.addEventListener("input", renderDocs));
+[
+  elements.documentationKindFilter,
+  elements.documentationSort
+].forEach((control) => control?.addEventListener("change", renderDocs));
+elements.clearDocumentationFilters?.addEventListener("click", clearDocumentationFilters);
 document.querySelector("#invoiceForm").addEventListener("submit", handleInvoice);
 document.querySelector("#invoiceRental").addEventListener("change", fillInvoiceFromRental);
 [
@@ -370,6 +390,7 @@ document.querySelector('input[name="date"]').valueAsDate = new Date();
 document.querySelector('#feeForm input[name="period"]').value = FEE_YEAR;
 document.querySelector('#eventForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#docForm input[name="date"]').valueAsDate = new Date();
+document.querySelector('#documentationForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#invoiceForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#invoiceForm input[name="paymentDueDate"]').value = dateOffset(new Date().toISOString().slice(0, 10), 7);
 document.querySelector('#rentalForm input[name="dateFrom"]').valueAsDate = new Date();
@@ -1678,6 +1699,103 @@ async function handleDoc(event) {
   event.target.date.valueAsDate = new Date();
   logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
   showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
+}
+
+async function handleDocumentationDoc(event) {
+  event.preventDefault();
+  if (!canCorrect()) {
+    alert("Dodawanie i edycja dokumentacji jest dostępna tylko dla osób z uprawnieniami.");
+    return;
+  }
+  const form = event.target;
+  const data = formData(form);
+  const docId = data.id || "";
+  const file = form.file.files[0];
+  if (file && file.type !== "application/pdf") {
+    alert("Można dodać tylko plik PDF.");
+    return;
+  }
+  const kind = DOCUMENTATION_KGIGW_TYPES.includes(data.kind) ? data.kind : "Statut";
+  let filePath = "";
+  let fileName = "";
+  let fileSize = 0;
+  let mimeType = "";
+
+  if (supabaseClient && currentRole) {
+    if (file) {
+      fileName = file.name;
+      fileSize = file.size;
+      mimeType = file.type;
+      filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(filePath, file, { contentType: file.type, upsert: false });
+      if (uploadError) {
+        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        return;
+      }
+    }
+    const payload = {
+      title: data.title,
+      sender: "KGiGW",
+      category: kind,
+      document_section: "Dokumentacja KGiGW",
+      document_date: data.date,
+      notes: data.notes || null
+    };
+    if (file) {
+      payload.file_path = filePath || null;
+      payload.file_name = fileName || null;
+      payload.file_size = fileSize || null;
+      payload.mime_type = mimeType || null;
+    }
+    const { error } = docId
+      ? await supabaseClient.from("documents").update(payload).eq("id", docId)
+      : await supabaseClient.from("documents").insert(payload);
+    if (error) {
+      alert(`Nie udało się zapisać dokumentacji KGiGW: ${error.message}`);
+      return;
+    }
+    await logActivity("Dokumenty", docId ? "Edycja dokumentacji KGiGW" : "Dodanie dokumentacji KGiGW", {
+      summary: `${data.title} - ${kind}`
+    });
+    resetDocumentationForm(form);
+    await refreshSupabaseData();
+    showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
+    return;
+  }
+
+  const attachment = file ? await readPdfAttachment(file) : null;
+  if (docId) {
+    const doc = state.docs.find((item) => item.id === docId);
+    if (doc) Object.assign(doc, {
+      title: data.title,
+      sender: "KGiGW",
+      category: kind,
+      section: "Dokumentacja KGiGW",
+      date: data.date,
+      notes: data.notes || "",
+      attachment: attachment || doc.attachment
+    });
+  } else {
+    state.docs.push({
+      id: makeId(),
+      title: data.title,
+      sender: "KGiGW",
+      category: kind,
+      section: "Dokumentacja KGiGW",
+      date: data.date,
+      notes: data.notes || "",
+      attachment
+    });
+  }
+  saveState();
+  resetDocumentationForm(form);
+  renderDocs();
+  logActivity("Dokumenty", docId ? "Edycja dokumentacji KGiGW" : "Dodanie dokumentacji KGiGW", {
+    summary: `${data.title} - ${kind}`
+  });
+  showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
 }
 
 async function handleInvoice(event) {
@@ -3048,9 +3166,63 @@ function renderRentalItemInputs() {
 function renderDocs() {
   renderStorageInfo();
   renderDocSectionList(elements.docsList, "Dokumenty");
-  renderDocSectionList(elements.docsDocumentationList, "Dokumentacja KGiGW");
+  renderDocumentationDocs();
   renderDocSectionList(elements.docsTemplatesList, "Wzory");
   renderDocSectionList(elements.docsNotesList, "Notatki");
+}
+
+function renderDocumentationDocs() {
+  if (!elements.docsDocumentationList) return;
+  const docs = filteredDocumentationDocs();
+  elements.docsDocumentationList.innerHTML = docs.length
+    ? docs.map((item) => `<div class="row documentation-row">${documentationRowHtml(item)}</div>`).join("")
+    : '<div class="row"><small>Brak dokumentów w tej sekcji.</small></div>';
+}
+
+function filteredDocumentationDocs() {
+  const search = normalizeSearchText(elements.documentationSearch?.value || "");
+  const kind = elements.documentationKindFilter?.value || "all";
+  const sort = elements.documentationSort?.value || "date_desc";
+  return state.docs
+    .filter((item) => normalizeDocSection(item.section) === "Dokumentacja KGiGW")
+    .filter((item) => kind === "all" || item.category === kind)
+    .filter((item) => {
+      if (!search) return true;
+      return [item.title, item.category, item.date, item.notes, docFileName(item)]
+        .map(normalizeSearchText)
+        .join(" ")
+        .includes(search);
+    })
+    .sort(documentationSortComparator(sort));
+}
+
+function documentationSortComparator(sort) {
+  const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || ""));
+  const byTitle = (a, b) => String(a.title || "").localeCompare(String(b.title || ""), "pl");
+  const byKind = (a, b) => String(a.category || "").localeCompare(String(b.category || ""), "pl") || byTitle(a, b);
+  if (sort === "date_asc") return byDate;
+  if (sort === "title_asc") return byTitle;
+  if (sort === "title_desc") return (a, b) => byTitle(b, a);
+  if (sort === "kind_asc") return byKind;
+  return (a, b) => byDate(b, a);
+}
+
+function documentationRowHtml(item) {
+  return `
+    <div>
+      <strong>${escapeHtml(item.category || "Dokumentacja")} - ${escapeHtml(item.title)}</strong>
+      <small>
+        ${formatDate(item.date)}<br>
+        ${escapeHtml(item.notes || "")}
+        ${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))}` : ""}
+      </small>
+    </div>
+    <div class="row-actions">
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz / Pobierz</button>` : ""}
+      ${canCorrect() ? `<button class="small-button" onclick="editDocumentationDoc('${item.id}')">Edytuj</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="deleteDocumentationDoc('${item.id}')">Usuń</button>` : ""}
+    </div>
+  `;
 }
 
 function renderDocSectionList(container, sectionName) {
@@ -3107,6 +3279,77 @@ function editDoc(id) {
   elements.cancelDocEdit.classList.remove("hidden");
   switchDocTab("documents");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function editDocumentationDoc(id) {
+  if (!canCorrect()) return;
+  const doc = state.docs.find((item) => item.id === id);
+  const form = elements.documentationForm;
+  if (!doc || !form) return;
+  switchDocTab("documentation");
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  form.kind.value = DOCUMENTATION_KGIGW_TYPES.includes(doc.category) ? doc.category : "Statut";
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.notes.value = doc.notes || "";
+  form.file.value = "";
+  if (elements.documentationFormTitle) elements.documentationFormTitle.textContent = "Edytuj dokumentację KGiGW";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function resetDocumentationForm(form) {
+  if (!form) return;
+  form.reset();
+  form.id.value = "";
+  form.date.valueAsDate = new Date();
+  if (elements.documentationFormTitle) elements.documentationFormTitle.textContent = "Dodaj dokumentację KGiGW";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz dokumentację";
+}
+
+function clearDocumentationFilters() {
+  if (elements.documentationSearch) elements.documentationSearch.value = "";
+  if (elements.documentationKindFilter) elements.documentationKindFilter.value = "all";
+  if (elements.documentationSort) elements.documentationSort.value = "date_desc";
+  renderDocs();
+}
+
+async function deleteDocumentationDoc(id) {
+  const doc = state.docs.find((entry) => entry.id === id);
+  if (!doc) return;
+  if (!isAdmin()) {
+    alert("Dokumentację KGiGW może usuwać tylko Administrator.");
+    return;
+  }
+  const confirmed = confirm(`Usunąć dokumentację KGiGW: ${doc.title || "wybrany wpis"}? Tej operacji nie da się cofnąć.`);
+  if (!confirmed) return;
+
+  if (supabaseClient && currentRole) {
+    if (doc.filePath) {
+      await supabaseClient.storage.from(DOCUMENT_BUCKET).remove([doc.filePath]);
+    }
+    const { error } = await supabaseClient.from("documents").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć dokumentacji KGiGW w Supabase: ${error.message}`);
+      return;
+    }
+    await logActivity("Dokumenty", "Usunięcie dokumentacji KGiGW", {
+      summary: `${doc.title || id} - ${doc.category || "Dokumentacja KGiGW"}`
+    });
+    await refreshSupabaseData();
+    showToast("Usunięto dokumentację KGiGW");
+    return;
+  }
+
+  rememberUndo();
+  state.docs = state.docs.filter((entry) => entry.id !== id);
+  saveState();
+  renderDocs();
+  renderStorageInfo();
+  await logActivity("Dokumenty", "Usunięcie dokumentacji KGiGW", {
+    summary: `${doc.title || id} - ${doc.category || "Dokumentacja KGiGW"}`
+  });
+  showToast("Usunięto dokumentację KGiGW");
 }
 
 function cancelDocEdit() {

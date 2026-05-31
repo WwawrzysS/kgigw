@@ -825,6 +825,40 @@ textarea {
   gap: 10px;
 }
 
+.documentation-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.documentation-form h3 {
+  margin: 0;
+}
+
+.documentation-controls {
+  margin: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.documentation-controls input,
+.documentation-controls select {
+  min-width: 0;
+}
+
+.documentation-controls .small-button {
+  width: 100%;
+  justify-content: center;
+}
+
+#docsDocumentationList {
+  max-height: 560px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .funding-details-panel {
   grid-column: 1 / -1;
 }
@@ -1715,7 +1749,8 @@ textarea {
   }
 
   .money-controls,
-  .invoice-controls {
+  .invoice-controls,
+  .documentation-controls {
     grid-template-columns: 1fr;
   }
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260531-13" />
+    <link rel="stylesheet" href="styles.css?v=20260531-14" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -554,6 +554,44 @@
             <div class="panel-head">
               <h2>Dokumentacja KGiGW</h2>
             </div>
+            <form id="documentationForm" class="documentation-form">
+              <h3 id="documentationFormTitle">Dodaj dokumentację KGiGW</h3>
+              <input name="id" type="hidden" />
+              <input name="title" required placeholder="Tytuł pisma" />
+              <select name="kind" required>
+                <option>Statut</option>
+                <option>Uchwały</option>
+                <option>Protokoły</option>
+                <option>Sprawozdania</option>
+                <option>Lista obecności</option>
+              </select>
+              <input name="date" type="date" required />
+              <textarea name="notes" placeholder="Krótka treść / notatka"></textarea>
+              <input name="file" type="file" accept="application/pdf" />
+              <div class="form-actions">
+                <button class="small-button" type="submit">Zapisz dokumentację</button>
+                <button id="clearDocumentationForm" class="small-button secondary-button" type="button">Wyczyść</button>
+              </div>
+            </form>
+            <div class="documentation-controls">
+              <input id="documentationSearch" type="search" placeholder="Szukaj w dokumentacji..." />
+              <select id="documentationKindFilter">
+                <option value="all">Rodzaj pisma: wszystkie</option>
+                <option>Statut</option>
+                <option>Uchwały</option>
+                <option>Protokoły</option>
+                <option>Sprawozdania</option>
+                <option>Lista obecności</option>
+              </select>
+              <select id="documentationSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="title_asc">Tytuł A-Z</option>
+                <option value="title_desc">Tytuł Z-A</option>
+                <option value="kind_asc">Rodzaj pisma</option>
+              </select>
+              <button id="clearDocumentationFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
+            </div>
             <div id="docsDocumentationList" class="table"></div>
           </section>
           <section class="panel doc-tab-panel" data-doc-panel="templates" hidden>
@@ -690,7 +728,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.05.31-13</span></small>
+                  <small>Wersja: <span id="appVersion">2026.05.31-14</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -848,6 +886,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260531-13"></script>
+    <script src="app.js?v=20260531-14"></script>
   </body>
 </html>
