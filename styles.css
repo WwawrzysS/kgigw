@@ -827,20 +827,24 @@ textarea {
 
 .documentation-form {
   display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+  padding: 18px;
 }
 
-.documentation-form h3 {
+.documentation-form h2 {
   margin: 0;
 }
 
+.documentation-list-panel {
+  min-width: 0;
+}
+
 .documentation-controls {
-  margin: 14px;
+  margin: 14px 14px 8px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(150px, 1fr)) auto;
   gap: 12px;
+  align-items: stretch;
 }
 
 .documentation-controls input,
@@ -857,6 +861,11 @@ textarea {
   max-height: 560px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 10px 14px 14px;
+}
+
+.documentation-row {
+  gap: 14px;
 }
 
 .funding-details-panel {
