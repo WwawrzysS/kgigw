@@ -185,6 +185,20 @@
       color: #92400e;
       font-size: 14px;
     }
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    .summary-table th,
+    .summary-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 8px 4px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .summary-table th { color: var(--muted); font-size: 12px; }
     #printView { display: none; }
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -314,10 +328,19 @@
           <label>Uwagi</label>
           <textarea name="notes" placeholder="Uwagi do wypożyczenia"></textarea>
           <div class="actions">
-            <button type="submit" name="printMode" value="save">Zapisz</button>
-            <button type="submit" name="printMode" value="print" class="secondary">Zapisz i drukuj</button>
+            <button type="submit">Podsumuj</button>
           </div>
         </form>
+      </section>
+
+      <section id="loanSummaryScreen" class="card screen hidden">
+        <h2>Podsumowanie wypożyczenia</h2>
+        <div id="loanSummaryContent"></div>
+        <div class="actions">
+          <button class="secondary" type="button" onclick="showScreen('loanScreen')">Wstecz</button>
+          <button type="button" onclick="saveLoanFromSummary(false)">Zapisz</button>
+          <button class="secondary" type="button" onclick="saveLoanFromSummary(true)">Zapisz i drukuj</button>
+        </div>
       </section>
 
       <section id="returnScreen" class="card screen hidden">
@@ -363,7 +386,7 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all" };
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", loanSummary: null };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -374,7 +397,7 @@
     document.querySelector("#loanForm input[name='dateFrom']").value = today();
     document.querySelector("#loanForm input[name='dateTo']").value = today();
     document.querySelector("#loginForm").addEventListener("submit", login);
-    document.querySelector("#loanForm").addEventListener("submit", saveLoan);
+    document.querySelector("#loanForm").addEventListener("submit", showLoanSummary);
     document.querySelector("#searchInput").addEventListener("input", renderSearch);
     document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
     document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
@@ -469,61 +492,93 @@
       renderAll();
     }
 
-    async function saveLoan(event) {
+    function showLoanSummary(event) {
       event.preventDefault();
-      const shouldPrint = event.submitter?.value === "print";
       if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
-      const form = event.target;
+      const draft = buildLoanDraft(event.target);
+      if (draft.error) return showMessage(draft.error, true);
+      state.loanSummary = draft;
+      renderLoanSummary();
+      showScreen("loanSummaryScreen");
+    }
+
+    function buildLoanDraft(form) {
+      if (!form.borrower.value.trim()) return { error: "Wpisz osobę wypożyczającą." };
+      if (!form.dateTo.value) return { error: "Wpisz planowany termin zwrotu." };
       const selected = state.inventory.map((item) => ({
         item,
-        quantity: Number(form[`item-${item.id}`]?.value || 0)
+        quantity: Number(form[`item-${item.id}`]?.value || 0),
+        price: Number(item.price_per_day || 0)
       })).filter((row) => row.quantity > 0);
-      if (!selected.length) return showMessage("Wybierz przynajmniej jeden sprzęt.", true);
-      const unavailable = selected.find((row) => row.quantity > availableQty(row.item.id));
-      if (unavailable) return showMessage(`Brak dostępnej ilości: ${unavailable.item.name}.`, true);
+      if (!selected.length) return { error: "Wybierz przynajmniej jeden sprzęt." };
+      if (selected.some((row) => row.quantity > availableQty(row.item.id))) return { error: "Wybrana ilość przekracza dostępny stan." };
       const nameParts = form.borrower.value.trim().split(/\s+/);
       const firstName = nameParts.shift() || "";
       const lastName = nameParts.join(" ") || "";
       const days = rentalDays(form.dateFrom.value, form.dateTo.value);
-      const total = selected.reduce((sum, row) => sum + row.quantity * Number(row.item.price_per_day || 0) * days, 0);
-      const { data: rental, error } = await supabaseClient.from("rentals").insert({
-        first_name: firstName,
-        last_name: lastName,
+      const totalPerDay = selected.reduce((sum, row) => sum + row.quantity * row.price, 0);
+      const total = totalPerDay * days;
+      return {
+        firstName,
+        lastName,
+        borrower: form.borrower.value.trim(),
         phone: form.phone.value || null,
-        date_from: form.dateFrom.value,
-        date_to: form.dateTo.value,
-        days,
-        total,
-        status: "Wypożyczone",
+        dateFrom: form.dateFrom.value,
+        dateTo: form.dateTo.value,
         notes: form.notes.value || null,
+        days,
+        totalPerDay,
+        total,
+        selected
+      };
+    }
+
+    async function saveLoanFromSummary(shouldPrint = false) {
+      if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
+      const draft = state.loanSummary;
+      if (!draft) return showMessage("Najpierw przygotuj podsumowanie wypożyczenia.", true);
+      const { data: rental, error } = await supabaseClient.from("rentals").insert({
+        first_name: draft.firstName,
+        last_name: draft.lastName,
+        phone: draft.phone,
+        date_from: draft.dateFrom,
+        date_to: draft.dateTo,
+        days: draft.days,
+        total: draft.total,
+        status: "Wypożyczone",
+        notes: draft.notes,
         payment_status: "unpaid"
       }).select("id").single();
       if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
-      const lines = selected.map((row) => ({
+      const lines = draft.selected.map((row) => ({
         rental_id: rental.id,
         inventory_id: row.item.id,
         item_name: row.item.name,
         quantity: row.quantity,
-        price_per_day: row.item.price_per_day || 0
+        price_per_day: row.price || 0
       }));
       const { error: linesError } = await supabaseClient.from("rental_lines").insert(lines);
       if (linesError) return showMessage("Wypożyczenie zapisane, ale nie udało się zapisać pozycji.", true);
       const protocolLoan = {
         id: rental.id,
-        first_name: firstName,
-        last_name: lastName,
-        phone: form.phone.value || null,
-        date_from: form.dateFrom.value,
-        date_to: form.dateTo.value,
-        days,
-        total,
+        first_name: draft.firstName,
+        last_name: draft.lastName,
+        phone: draft.phone,
+        date_from: draft.dateFrom,
+        date_to: draft.dateTo,
+        days: draft.days,
+        total: draft.total,
+        total_per_day: draft.totalPerDay,
         status: "Wypożyczone",
-        notes: form.notes.value || null,
+        notes: draft.notes,
         rental_lines: lines
       };
+      const form = document.querySelector("#loanForm");
       form.reset();
       form.dateFrom.value = today();
       form.dateTo.value = today();
+      state.loanSummary = null;
+      document.querySelector("#loanSummaryContent").innerHTML = "";
       showMessage(shouldPrint ? "Zapisano. Otwieram drukowanie." : "Wypożyczenie zapisane.", false);
       await refreshData();
       if (shouldPrint) printProtocol("loan", protocolLoan);
@@ -586,6 +641,36 @@
         </div>`;
       }).join("");
       document.querySelector("#loanItems").innerHTML = html || "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+    }
+
+    function renderLoanSummary() {
+      const draft = state.loanSummary;
+      if (!draft) return;
+      const rows = draft.selected.map((row) => {
+        const linePerDay = row.quantity * row.price;
+        return `<tr>
+          <td>${escapeHtml(row.item.name)}</td>
+          <td>${escapeHtml(row.quantity)}</td>
+          <td>${money(row.price)}</td>
+          <td>${money(linePerDay)}</td>
+        </tr>`;
+      }).join("");
+      document.querySelector("#loanSummaryContent").innerHTML = `
+        <p><strong>Wypożyczający:</strong> ${escapeHtml(draft.borrower)}</p>
+        <p><strong>Data wypożyczenia:</strong> ${formatDate(draft.dateFrom)}<br>
+        <strong>Planowany termin zwrotu:</strong> ${formatDate(draft.dateTo)}<br>
+        <strong>Osoba wydająca:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}</p>
+        <p><strong>Uwagi:</strong> ${escapeHtml(draft.notes || "Brak uwag.")}</p>
+        <table class="summary-table">
+          <thead>
+            <tr><th>Sprzęt</th><th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p><strong>Razem za dobę:</strong> ${money(draft.totalPerDay)}<br>
+        <strong>Liczba dób:</strong> ${draft.days}<br>
+        <strong>Razem za okres:</strong> ${money(draft.total)}</p>
+      `;
     }
 
     function renderReturns() {
@@ -689,11 +774,16 @@
               <tr>
                 <th>Nazwa sprzętu</th>
                 <th>Ilość</th>
-                ${isReturn ? "<th>Stan po zwrocie</th><th>Uwagi</th>" : "<th>Uwagi</th>"}
+                ${isReturn ? "<th>Stan po zwrocie</th><th>Uwagi</th>" : "<th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
               </tr>
             </thead>
             <tbody>${protocolLineRows(loan, isReturn)}</tbody>
           </table>
+          ${!isReturn ? `<section>
+            <p><strong>Razem za dobę:</strong> ${money(loan.total_per_day || 0)}<br>
+            <strong>Liczba dób:</strong> ${escapeHtml(loan.days || 1)}<br>
+            <strong>Razem za okres:</strong> ${money(loan.total || 0)}</p>
+          </section>` : ""}
           <section>
             <h3>Uwagi</h3>
             <p>${escapeHtml(isReturn ? (loan.return_notes || "Brak uwag.") : (loan.notes || "Brak uwag."))}</p>
@@ -712,13 +802,15 @@
       const condition = conditionText(loan.return_condition || "ok").replace("Stan po zwrocie: ", "");
       const rows = (loan.rental_lines || []).map((line) => {
         const note = isReturn ? escapeHtml(loan.return_notes || "") : escapeHtml(loan.notes || "");
+        const price = Number(line.price_per_day || 0);
+        const valuePerDay = Number(line.quantity || 0) * price;
         return `<tr>
           <td>${escapeHtml(line.item_name)}</td>
           <td>${escapeHtml(line.quantity)}</td>
-          ${isReturn ? `<td>${escapeHtml(condition)}</td><td>${note || "brak"}</td>` : `<td>${note || "brak"}</td>`}
+          ${isReturn ? `<td>${escapeHtml(condition)}</td><td>${note || "brak"}</td>` : `<td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
         </tr>`;
       });
-      return rows.join("") || `<tr><td colspan="${isReturn ? 4 : 3}">Brak pozycji.</td></tr>`;
+      return rows.join("") || `<tr><td colspan="${isReturn ? 4 : 5}">Brak pozycji.</td></tr>`;
     }
 
     function showScreen(id) {
