@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-14";
+const APP_VERSION = "2026.06.01-15";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -50,14 +50,14 @@ const starterData = {
   fundingSources: [],
   events: [],
   rentalInventory: [
-    { id: makeId(), name: "Komplet zastawy", quantity: 48, price: 10 },
-    { id: makeId(), name: "Talerz płytki", quantity: 48, price: 2 },
-    { id: makeId(), name: "Talerz głęboki", quantity: 48, price: 2 },
-    { id: makeId(), name: "Kubek", quantity: 48, price: 1 },
-    { id: makeId(), name: "Szklanka", quantity: 48, price: 1 },
-    { id: makeId(), name: "Nóż", quantity: 48, price: 0.5 },
-    { id: makeId(), name: "Widelec", quantity: 48, price: 0.5 },
-    { id: makeId(), name: "Obrus", quantity: 7, price: 5 }
+    { id: makeId(), name: "Komplet zastawy", quantity: 48, price: 10, replacementValue: null },
+    { id: makeId(), name: "Talerz płytki", quantity: 48, price: 2, replacementValue: null },
+    { id: makeId(), name: "Talerz głęboki", quantity: 48, price: 2, replacementValue: null },
+    { id: makeId(), name: "Kubek", quantity: 48, price: 1, replacementValue: null },
+    { id: makeId(), name: "Szklanka", quantity: 48, price: 1, replacementValue: null },
+    { id: makeId(), name: "Nóż", quantity: 48, price: 0.5, replacementValue: null },
+    { id: makeId(), name: "Widelec", quantity: 48, price: 0.5, replacementValue: null },
+    { id: makeId(), name: "Obrus", quantity: 7, price: 5, replacementValue: null }
   ],
   rentalLoans: [],
   docs: [],
@@ -597,7 +597,7 @@ async function refreshSupabaseData() {
       .order("paid_at", { ascending: false })),
     loadSupabaseResult("rental_inventory", supabaseClient
       .from("rental_inventory")
-      .select("id, name, quantity, price_per_day")
+      .select("id, name, quantity, price_per_day, replacement_value")
       .order("name", { ascending: true })),
     loadSupabaseResult("rentals", supabaseClient
       .from("rentals")
@@ -650,6 +650,15 @@ async function refreshSupabaseData() {
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
       .order("date_from", { ascending: false }));
     if (!fallbackRentals.error) rentalsResult = fallbackRentals;
+  }
+
+  if (inventoryResult.error) {
+    console.error("Nie udało się pobrać magazynu z polem replacement_value. Próba pobrania podstawowego widoku.", inventoryResult.error);
+    const fallbackInventory = await loadSupabaseResult("rental_inventory fallback", supabaseClient
+      .from("rental_inventory")
+      .select("id, name, quantity, price_per_day")
+      .order("name", { ascending: true }));
+    if (!fallbackInventory.error) inventoryResult = fallbackInventory;
   }
 
   if (moneyResult.error) {
@@ -726,7 +735,8 @@ async function refreshSupabaseData() {
     id: item.id,
     name: item.name,
     quantity: Number(item.quantity || 0),
-    price: Number(item.price_per_day || 0)
+    price: Number(item.price_per_day || 0),
+    replacementValue: item.replacement_value === null || item.replacement_value === undefined ? null : Number(item.replacement_value || 0)
   }));
 
   if (!rentalsResult.error) state.rentalLoans = (rentalsResult.data || []).map((rental) => {
@@ -3378,13 +3388,16 @@ function renderRentalInventory() {
     const available = availableQuantity(item.id);
     const borrowed = borrowedQuantity(item.id);
     const returned = returnedQuantity(item.id);
+    const replacementText = Number(item.replacementValue || 0) > 0 ? `${money(item.replacementValue)} / szt.` : "—";
     return `
       <article class="inventory-card">
         <strong>${escapeHtml(item.name)}</strong>
         <small>Stan magazynu: ${available} szt. - Wypożyczone: ${borrowed} szt. - Zwrócone łącznie: ${returned} szt. - Stan całkowity: ${item.quantity} szt. - ${money(item.price)} / doba</small>
+        <small>Wartość odtworzeniowa: ${replacementText}</small>
         <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
           <input type="number" min="0" step="1" value="${item.quantity}" aria-label="Ilosc ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
           <input type="number" min="0" step="0.01" value="${item.price}" aria-label="Cena ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
+          <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="Wartość odtworzeniowa ${escapeHtml(item.name)}" placeholder="Wartość odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
         </div>
       </article>
     `;
@@ -4457,9 +4470,18 @@ async function updateInventory(id, field, value) {
   if (!canCorrect()) return;
   const item = state.rentalInventory.find((entry) => entry.id === id);
   if (!item) return;
-  const normalizedValue = field === "quantity" ? Math.max(0, Math.round(Number(value) || 0)) : Math.max(0, Number(value) || 0);
+  const normalizedValue = field === "quantity"
+    ? Math.max(0, Math.round(Number(value) || 0))
+    : field === "replacementValue" && String(value).trim() === ""
+      ? null
+      : Math.max(0, Number(value) || 0);
   if (supabaseClient && currentRole) {
-    const column = field === "quantity" ? "quantity" : "price_per_day";
+    const columnMap = {
+      quantity: "quantity",
+      price: "price_per_day",
+      replacementValue: "replacement_value"
+    };
+    const column = columnMap[field] || "price_per_day";
     const { error } = await supabaseClient
       .from("rental_inventory")
       .update({ [column]: normalizedValue })
@@ -4485,6 +4507,7 @@ async function handleInventoryAdd(event) {
   const name = String(data.name || "").trim();
   const quantity = Math.max(0, Math.round(Number(data.quantity) || 0));
   const price = Math.max(0, Number(data.price) || 0);
+  const replacementValue = String(data.replacementValue || "").trim() === "" ? null : Math.max(0, Number(data.replacementValue) || 0);
 
   if (!name) {
     alert("Wpisz nazwę przedmiotu.");
@@ -4495,7 +4518,8 @@ async function handleInventoryAdd(event) {
     const { error } = await supabaseClient.from("rental_inventory").insert({
       name,
       quantity,
-      price_per_day: price
+      price_per_day: price,
+      replacement_value: replacementValue
     });
     if (error) {
       alert(`Nie udało się dodać przedmiotu do magazynu w Supabase: ${error.message}`);
@@ -4513,7 +4537,8 @@ async function handleInventoryAdd(event) {
     id: makeId(),
     name,
     quantity,
-    price
+    price,
+    replacementValue
   });
   event.target.reset();
   saveState();
@@ -6167,6 +6192,7 @@ function adminExportConfig() {
         { label: "Wypożyczone", value: (item) => borrowedQuantity(item.id) },
         { label: "Zwrócone", value: (item) => returnedQuantity(item.id) },
         { label: "Cena za dobę", value: (item) => item.price, type: "money" },
+        { label: "Wartość odtworzeniowa", value: (item) => item.replacementValue, type: "money" },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },

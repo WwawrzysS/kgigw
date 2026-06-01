@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260601-14" />
+    <link rel="stylesheet" href="styles.css?v=20260601-15" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -456,8 +456,9 @@
               </div>
               <div class="form-grid">
                 <input name="price" type="number" min="0" step="0.01" required placeholder="Cena za dobę" />
-                <button type="submit">Dodaj przedmiot</button>
+                <input name="replacementValue" type="number" min="0" step="0.01" placeholder="Wartość odtworzeniowa" />
               </div>
+              <button type="submit">Dodaj przedmiot</button>
             </form>
             <div id="rentalInventory" class="inventory-grid"></div>
           </section>
@@ -857,7 +858,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.01-14</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.01-15</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1015,6 +1016,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260601-14"></script>
+    <script src="app.js?v=20260601-15"></script>
   </body>
 </html>
