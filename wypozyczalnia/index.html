@@ -724,21 +724,24 @@
       const shouldSign = printMode === "signature";
       const condition = document.querySelector(`#condition-${id}`).value;
       const notes = document.querySelector(`#returnNotes-${id}`).value;
+      const damageCost = parseMoneyInput(document.querySelector(`#returnDamageCost-${id}`)?.value);
       const returnedAt = document.querySelector(`#returnedAt-${id}`).value || today();
       const loan = state.rentals.find((item) => item.id === id);
       if (!loan) return;
-      const inspection = collectReturnInspection(loan);
-      if (inspection.error) return showMessage(inspection.error, true);
-      const returnNotes = buildReturnNotes(condition, notes, inspection);
+      if (!Number.isFinite(damageCost) || damageCost < 0) return showMessage("Wpisz poprawną wartość braków/uszkodzeń.", true);
+      const returnNotes = [conditionText(condition), notes].filter(Boolean).join(" - ");
       const { error } = await supabaseClient.from("rentals").update({
         status: "Zwrócone",
         returned_at: returnedAt,
         return_notes: returnNotes,
-        damage_cost: inspection.total
+        damage_cost: damageCost
       }).eq("id", id);
       if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
-      for (const line of inspection.lines) {
-        const lineResult = await supabaseClient.from("rental_lines").update({ returned: line.ok, damaged: line.damaged, missing: line.missing }).eq("id", line.id);
+      for (const line of loan.rental_lines || []) {
+        const returned = condition === "missing" ? 0 : line.quantity;
+        const damaged = condition === "damaged" ? line.quantity : 0;
+        const missing = condition === "missing" ? line.quantity : 0;
+        const lineResult = await supabaseClient.from("rental_lines").update({ returned, damaged, missing }).eq("id", line.id);
         if (lineResult.error) return showMessage("Zwrot zapisany częściowo. Sprawdź dane w panelu.", true);
       }
       const protocolLoan = {
@@ -747,14 +750,12 @@
         returned_at: returnedAt,
         return_notes: returnNotes,
         return_condition: condition,
-        damage_cost: inspection.total,
-        return_inspection: inspection,
-        rental_lines: inspection.lines.map((line) => ({
-          ...line.source,
-          replacement_value: line.replacementValue,
-          returned: line.ok,
-          damaged: line.damaged,
-          missing: line.missing
+        damage_cost: damageCost,
+        rental_lines: (loan.rental_lines || []).map((line) => ({
+          ...line,
+          returned: condition === "missing" ? 0 : line.quantity,
+          damaged: condition === "damaged" ? line.quantity : 0,
+          missing: condition === "missing" ? line.quantity : 0
         }))
       };
       showMessage(shouldSign ? "Zapisano. Teraz złóż podpis do protokołu." : shouldPrint ? "Zapisano. Otwieram drukowanie." : "Zwrot zapisany.", false);
@@ -1052,18 +1053,6 @@
             <small>Wydano: ${escapeHtml(issued)} szt.<br>
             Wartość odtworzeniowa: ${replacementValue}<br>
             Cena za dobę: ${money(enrichedLine.price_per_day || 0)}</small>
-            <div class="form-grid">
-              <label>Wróciło OK
-                <input id="returnOk-${enrichedLine.id}" type="number" min="0" step="1" value="${issued}" data-issued="${issued}" oninput="updateReturnLineInspection('${loan.id}', '${enrichedLine.id}', 'ok')" />
-              </label>
-              <label>Uszkodzone
-                <input id="returnDamaged-${enrichedLine.id}" type="number" min="0" step="1" value="0" data-issued="${issued}" oninput="updateReturnLineInspection('${loan.id}', '${enrichedLine.id}', 'damaged')" />
-              </label>
-              <label>Brak
-                <input id="returnMissing-${enrichedLine.id}" type="number" min="0" step="1" value="0" data-issued="${issued}" oninput="updateReturnLineInspection('${loan.id}', '${enrichedLine.id}', 'missing')" />
-              </label>
-            </div>
-            <small id="returnLineValue-${enrichedLine.id}">Wartość pozycji: ${money(0)}</small>
           </div>
         </article>`;
       }).join("");
@@ -1078,7 +1067,6 @@
         <h3>Sprzęt do zwrotu</h3>
         ${lines || "<p class='muted'>Brak pozycji do zwrotu.</p>"}
         ${missingReplacementWarning ? `<p class="readonly-note">Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna.</p>` : ""}
-        <div id="returnInspectionSummary-${loan.id}" class="readonly-note"></div>
         <label>Data zwrotu</label>
         <input id="returnedAt-${loan.id}" type="date" value="${today()}" />
         <label>Stan po zwrocie</label>
@@ -1088,8 +1076,8 @@
           <option value="missing">brak elementów</option>
           <option value="other">inne</option>
         </select>
-        <label>Dodatkowa dopłata ręczna</label>
-        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" onblur="normalizeMoneyInput(this); recalculateReturnInspection('${loan.id}')" oninput="recalculateReturnInspection('${loan.id}')" />
+        <label>Wartość braków/uszkodzeń</label>
+        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" onblur="normalizeMoneyInput(this)" />
         <label>Uwagi po zwrocie</label>
         <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
         <div class="actions">
@@ -1098,109 +1086,6 @@
           <button class="secondary" type="button" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
         </div>
       `;
-      recalculateReturnInspection(loan.id);
-    }
-
-    function updateReturnLineInspection(loanId, lineId, changedField) {
-      const issued = parseCountInput(document.querySelector(`#returnOk-${lineId}`)?.dataset.issued);
-      const okInput = document.querySelector(`#returnOk-${lineId}`);
-      const damagedInput = document.querySelector(`#returnDamaged-${lineId}`);
-      const missingInput = document.querySelector(`#returnMissing-${lineId}`);
-      if (!okInput || !damagedInput || !missingInput || !Number.isFinite(issued)) return;
-      let ok = parseCountInput(okInput.value);
-      let damaged = parseCountInput(damagedInput.value);
-      let missing = parseCountInput(missingInput.value);
-      ok = Number.isFinite(ok) ? ok : 0;
-      damaged = Number.isFinite(damaged) ? damaged : 0;
-      missing = Number.isFinite(missing) ? missing : 0;
-      if (changedField === "damaged" && damaged + missing > issued) damaged = Math.max(0, issued - missing);
-      if (changedField === "missing" && damaged + missing > issued) missing = Math.max(0, issued - damaged);
-      if (changedField !== "ok") ok = Math.max(0, issued - damaged - missing);
-      okInput.value = ok;
-      damagedInput.value = damaged;
-      missingInput.value = missing;
-      recalculateReturnInspection(loanId);
-    }
-
-    function collectReturnInspection(loan) {
-      const manual = parseMoneyInput(document.querySelector(`#returnDamageCost-${loan.id}`)?.value);
-      if (!Number.isFinite(manual) || manual < 0) return { error: "Wpisz poprawną wartość braków/uszkodzeń." };
-      const lines = (loan.rental_lines || []).map((line) => {
-        const enrichedLine = enrichLineWithReplacementValue(line);
-        const issued = Number(enrichedLine.quantity || 0);
-        const ok = parseCountInput(document.querySelector(`#returnOk-${line.id}`)?.value);
-        const damaged = parseCountInput(document.querySelector(`#returnDamaged-${line.id}`)?.value);
-        const missing = parseCountInput(document.querySelector(`#returnMissing-${line.id}`)?.value);
-        const replacementValue = Number(enrichedLine.replacement_value || 0);
-        if (![ok, damaged, missing].every(Number.isFinite)) return { error: "Wpisz poprawne ilości w kontroli zwrotu." };
-        if (ok + damaged + missing !== issued) return { error: `Suma OK, uszkodzonych i braków musi być równa ilości wydanej dla: ${enrichedLine.item_name}.` };
-        const damagedValue = damaged * replacementValue;
-        const missingValue = missing * replacementValue;
-        return {
-          id: line.id,
-          source: enrichedLine,
-          name: enrichedLine.item_name,
-          issued,
-          ok,
-          damaged,
-          missing,
-          replacementValue,
-          damagedValue,
-          missingValue,
-          totalValue: damagedValue + missingValue
-        };
-      });
-      const invalid = lines.find((line) => line.error);
-      if (invalid) return invalid;
-      const damagedTotal = lines.reduce((sum, line) => sum + line.damagedValue, 0);
-      const missingTotal = lines.reduce((sum, line) => sum + line.missingValue, 0);
-      return {
-        lines,
-        damagedTotal,
-        missingTotal,
-        manual,
-        total: damagedTotal + missingTotal + manual,
-        missingReplacement: lines.some((line) => (line.damaged > 0 || line.missing > 0) && line.replacementValue <= 0)
-      };
-    }
-
-    function recalculateReturnInspection(loanId) {
-      const loan = state.rentals.find((item) => item.id === loanId);
-      const summary = document.querySelector(`#returnInspectionSummary-${loanId}`);
-      if (!loan || !summary) return;
-      const inspection = collectReturnInspection(loan);
-      if (inspection.error) {
-        summary.innerHTML = `<strong>Uwaga:</strong> ${escapeHtml(inspection.error)}`;
-        return;
-      }
-      inspection.lines.forEach((line) => {
-        const lineValue = document.querySelector(`#returnLineValue-${line.id}`);
-        if (lineValue) lineValue.textContent = `Wartość pozycji: ${money(line.totalValue)}`;
-      });
-      summary.innerHTML = `
-        <strong>Razem uszkodzenia:</strong> ${money(inspection.damagedTotal)}<br>
-        <strong>Razem braki:</strong> ${money(inspection.missingTotal)}<br>
-        <strong>Dodatkowa dopłata ręczna:</strong> ${money(inspection.manual)}<br>
-        <strong>Dopłata za braki/uszkodzenia:</strong> ${money(inspection.total)}
-        ${inspection.missingReplacement ? "<br>Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna." : ""}
-      `;
-    }
-
-    function buildReturnNotes(condition, userNotes, inspection) {
-      const lineDetails = inspection.lines.map((line) => (
-        `${line.name} — wydano: ${line.issued} / OK: ${line.ok} / uszkodzone: ${line.damaged} / brak: ${line.missing} / wartość: ${money(line.totalValue)}`
-      ));
-      return [
-        conditionText(condition),
-        String(userNotes || "").trim() ? `Uwagi użytkownika: ${String(userNotes).trim()}` : "",
-        "Kontrola zwrotu:",
-        ...lineDetails,
-        `Razem uszkodzenia: ${money(inspection.damagedTotal)}`,
-        `Razem braki: ${money(inspection.missingTotal)}`,
-        `Dodatkowa dopłata ręczna: ${money(inspection.manual)}`,
-        `Dopłata razem: ${money(inspection.total)}`,
-        inspection.missingReplacement ? "Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna." : ""
-      ].filter(Boolean).join("\n");
     }
 
     function setupSignaturePad() {
@@ -1325,7 +1210,7 @@
             <thead>
               <tr>
                 <th>Nazwa sprzętu</th>
-                ${isReturn ? "<th>Wydano</th><th>OK</th><th>Uszkodzone</th><th>Brak</th><th>Wartość</th>" : "<th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
+                ${isReturn ? "<th>Wydano</th><th>Zwrócono</th>" : "<th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
               </tr>
             </thead>
             <tbody>${protocolLineRows(loan, isReturn)}</tbody>
@@ -1354,18 +1239,13 @@
       const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
       const notes = returnNotesOnly(loan.return_notes);
       const notesText = notes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
-      const inspection = returnInspectionFromLoan(loan);
       return `
           <section>
             <h3>Kontrola zwrotu</h3>
             <p>Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.</p>
             <p><strong>Stan po zwrocie:</strong> ${escapeHtml(condition)}</p>
             <p><strong>Uwagi po zwrocie:</strong><br>${escapeHtml(notesText)}</p>
-            <p><strong>Razem uszkodzenia:</strong> ${money(inspection.damagedTotal)}<br>
-            <strong>Razem braki:</strong> ${money(inspection.missingTotal)}<br>
-            <strong>Dodatkowa dopłata ręczna:</strong> ${money(inspection.manual)}<br>
-            <strong>Dopłata razem:</strong> ${money(inspection.total)}</p>
-            ${inspection.missingReplacement ? "<p><strong>Uwaga:</strong> Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna.</p>" : ""}
+            <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(loan.damage_cost || 0)}</p>
           </section>`;
     }
 
@@ -1377,49 +1257,7 @@
         text = text.slice(statePrefix.length).trim();
         if (text.startsWith("-")) text = text.slice(1).trim();
       }
-      const controlIndex = text.indexOf("Kontrola zwrotu:");
-      if (controlIndex >= 0) text = text.slice(0, controlIndex).trim();
-      if (text.startsWith("Uwagi użytkownika:")) text = text.replace("Uwagi użytkownika:", "").trim();
       return text;
-    }
-
-    function returnInspectionFromLoan(loan) {
-      if (loan.return_inspection) return loan.return_inspection;
-      const lines = (loan.rental_lines || []).map((line) => {
-        const enrichedLine = enrichLineWithReplacementValue(line);
-        const issued = Number(enrichedLine.quantity || 0);
-        const damaged = Number(enrichedLine.damaged || 0);
-        const missing = Number(enrichedLine.missing || 0);
-        const ok = enrichedLine.returned === null || enrichedLine.returned === undefined ? Math.max(0, issued - damaged - missing) : Number(enrichedLine.returned || 0);
-        const replacementValue = Number(enrichedLine.replacement_value || 0);
-        const damagedValue = damaged * replacementValue;
-        const missingValue = missing * replacementValue;
-        return {
-          id: enrichedLine.id,
-          source: enrichedLine,
-          name: enrichedLine.item_name,
-          issued,
-          ok,
-          damaged,
-          missing,
-          replacementValue,
-          damagedValue,
-          missingValue,
-          totalValue: damagedValue + missingValue
-        };
-      });
-      const damagedTotal = lines.reduce((sum, line) => sum + line.damagedValue, 0);
-      const missingTotal = lines.reduce((sum, line) => sum + line.missingValue, 0);
-      const automaticTotal = damagedTotal + missingTotal;
-      const total = Number(loan.damage_cost || automaticTotal);
-      return {
-        lines,
-        damagedTotal,
-        missingTotal,
-        manual: Math.max(0, total - automaticTotal),
-        total,
-        missingReplacement: lines.some((line) => (line.damaged > 0 || line.missing > 0) && line.replacementValue <= 0)
-      };
     }
 
     function clearZeroMoneyInput(input) {
@@ -1441,20 +1279,20 @@
     }
 
     function protocolLineRows(loan, isReturn) {
-      const inspection = isReturn ? returnInspectionFromLoan(loan) : null;
-      const returnLines = inspection?.lines || [];
-      const sourceLines = isReturn ? returnLines : (loan.rental_lines || []);
-      const rows = sourceLines.map((line) => {
+      const returnCondition = loan.return_condition || returnConditionFromNotes(loan.return_notes);
+      const rows = (loan.rental_lines || []).map((line) => {
         const note = isReturn ? escapeHtml(loan.return_notes || "") : escapeHtml(loan.notes || "");
-        const lineSource = isReturn ? line.source : line;
-        const price = Number(lineSource.price_per_day || 0);
-        const valuePerDay = Number(lineSource.quantity || 0) * price;
+        const price = Number(line.price_per_day || 0);
+        const valuePerDay = Number(line.quantity || 0) * price;
+        const issued = Number(line.quantity || 0);
+        const returned = line.returned === null || line.returned === undefined ? issued : Number(line.returned || 0);
+        const returnedText = returnCondition === "missing" ? "wg uwag" : `${returned} szt.`;
         return `<tr>
-          <td>${escapeHtml(isReturn ? line.name : line.item_name)}</td>
-          ${isReturn ? `<td>${escapeHtml(line.issued)} szt.</td><td>${escapeHtml(line.ok)} szt.</td><td>${escapeHtml(line.damaged)} szt.</td><td>${escapeHtml(line.missing)} szt.</td><td>${money(line.totalValue)}</td>` : `<td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
+          <td>${escapeHtml(line.item_name)}</td>
+          ${isReturn ? `<td>${escapeHtml(issued)} szt.</td><td>${escapeHtml(returnedText)}</td>` : `<td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
         </tr>`;
       });
-      return rows.join("") || `<tr><td colspan="${isReturn ? 6 : 5}">Brak pozycji.</td></tr>`;
+      return rows.join("") || `<tr><td colspan="${isReturn ? 3 : 5}">Brak pozycji.</td></tr>`;
     }
 
     function showScreen(id) {
