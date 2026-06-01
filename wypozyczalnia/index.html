@@ -199,6 +199,15 @@
       vertical-align: top;
     }
     .summary-table th { color: var(--muted); font-size: 12px; }
+    .signature-pad {
+      width: 100%;
+      height: 220px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      touch-action: none;
+      display: block;
+    }
     #printView { display: none; }
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -259,6 +268,12 @@
         border-top: 1px solid #111;
         padding-top: 7px;
         text-align: center;
+      }
+      .print-signature img {
+        display: block;
+        max-width: 230px;
+        max-height: 90px;
+        margin: -84px auto 10px;
       }
       .print-footer {
         border-top: 1px solid #999;
@@ -341,6 +356,7 @@
           <button class="secondary" type="button" onclick="showScreen('loanScreen')">Wstecz</button>
           <button type="button" onclick="saveLoanFromSummary(false)">Zapisz</button>
           <button class="secondary" type="button" onclick="saveLoanFromSummary(true)">Zapisz i drukuj</button>
+          <button class="secondary" type="button" onclick="saveLoanFromSummary('signature')">Zapisz, podpisz i drukuj</button>
         </div>
       </section>
 
@@ -392,6 +408,17 @@
         <h2>Szczegóły wypożyczenia</h2>
         <div id="historyDetails"></div>
       </section>
+
+      <section id="signatureScreen" class="card screen hidden">
+        <h2>Podpis</h2>
+        <p class="muted">Podpisz palcem w polu poniżej. Podpis zostanie użyty tylko do tego protokołu PDF i nie będzie zapisany w aplikacji.</p>
+        <canvas id="signatureCanvas" class="signature-pad"></canvas>
+        <div class="actions">
+          <button class="secondary" type="button" onclick="clearSignature()">Wyczyść podpis</button>
+          <button class="secondary" type="button" onclick="cancelSignature()">Wstecz</button>
+          <button type="button" onclick="printSignedProtocol()">Drukuj PDF</button>
+        </div>
+      </section>
     </section>
   </main>
   <section id="printView" aria-hidden="true"></section>
@@ -405,7 +432,7 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null };
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -419,6 +446,7 @@
     document.querySelector("#loanForm").addEventListener("submit", showLoanSummary);
     document.querySelector("#searchInput").addEventListener("input", renderSearch);
     document.querySelector("#historySearch").addEventListener("input", renderHistory);
+    setupSignaturePad();
     document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
     document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
       state.inventoryFilter = button.dataset.filter;
@@ -558,10 +586,12 @@
       };
     }
 
-    async function saveLoanFromSummary(shouldPrint = false) {
+    async function saveLoanFromSummary(printMode = false) {
       if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
       const draft = state.loanSummary;
       if (!draft) return showMessage("Najpierw przygotuj podsumowanie wypożyczenia.", true);
+      const shouldPrint = printMode === true;
+      const shouldSign = printMode === "signature";
       const { data: rental, error } = await supabaseClient.from("rentals").insert({
         first_name: draft.firstName,
         last_name: draft.lastName,
@@ -604,14 +634,17 @@
       form.dateTo.value = today();
       state.loanSummary = null;
       document.querySelector("#loanSummaryContent").innerHTML = "";
-      showMessage(shouldPrint ? "Zapisano. Otwieram drukowanie." : "Wypożyczenie zapisane.", false);
+      showMessage(shouldSign ? "Zapisano. Teraz złóż podpis do protokołu." : shouldPrint ? "Zapisano. Otwieram drukowanie." : "Wypożyczenie zapisane.", false);
       await refreshData();
       if (shouldPrint) printProtocol("loan", protocolLoan);
-      showScreen("homeScreen");
+      if (shouldSign) showSignatureScreen("loan", protocolLoan);
+      if (!shouldSign) showScreen("homeScreen");
     }
 
-    async function confirmReturn(id, shouldPrint = false) {
+    async function confirmReturn(id, printMode = false) {
       if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
+      const shouldPrint = printMode === true;
+      const shouldSign = printMode === "signature";
       const condition = document.querySelector(`#condition-${id}`).value;
       const notes = document.querySelector(`#returnNotes-${id}`).value;
       const returnedAt = document.querySelector(`#returnedAt-${id}`).value || today();
@@ -644,9 +677,10 @@
           missing: condition === "missing" ? line.quantity : 0
         }))
       };
-      showMessage(shouldPrint ? "Zapisano. Otwieram drukowanie." : "Zwrot zapisany.", false);
+      showMessage(shouldSign ? "Zapisano. Teraz złóż podpis do protokołu." : shouldPrint ? "Zapisano. Otwieram drukowanie." : "Zwrot zapisany.", false);
       await refreshData();
       if (shouldPrint) printProtocol("return", protocolLoan);
+      if (shouldSign) showSignatureScreen("return", protocolLoan);
     }
 
     function renderAll() {
@@ -871,11 +905,97 @@
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
           <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
           <button class="secondary" onclick="confirmReturn('${loan.id}', true)">Potwierdź zwrot i drukuj</button>
+          <button class="secondary" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
         </details>` : ""}
       </article>`;
     }
 
-    function printProtocol(type, loan) {
+    function setupSignaturePad() {
+      const canvas = document.querySelector("#signatureCanvas");
+      const context = canvas.getContext("2d");
+      const resizeCanvas = () => {
+        const ratio = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+        canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.lineWidth = 3;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.strokeStyle = "#111827";
+      };
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+      const position = (event) => {
+        const rect = canvas.getBoundingClientRect();
+        return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      };
+      const start = (event) => {
+        event.preventDefault();
+        state.drawingSignature = true;
+        const point = position(event);
+        context.beginPath();
+        context.moveTo(point.x, point.y);
+      };
+      const move = (event) => {
+        if (!state.drawingSignature) return;
+        event.preventDefault();
+        const point = position(event);
+        context.lineTo(point.x, point.y);
+        context.stroke();
+        state.signatureDirty = true;
+      };
+      const stop = () => {
+        state.drawingSignature = false;
+      };
+      canvas.addEventListener("pointerdown", start);
+      canvas.addEventListener("pointermove", move);
+      canvas.addEventListener("pointerup", stop);
+      canvas.addEventListener("pointercancel", stop);
+      canvas.addEventListener("pointerleave", stop);
+    }
+
+    function showSignatureScreen(type, loan) {
+      state.signatureProtocol = { type, loan };
+      showScreen("signatureScreen");
+      setTimeout(() => clearSignature(), 80);
+    }
+
+    function clearSignature() {
+      const canvas = document.querySelector("#signatureCanvas");
+      const context = canvas.getContext("2d");
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      if (rect.width && rect.height) {
+        canvas.width = Math.floor(rect.width * ratio);
+        canvas.height = Math.floor(rect.height * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.lineWidth = 3;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.strokeStyle = "#111827";
+      }
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      state.signatureDirty = false;
+    }
+
+    function cancelSignature() {
+      state.signatureProtocol = null;
+      clearSignature();
+      showScreen("homeScreen");
+    }
+
+    function printSignedProtocol() {
+      if (!state.signatureDirty) return showMessage("Złóż podpis albo wróć bez drukowania podpisu.", true);
+      if (!state.signatureProtocol) return showMessage("Brak protokołu do wydruku.", true);
+      const signatureImage = document.querySelector("#signatureCanvas").toDataURL("image/png");
+      const { type, loan } = state.signatureProtocol;
+      printProtocol(type, loan, signatureImage);
+      state.signatureProtocol = null;
+      setTimeout(() => clearSignature(), 500);
+    }
+
+    function printProtocol(type, loan, signatureImage = "") {
       const isReturn = type === "return";
       const title = isReturn ? "Protokół zwrotu sprzętu" : "Protokół wypożyczenia sprzętu";
       const operatorLabel = isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca";
@@ -918,7 +1038,7 @@
             <p>${escapeHtml(isReturn ? (loan.return_notes || "Brak uwag.") : (loan.notes || "Brak uwag."))}</p>
           </section>
           <section class="print-signatures">
-            <div class="print-signature">${borrowerSignature}</div>
+            <div class="print-signature">${signatureImage ? `<img src="${signatureImage}" alt="Podpis" />` : ""}${borrowerSignature}</div>
             <div class="print-signature">${operatorSignature}</div>
           </section>
           <footer class="print-footer">Dokument wygenerowany z aplikacji KGiGW Wypożyczalnia.</footer>
