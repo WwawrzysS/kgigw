@@ -195,8 +195,8 @@
       <h2>Logowanie</h2>
       <p class="muted">Zaloguj się kontem z Supabase, tak jak do panelu KGiGW.</p>
       <form id="loginForm">
-        <label>E-mail</label>
-        <input name="email" type="email" required autocomplete="username" />
+        <label>Login</label>
+        <input name="login" type="text" required autocomplete="username" />
         <label>Hasło</label>
         <input name="password" type="password" required autocomplete="current-password" />
         <div class="actions">
@@ -279,6 +279,13 @@
   </main>
 
   <script>
+    const ACCOUNT_EMAILS = {
+      admin: "wawrzysdom@gmail.com",
+      administrator: "wawrzysdom@gmail.com",
+      agata: "agatawawrzynek@go2.pl",
+      tomek: "tomasztynski@gmail.com"
+    };
+
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
     const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all" };
     const today = () => new Date().toISOString().slice(0, 10);
@@ -311,15 +318,29 @@
       event.preventDefault();
       setLoginMessage("");
       const form = event.target;
+      const loginName = normalizeLogin(form.login.value);
+      const email = ACCOUNT_EMAILS[loginName];
+      if (!email) {
+        setLoginMessage("Nie udało się zalogować. Sprawdź login i hasło.", true);
+        return;
+      }
       const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: form.email.value.trim(),
+        email,
         password: form.password.value
       });
       if (error) {
-        setLoginMessage("Nie udało się zalogować. Sprawdź e-mail i hasło.", true);
+        setLoginMessage("Nie udało się zalogować. Sprawdź login i hasło.", true);
         return;
       }
       await loadProfile(data.user);
+    }
+
+    function normalizeLogin(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
     }
 
     async function loadProfile(user) {
