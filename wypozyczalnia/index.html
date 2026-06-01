@@ -185,6 +185,75 @@
       color: #92400e;
       font-size: 14px;
     }
+    #printView { display: none; }
+    @media print {
+      @page { size: A4; margin: 14mm; }
+      body { background: #fff; color: #111; }
+      .app { display: none !important; }
+      #printView {
+        display: block !important;
+        font-family: Arial, sans-serif;
+        color: #111;
+      }
+      .print-document {
+        width: 100%;
+        max-width: 190mm;
+        margin: 0 auto;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .print-header {
+        border-bottom: 2px solid #111;
+        margin-bottom: 16px;
+        padding-bottom: 10px;
+        text-align: center;
+      }
+      .print-header h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .print-header h2 {
+        margin: 6px 0 0;
+        font-size: 16px;
+      }
+      .print-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 18px;
+        margin-bottom: 16px;
+      }
+      .print-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0 16px;
+      }
+      .print-table th,
+      .print-table td {
+        border: 1px solid #333;
+        padding: 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .print-table th { background: #f0f0f0; }
+      .print-signatures {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 28px;
+        margin-top: 34px;
+      }
+      .print-signature {
+        border-top: 1px solid #111;
+        padding-top: 7px;
+        text-align: center;
+      }
+      .print-footer {
+        border-top: 1px solid #999;
+        margin-top: 26px;
+        padding-top: 8px;
+        font-size: 11px;
+        text-align: center;
+      }
+    }
   </style>
 </head>
 <body>
@@ -244,7 +313,10 @@
           <div id="loanItems"></div>
           <label>Uwagi</label>
           <textarea name="notes" placeholder="Uwagi do wypożyczenia"></textarea>
-          <button type="submit">Zapisz wypożyczenie</button>
+          <div class="actions">
+            <button type="submit" name="printMode" value="save">Zapisz</button>
+            <button type="submit" name="printMode" value="print" class="secondary">Zapisz i drukuj</button>
+          </div>
         </form>
       </section>
 
@@ -280,6 +352,7 @@
       </section>
     </section>
   </main>
+  <section id="printView" aria-hidden="true"></section>
 
   <script>
     const ACCOUNT_EMAILS = {
@@ -398,6 +471,7 @@
 
     async function saveLoan(event) {
       event.preventDefault();
+      const shouldPrint = event.submitter?.value === "print";
       if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
       const form = event.target;
       const selected = state.inventory.map((item) => ({
@@ -434,15 +508,29 @@
       }));
       const { error: linesError } = await supabaseClient.from("rental_lines").insert(lines);
       if (linesError) return showMessage("Wypożyczenie zapisane, ale nie udało się zapisać pozycji.", true);
+      const protocolLoan = {
+        id: rental.id,
+        first_name: firstName,
+        last_name: lastName,
+        phone: form.phone.value || null,
+        date_from: form.dateFrom.value,
+        date_to: form.dateTo.value,
+        days,
+        total,
+        status: "Wypożyczone",
+        notes: form.notes.value || null,
+        rental_lines: lines
+      };
       form.reset();
       form.dateFrom.value = today();
       form.dateTo.value = today();
-      showMessage("Wypożyczenie zapisane.", false);
+      showMessage(shouldPrint ? "Zapisano. Otwieram drukowanie." : "Wypożyczenie zapisane.", false);
       await refreshData();
+      if (shouldPrint) printProtocol("loan", protocolLoan);
       showScreen("homeScreen");
     }
 
-    async function confirmReturn(id) {
+    async function confirmReturn(id, shouldPrint = false) {
       if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
       const condition = document.querySelector(`#condition-${id}`).value;
       const notes = document.querySelector(`#returnNotes-${id}`).value;
@@ -463,8 +551,22 @@
         const lineResult = await supabaseClient.from("rental_lines").update({ returned, damaged, missing }).eq("id", line.id);
         if (lineResult.error) return showMessage("Zwrot zapisany częściowo. Sprawdź dane w panelu.", true);
       }
-      showMessage("Zwrot potwierdzony.", false);
+      const protocolLoan = {
+        ...loan,
+        status: "Zwrócone",
+        returned_at: returnedAt,
+        return_notes: [conditionText(condition), notes].filter(Boolean).join(" - "),
+        return_condition: condition,
+        rental_lines: (loan.rental_lines || []).map((line) => ({
+          ...line,
+          returned: condition === "missing" ? 0 : line.quantity,
+          damaged: condition === "damaged" ? line.quantity : 0,
+          missing: condition === "missing" ? line.quantity : 0
+        }))
+      };
+      showMessage(shouldPrint ? "Zapisano. Otwieram drukowanie." : "Zwrot zapisany.", false);
       await refreshData();
+      if (shouldPrint) printProtocol("return", protocolLoan);
     }
 
     function renderAll() {
@@ -554,8 +656,69 @@
           <label>Uwagi po zwrocie</label>
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
           <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
+          <button class="secondary" onclick="confirmReturn('${loan.id}', true)">Potwierdź zwrot i drukuj</button>
         </details>` : ""}
       </article>`;
+    }
+
+    function printProtocol(type, loan) {
+      const isReturn = type === "return";
+      const title = isReturn ? "Protokół zwrotu sprzętu" : "Protokół wypożyczenia sprzętu";
+      const operatorLabel = isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca";
+      const borrowerSignature = isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego";
+      const operatorSignature = isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej";
+      const printView = document.querySelector("#printView");
+      printView.innerHTML = `
+        <article class="print-document">
+          <header class="print-header">
+            <h1>KGiGW we Włosani</h1>
+            <h2>${title}</h2>
+          </header>
+          <section class="print-grid">
+            <div><strong>Numer/ID:</strong> ${escapeHtml(loan.id || "brak")}</div>
+            <div><strong>Data wygenerowania:</strong> ${formatDate(today())}</div>
+            <div><strong>Data wypożyczenia:</strong> ${formatDate(loan.date_from)}</div>
+            <div><strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}</div>
+            ${isReturn ? `<div><strong>Data faktycznego zwrotu:</strong> ${formatDate(loan.returned_at)}</div>` : ""}
+            <div><strong>Wypożyczający:</strong> ${escapeHtml(person(loan))}</div>
+            <div><strong>${operatorLabel}:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}</div>
+          </section>
+          <h3>Sprzęt</h3>
+          <table class="print-table">
+            <thead>
+              <tr>
+                <th>Nazwa sprzętu</th>
+                <th>Ilość</th>
+                ${isReturn ? "<th>Stan po zwrocie</th><th>Uwagi</th>" : "<th>Uwagi</th>"}
+              </tr>
+            </thead>
+            <tbody>${protocolLineRows(loan, isReturn)}</tbody>
+          </table>
+          <section>
+            <h3>Uwagi</h3>
+            <p>${escapeHtml(isReturn ? (loan.return_notes || "Brak uwag.") : (loan.notes || "Brak uwag."))}</p>
+          </section>
+          <section class="print-signatures">
+            <div class="print-signature">${borrowerSignature}</div>
+            <div class="print-signature">${operatorSignature}</div>
+          </section>
+          <footer class="print-footer">Dokument wygenerowany z aplikacji KGiGW Wypożyczalnia.</footer>
+        </article>
+      `;
+      setTimeout(() => window.print(), 150);
+    }
+
+    function protocolLineRows(loan, isReturn) {
+      const condition = conditionText(loan.return_condition || "ok").replace("Stan po zwrocie: ", "");
+      const rows = (loan.rental_lines || []).map((line) => {
+        const note = isReturn ? escapeHtml(loan.return_notes || "") : escapeHtml(loan.notes || "");
+        return `<tr>
+          <td>${escapeHtml(line.item_name)}</td>
+          <td>${escapeHtml(line.quantity)}</td>
+          ${isReturn ? `<td>${escapeHtml(condition)}</td><td>${note || "brak"}</td>` : `<td>${note || "brak"}</td>`}
+        </tr>`;
+      });
+      return rows.join("") || `<tr><td colspan="${isReturn ? 4 : 3}">Brak pozycji.</td></tr>`;
     }
 
     function showScreen(id) {
