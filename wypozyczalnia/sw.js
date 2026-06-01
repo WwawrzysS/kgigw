@@ -1,4 +1,4 @@
-const CACHE_NAME = "kgigw-wypozyczalnia-v20260601-05";
+const CACHE_NAME = "kgigw-wypozyczalnia-folder-v20260601-05";
 const APP_SHELL = [
   "/kgigw/wypozyczalnia/",
   "/kgigw/wypozyczalnia/index.html",
@@ -22,7 +22,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
       keys
-        .filter((key) => key.startsWith("kgigw-wypozyczalnia-") && key !== CACHE_NAME)
+        .filter((key) => key.startsWith("kgigw-wypozyczalnia-folder-") && key !== CACHE_NAME)
         .map((key) => caches.delete(key))
     ))
   );

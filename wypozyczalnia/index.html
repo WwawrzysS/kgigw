@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="manifest" href="/kgigw/wypozyczalnia/manifest.json" />
+  <link rel="icon" type="image/png" href="/kgigw/icon-192.png" />
+  <link rel="apple-touch-icon" href="/kgigw/apple-touch-icon.png" />
+  <meta name="theme-color" content="#1f7a3f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Wypożyczalnia" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>KGiGW Wypożyczalnia Mobile</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/kgigw/supabase-config.js"></script>
+  <style>
+    :root {
+      --green: #1f7a3f;
+      --green-dark: #14592d;
+      --bg: #f3f7f2;
+      --card: #fff;
+      --text: #17251b;
+      --muted: #66756b;
+      --border: #dbe7dd;
+      --danger: #b42318;
+      --warn: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .app {
+      width: 100%;
+      max-width: 560px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 12px;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(243, 247, 242, 0.96);
+      padding: 8px 0 12px;
+      backdrop-filter: blur(8px);
+    }
+    h1 {
+      margin: 0;
+      color: var(--green-dark);
+      font-size: 24px;
+    }
+    h2 {
+      margin: 0 0 12px;
+      color: var(--green-dark);
+      font-size: 20px;
+    }
+    .muted, small { color: var(--muted); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      margin: 10px 0;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    }
+    .home-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    button, .tile {
+      border: 0;
+      border-radius: 14px;
+      padding: 14px 16px;
+      min-height: 48px;
+      background: var(--green);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+    }
+    .tile {
+      width: 100%;
+      min-height: 72px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .secondary { background: #e8f1ea; color: var(--green-dark); }
+    .danger { background: var(--danger); }
+    .ghost { background: transparent; color: var(--green-dark); border: 1px solid var(--border); }
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 16px;
+      background: #fff;
+      color: var(--text);
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    textarea { min-height: 84px; resize: vertical; }
+    .hidden { display: none !important; }
+    .message {
+      padding: 12px;
+      border-radius: 12px;
+      margin: 10px 0;
+      font-size: 14px;
+    }
+    .ok { background: #ecfdf3; border: 1px solid #bbf7d0; color: #166534; }
+    .err { background: #fef3f2; border: 1px solid #fecaca; color: #991b1b; }
+    .filters {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 0 8px;
+    }
+    .filters button {
+      white-space: nowrap;
+      min-height: 42px;
+      padding: 10px 12px;
+      background: #e8f1ea;
+      color: var(--green-dark);
+    }
+    .filters button.active { background: var(--green); color: #fff; }
+    .item-row {
+      display: grid;
+      grid-template-columns: 1fr 92px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-top: 1px solid var(--border);
+    }
+    .item-row:first-child { border-top: 0; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #e8f1ea;
+      color: var(--green-dark);
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+    .badge.warn { background: #fff7ed; color: var(--warn); }
+    .badge.danger { background: #fef3f2; color: var(--danger); }
+    .actions {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    summary {
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: var(--green);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: center;
+      list-style: none;
+    }
+    summary::-webkit-details-marker { display: none; }
+    .readonly-note {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 12px;
+      padding: 10px;
+      color: #92400e;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>KGiGW Wypożyczalnia</h1>
+      <small id="userInfo">Nie zalogowano</small>
+    </header>
+
+    <section id="loginView" class="card">
+      <h2>Logowanie</h2>
+      <p class="muted">Zaloguj się kontem z Supabase, tak jak do panelu KGiGW.</p>
+      <form id="loginForm">
+        <label>Login</label>
+        <input name="login" type="text" required autocomplete="username" />
+        <label>Hasło</label>
+        <input name="password" type="password" required autocomplete="current-password" />
+        <div class="actions">
+          <button type="submit">Zaloguj</button>
+        </div>
+      </form>
+      <div id="loginMessage" class="message hidden"></div>
+    </section>
+
+    <section id="mainView" class="hidden">
+      <div id="message" class="message hidden"></div>
+      <div id="readonlyNote" class="readonly-note hidden">Masz dostęp tylko do odczytu. Możesz przeglądać dane, ale nie zapiszesz wypożyczeń ani zwrotów.</div>
+
+      <section id="homeScreen" class="card screen">
+        <h2>Wypożyczalnia Mobile</h2>
+        <div class="home-grid">
+          <button class="tile" data-screen="loanScreen">+ Wypożycz sprzęt</button>
+          <button class="tile" data-screen="returnScreen">↩ Zwrot sprzętu</button>
+          <button class="tile" data-screen="inventoryScreen">📦 Dostępny sprzęt</button>
+          <button class="tile" data-screen="overdueScreen">⚠ Zaległe zwroty</button>
+          <button class="tile" data-screen="searchScreen">🔍 Szukaj</button>
+        </div>
+        <div class="toolbar">
+          <button class="secondary" type="button" onclick="refreshData()">Odśwież</button>
+          <button class="ghost" type="button" onclick="logout()">Wyloguj</button>
+        </div>
+      </section>
+
+      <section id="loanScreen" class="card screen hidden">
+        <h2>Wypożycz sprzęt</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <form id="loanForm">
+          <label>Kto wypożycza</label>
+          <input name="borrower" required placeholder="Imię i nazwisko" />
+          <label>Telefon</label>
+          <input name="phone" type="tel" placeholder="Telefon" />
+          <label>Data wypożyczenia</label>
+          <input name="dateFrom" type="date" required />
+          <label>Planowany termin zwrotu</label>
+          <input name="dateTo" type="date" required />
+          <label>Co wypożycza</label>
+          <div id="loanItems"></div>
+          <label>Uwagi</label>
+          <textarea name="notes" placeholder="Uwagi do wypożyczenia"></textarea>
+          <button type="submit">Zapisz wypożyczenie</button>
+        </form>
+      </section>
+
+      <section id="returnScreen" class="card screen hidden">
+        <h2>Zwrot sprzętu</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <div id="returnsList"></div>
+      </section>
+
+      <section id="inventoryScreen" class="card screen hidden">
+        <h2>Dostępny sprzęt</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <div class="filters" id="inventoryFilters">
+          <button class="active" data-filter="all">Wszystkie</button>
+          <button data-filter="available">Dostępne</button>
+          <button data-filter="borrowed">Wypożyczone</button>
+          <button data-filter="damaged">Uszkodzone</button>
+        </div>
+        <div id="inventoryList"></div>
+      </section>
+
+      <section id="overdueScreen" class="card screen hidden">
+        <h2>Zaległe zwroty</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <div id="overdueList"></div>
+      </section>
+
+      <section id="searchScreen" class="card screen hidden">
+        <h2>Szukaj</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
+        <div id="searchResults"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const ACCOUNT_EMAILS = {
+      admin: "wawrzysdom@gmail.com",
+      administrator: "wawrzysdom@gmail.com",
+      agata: "agatawawrzynek@go2.pl",
+      tomek: "tomasztynski@gmail.com"
+    };
+
+    const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all" };
+    const today = () => new Date().toISOString().slice(0, 10);
+    const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
+    const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
+    const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
+    const rentalDays = (from, to) => Math.max(1, Math.ceil((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000) + 1);
+
+    document.querySelector("#loanForm input[name='dateFrom']").value = today();
+    document.querySelector("#loanForm input[name='dateTo']").value = today();
+    document.querySelector("#loginForm").addEventListener("submit", login);
+    document.querySelector("#loanForm").addEventListener("submit", saveLoan);
+    document.querySelector("#searchInput").addEventListener("input", renderSearch);
+    document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
+    document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
+      state.inventoryFilter = button.dataset.filter;
+      document.querySelectorAll("#inventoryFilters button").forEach((item) => item.classList.toggle("active", item === button));
+      renderInventory();
+    }));
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("/kgigw/wypozyczalnia/sw.js", { scope: "/kgigw/wypozyczalnia/" })
+          .catch((error) => console.error("Nie udało się zarejestrować PWA Wypożyczalni.", error));
+      });
+    }
+
+    init();
+
+    async function init() {
+      const { data } = await supabaseClient.auth.getSession();
+      if (data.session) await loadProfile(data.session.user);
+    }
+
+    async function login(event) {
+      event.preventDefault();
+      setLoginMessage("");
+      const form = event.target;
+      const loginName = normalizeLogin(form.login.value);
+      const email = ACCOUNT_EMAILS[loginName];
+      if (!email) {
+        setLoginMessage("Nie udało się zalogować. Sprawdź login i hasło.", true);
+        return;
+      }
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password: form.password.value
+      });
+      if (error) {
+        setLoginMessage("Nie udało się zalogować. Sprawdź login i hasło.", true);
+        return;
+      }
+      await loadProfile(data.user);
+    }
+
+    function normalizeLogin(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    }
+
+    async function loadProfile(user) {
+      const userId = typeof user === "string" ? user : user?.id;
+      const userEmail = typeof user === "string" ? "" : user?.email || "";
+      const { data, error } = await supabaseClient
+        .from("profiles")
+        .select("id, display_name, role")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Nie udało się pobrać profilu użytkownika z public.profiles.", { userId, userEmail, error });
+        setLoginMessage(`Konto Supabase działa (${userEmail || "brak e-maila"}), ale nie udało się pobrać profilu. Sprawdź tabelę profiles i uprawnienia RLS.`, true);
+        return;
+      }
+
+      if (!data) {
+        console.error("Brak profilu użytkownika w public.profiles.", { userId, userEmail });
+        setLoginMessage(`Konto Supabase działa (${userEmail || "brak e-maila"}), ale brakuje profilu w tabeli profiles. W profiles.id musi być: ${userId}`, true);
+        return;
+      }
+      state.profile = data;
+      document.querySelector("#loginView").classList.add("hidden");
+      document.querySelector("#mainView").classList.remove("hidden");
+      document.querySelector("#userInfo").textContent = `${data.display_name || "Użytkownik"} (${data.role})`;
+      document.querySelector("#readonlyNote").classList.toggle("hidden", canWrite());
+      await refreshData();
+    }
+
+    async function refreshData() {
+      const [inventoryResult, rentalsResult] = await Promise.all([
+        supabaseClient.from("rental_inventory").select("id, name, quantity, price_per_day").order("name"),
+        supabaseClient.from("rentals").select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)").order("date_from", { ascending: false })
+      ]);
+      if (inventoryResult.error || rentalsResult.error) {
+        showMessage("Nie udało się pobrać danych. Odśwież i spróbuj ponownie.", true);
+        return;
+      }
+      state.inventory = inventoryResult.data || [];
+      state.rentals = rentalsResult.data || [];
+      renderAll();
+    }
+
+    async function saveLoan(event) {
+      event.preventDefault();
+      if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
+      const form = event.target;
+      const selected = state.inventory.map((item) => ({
+        item,
+        quantity: Number(form[`item-${item.id}`]?.value || 0)
+      })).filter((row) => row.quantity > 0);
+      if (!selected.length) return showMessage("Wybierz przynajmniej jeden sprzęt.", true);
+      const unavailable = selected.find((row) => row.quantity > availableQty(row.item.id));
+      if (unavailable) return showMessage(`Brak dostępnej ilości: ${unavailable.item.name}.`, true);
+      const nameParts = form.borrower.value.trim().split(/\s+/);
+      const firstName = nameParts.shift() || "";
+      const lastName = nameParts.join(" ") || "";
+      const days = rentalDays(form.dateFrom.value, form.dateTo.value);
+      const total = selected.reduce((sum, row) => sum + row.quantity * Number(row.item.price_per_day || 0) * days, 0);
+      const { data: rental, error } = await supabaseClient.from("rentals").insert({
+        first_name: firstName,
+        last_name: lastName,
+        phone: form.phone.value || null,
+        date_from: form.dateFrom.value,
+        date_to: form.dateTo.value,
+        days,
+        total,
+        status: "Wypożyczone",
+        notes: form.notes.value || null,
+        payment_status: "unpaid"
+      }).select("id").single();
+      if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
+      const lines = selected.map((row) => ({
+        rental_id: rental.id,
+        inventory_id: row.item.id,
+        item_name: row.item.name,
+        quantity: row.quantity,
+        price_per_day: row.item.price_per_day || 0
+      }));
+      const { error: linesError } = await supabaseClient.from("rental_lines").insert(lines);
+      if (linesError) return showMessage("Wypożyczenie zapisane, ale nie udało się zapisać pozycji.", true);
+      form.reset();
+      form.dateFrom.value = today();
+      form.dateTo.value = today();
+      showMessage("Wypożyczenie zapisane.", false);
+      await refreshData();
+      showScreen("homeScreen");
+    }
+
+    async function confirmReturn(id) {
+      if (!canWrite()) return showMessage("Masz dostęp tylko do odczytu.", true);
+      const condition = document.querySelector(`#condition-${id}`).value;
+      const notes = document.querySelector(`#returnNotes-${id}`).value;
+      const returnedAt = document.querySelector(`#returnedAt-${id}`).value || today();
+      const loan = state.rentals.find((item) => item.id === id);
+      if (!loan) return;
+      const { error } = await supabaseClient.from("rentals").update({
+        status: "Zwrócone",
+        returned_at: returnedAt,
+        return_notes: [conditionText(condition), notes].filter(Boolean).join(" - "),
+        damage_cost: 0
+      }).eq("id", id);
+      if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
+      for (const line of loan.rental_lines || []) {
+        const returned = condition === "missing" ? 0 : line.quantity;
+        const damaged = condition === "damaged" ? line.quantity : 0;
+        const missing = condition === "missing" ? line.quantity : 0;
+        const lineResult = await supabaseClient.from("rental_lines").update({ returned, damaged, missing }).eq("id", line.id);
+        if (lineResult.error) return showMessage("Zwrot zapisany częściowo. Sprawdź dane w panelu.", true);
+      }
+      showMessage("Zwrot potwierdzony.", false);
+      await refreshData();
+    }
+
+    function renderAll() {
+      renderLoanItems();
+      renderReturns();
+      renderInventory();
+      renderOverdue();
+      renderSearch();
+    }
+
+    function renderLoanItems() {
+      const html = state.inventory.map((item) => {
+        const available = availableQty(item.id);
+        return `<div class="item-row">
+          <div><strong>${escapeHtml(item.name)}</strong><br><small>Dostępne: ${available} · ${money(item.price_per_day)} / doba</small></div>
+          <input name="item-${item.id}" type="number" min="0" max="${available}" step="1" placeholder="0" ${available <= 0 ? "disabled" : ""} />
+        </div>`;
+      }).join("");
+      document.querySelector("#loanItems").innerHTML = html || "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+    }
+
+    function renderReturns() {
+      const active = state.rentals.filter(isActiveRental);
+      document.querySelector("#returnsList").innerHTML = active.length ? active.map(returnCard).join("") : "<p class='muted'>Brak aktualnych wypożyczeń</p>";
+    }
+
+    function renderOverdue() {
+      const overdue = state.rentals.filter((loan) => isActiveRental(loan) && loan.date_to < today());
+      document.querySelector("#overdueList").innerHTML = overdue.length ? overdue.map(returnCard).join("") : "<p class='muted'>Brak zaległych zwrotów</p>";
+    }
+
+    function renderInventory() {
+      const rows = state.inventory.filter((item) => {
+        const available = availableQty(item.id);
+        const borrowed = borrowedQty(item.id);
+        const damaged = damagedQty(item.id);
+        if (state.inventoryFilter === "available") return available > 0;
+        if (state.inventoryFilter === "borrowed") return borrowed > 0;
+        if (state.inventoryFilter === "damaged") return damaged > 0;
+        return true;
+      });
+      document.querySelector("#inventoryList").innerHTML = rows.length ? rows.map((item) => inventoryCard(item)).join("") : "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+    }
+
+    function renderSearch() {
+      const search = norm(document.querySelector("#searchInput").value);
+      const results = [];
+      if (search) {
+        state.inventory.forEach((item) => {
+          if ([item.name, "sprzęt", availableQty(item.id), borrowedQty(item.id), damagedQty(item.id)].map(norm).join(" ").includes(search)) {
+            results.push(inventoryCard(item));
+          }
+        });
+        state.rentals.forEach((loan) => {
+          const text = [person(loan), loan.status, loan.notes, loan.return_notes, itemsText(loan), loan.date_from, loan.date_to].map(norm).join(" ");
+          if (text.includes(search)) results.push(returnCard(loan, true));
+        });
+      }
+      document.querySelector("#searchResults").innerHTML = !search ? "" : results.length ? results.join("") : "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+    }
+
+    function inventoryCard(item) {
+      return `<article class="card">
+        <strong>${escapeHtml(item.name)}</strong>
+        <p><small>Całość: ${item.quantity} · Dostępne: ${availableQty(item.id)} · Wypożyczone: ${borrowedQty(item.id)} · Uszkodzone: ${damagedQty(item.id)} · ${money(item.price_per_day)} / doba</small></p>
+      </article>`;
+    }
+
+    function returnCard(loan, searchMode = false) {
+      const overdue = isActiveRental(loan) && loan.date_to < today();
+      const daysLate = overdue ? Math.ceil((new Date(`${today()}T12:00:00`) - new Date(`${loan.date_to}T12:00:00`)) / 86400000) : 0;
+      return `<article class="card">
+        <strong>${escapeHtml(itemsText(loan))}</strong>
+        <p><small>Osoba: ${escapeHtml(person(loan))}<br>Od: ${formatDate(loan.date_from)} · Zwrot: ${formatDate(loan.date_to)}</small></p>
+        ${overdue ? `<span class="badge danger">Po terminie: ${daysLate} dni</span>` : `<span class="badge">W terminie</span>`}
+        ${isActiveRental(loan) && !searchMode ? `<details class="actions">
+          <summary>Zwróć</summary>
+          <label>Data zwrotu</label>
+          <input id="returnedAt-${loan.id}" type="date" value="${today()}" />
+          <label>Stan po zwrocie</label>
+          <select id="condition-${loan.id}">
+            <option value="ok">OK</option>
+            <option value="damaged">uszkodzony</option>
+            <option value="missing">brak elementów</option>
+            <option value="other">inne</option>
+          </select>
+          <label>Uwagi po zwrocie</label>
+          <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
+          <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
+        </details>` : ""}
+      </article>`;
+    }
+
+    function showScreen(id) {
+      document.querySelectorAll(".screen").forEach((screen) => screen.classList.toggle("hidden", screen.id !== id));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function logout() {
+      await supabaseClient.auth.signOut();
+      location.reload();
+    }
+
+    function availableQty(id) {
+      const item = state.inventory.find((entry) => entry.id === id);
+      return Math.max(0, Number(item?.quantity || 0) - borrowedQty(id));
+    }
+
+    function borrowedQty(id) {
+      return state.rentals.filter(isActiveRental).flatMap((loan) => loan.rental_lines || []).filter((line) => line.inventory_id === id).reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    }
+
+    function damagedQty(id) {
+      return state.rentals.flatMap((loan) => loan.rental_lines || []).filter((line) => line.inventory_id === id).reduce((sum, line) => sum + Number(line.damaged || 0), 0);
+    }
+
+    function person(loan) {
+      return `${loan.first_name || ""} ${loan.last_name || ""}`.trim() || "Brak osoby";
+    }
+
+    function itemsText(loan) {
+      return (loan.rental_lines || []).map((line) => `${line.item_name}: ${line.quantity} szt.`).join(", ") || "Brak pozycji";
+    }
+
+    function conditionText(value) {
+      if (value === "damaged") return "Stan po zwrocie: uszkodzony";
+      if (value === "missing") return "Stan po zwrocie: brak elementów";
+      if (value === "other") return "Stan po zwrocie: inne";
+      return "Stan po zwrocie: OK";
+    }
+
+    function formatDate(value) {
+      if (!value) return "brak daty";
+      return new Intl.DateTimeFormat("pl-PL").format(new Date(`${value}T12:00:00`));
+    }
+
+    function escapeHtml(value) {
+      return String(value || "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
+    }
+
+    function showMessage(text, error) {
+      const box = document.querySelector("#message");
+      box.textContent = text;
+      box.className = `message ${error ? "err" : "ok"}`;
+      box.classList.remove("hidden");
+      setTimeout(() => box.classList.add("hidden"), 4200);
+    }
+
+    function setLoginMessage(text, error) {
+      const box = document.querySelector("#loginMessage");
+      box.textContent = text;
+      box.className = `message ${error ? "err" : "ok"} ${text ? "" : "hidden"}`;
+    }
+  </script>
+</body>
+</html>
