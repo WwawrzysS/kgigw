@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-15";
+const APP_VERSION = "2026.06.01-16";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -5563,6 +5563,7 @@ function rentalPrintHtml(loan) {
   const net = Number(loan.total || 0);
   const vat = net * 0.23;
   const gross = net + vat;
+  const replacementValues = rentalReplacementValuesText(loan.items || []);
   const rows = loan.items.map((item) => `
     <tr>
       <td>${escapeHtml(item.name)}</td>
@@ -5593,12 +5594,26 @@ function rentalPrintHtml(loan) {
     <p><strong>VAT 23%:</strong> ${money(vat)}</p>
     <p><strong>Razem brutto do zaplaty:</strong> ${money(gross)}</p>
     <p><strong>Uwagi:</strong> ${escapeHtml(loan.notes || "Brak")}</p>
-    <p>Potwierdzam odbior wymienionych przedmiotow i zobowiazuje sie do ich zwrotu w ustalonym terminie.</p>
+    <section style="margin-top: 8mm;">
+      <h3>Oświadczenie</h3>
+      <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
+      <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
+    </section>
     <div class="print-signatures">
       <div class="signature-line">Podpis wypozyczajacego</div>
       <div class="signature-line">Podpis wydajacego</div>
     </div>
   `;
+}
+
+function rentalReplacementValuesText(items = []) {
+  const values = items.map((item) => {
+    const inventoryItem = state.rentalInventory.find((entry) => entry.id === item.id);
+    const replacementValue = item.replacementValue ?? inventoryItem?.replacementValue;
+    const valueText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "—";
+    return `${escapeHtml(item.name)}: ${valueText}`;
+  });
+  return values.join(" / ") || "—";
 }
 
 function returnPrintHtml(loan) {

@@ -532,7 +532,7 @@
 
     async function refreshData() {
       const [inventoryResult, rentalsResult] = await Promise.all([
-        supabaseClient.from("rental_inventory").select("id, name, quantity, price_per_day").order("name"),
+        supabaseClient.from("rental_inventory").select("id, name, quantity, price_per_day, replacement_value").order("name"),
         supabaseClient.from("rentals").select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)").order("date_from", { ascending: false })
       ]);
       if (inventoryResult.error || rentalsResult.error) {
@@ -560,7 +560,8 @@
       const selected = state.inventory.map((item) => ({
         item,
         quantity: Number(form[`item-${item.id}`]?.value || 0),
-        price: Number(item.price_per_day || 0)
+        price: Number(item.price_per_day || 0),
+        replacementValue: item.replacement_value === null || item.replacement_value === undefined ? null : Number(item.replacement_value || 0)
       })).filter((row) => row.quantity > 0);
       if (!selected.length) return { error: "Wybierz przynajmniej jeden sprzęt." };
       if (selected.some((row) => row.quantity > availableQty(row.item.id))) return { error: "Wybrana ilość przekracza dostępny stan." };
@@ -625,7 +626,13 @@
         total_per_day: draft.totalPerDay,
         status: "Wypożyczone",
         notes: draft.notes,
-        rental_lines: lines
+        rental_lines: draft.selected.map((row) => ({
+          inventory_id: row.item.id,
+          item_name: row.item.name,
+          quantity: row.quantity,
+          price_per_day: row.price || 0,
+          replacement_value: row.replacementValue
+        }))
       };
       const form = document.querySelector("#loanForm");
       form.reset();
@@ -859,7 +866,16 @@
         days: totals.days,
         total: totals.total,
         total_per_day: totals.perDay,
+        rental_lines: (loan.rental_lines || []).map((line) => enrichLineWithReplacementValue(line)),
         return_condition: forReturn ? returnConditionFromNotes(loan.return_notes) : "ok"
+      };
+    }
+
+    function enrichLineWithReplacementValue(line) {
+      const inventoryItem = state.inventory.find((item) => item.id === line.inventory_id);
+      return {
+        ...line,
+        replacement_value: inventoryItem?.replacement_value === null || inventoryItem?.replacement_value === undefined ? null : Number(inventoryItem.replacement_value || 0)
       };
     }
 
@@ -999,6 +1015,7 @@
       const operatorLabel = isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca";
       const borrowerSignature = isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego";
       const operatorSignature = isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej";
+      const replacementValues = replacementValuesText(loan.rental_lines || []);
       const printView = document.querySelector("#printView");
       printView.innerHTML = `
         <article class="print-document">
@@ -1031,6 +1048,11 @@
             <strong>Liczba dób:</strong> ${escapeHtml(loan.days || 1)}<br>
             <strong>Razem za okres:</strong> ${money(loan.total || 0)}</p>
           </section>` : ""}
+          ${!isReturn ? `<section>
+            <h3>Oświadczenie</h3>
+            <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
+            <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
+          </section>` : ""}
           <section>
             <h3>Uwagi</h3>
             <p>${escapeHtml(isReturn ? (loan.return_notes || "Brak uwag.") : (loan.notes || "Brak uwag."))}</p>
@@ -1043,6 +1065,15 @@
         </article>
       `;
       setTimeout(() => window.print(), 150);
+    }
+
+    function replacementValuesText(lines = []) {
+      const values = lines.map((line) => {
+        const enrichedLine = line.replacement_value === undefined ? enrichLineWithReplacementValue(line) : line;
+        const valueText = Number(enrichedLine.replacement_value || 0) > 0 ? `${money(enrichedLine.replacement_value)} / szt.` : "—";
+        return `${escapeHtml(enrichedLine.item_name)}: ${valueText}`;
+      });
+      return values.join(" / ") || "—";
     }
 
     function protocolLineRows(loan, isReturn) {
