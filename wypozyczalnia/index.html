@@ -509,6 +509,7 @@
     const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
+    const parseMoneyInput = (value) => Number(String(value || "0").replace(",", "."));
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
     const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
@@ -710,14 +711,16 @@
       const shouldSign = printMode === "signature";
       const condition = document.querySelector(`#condition-${id}`).value;
       const notes = document.querySelector(`#returnNotes-${id}`).value;
+      const damageCost = parseMoneyInput(document.querySelector(`#returnDamageCost-${id}`)?.value);
       const returnedAt = document.querySelector(`#returnedAt-${id}`).value || today();
       const loan = state.rentals.find((item) => item.id === id);
       if (!loan) return;
+      if (!Number.isFinite(damageCost) || damageCost < 0) return showMessage("Wpisz poprawną wartość braków/uszkodzeń.", true);
       const { error } = await supabaseClient.from("rentals").update({
         status: "Zwrócone",
         returned_at: returnedAt,
         return_notes: [conditionText(condition), notes].filter(Boolean).join(" - "),
-        damage_cost: 0
+        damage_cost: damageCost
       }).eq("id", id);
       if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
       for (const line of loan.rental_lines || []) {
@@ -733,6 +736,7 @@
         returned_at: returnedAt,
         return_notes: [conditionText(condition), notes].filter(Boolean).join(" - "),
         return_condition: condition,
+        damage_cost: damageCost,
         rental_lines: (loan.rental_lines || []).map((line) => ({
           ...line,
           returned: condition === "missing" ? 0 : line.quantity,
@@ -1006,6 +1010,8 @@
           </select>
           <label>Uwagi po zwrocie</label>
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
+          <label>Wartość braków/uszkodzeń</label>
+          <input id="returnDamageCost-${loan.id}" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
           <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
           <button class="secondary" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
         </details>` : ""}
@@ -1170,6 +1176,7 @@
             <p>Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.</p>
             <p><strong>Stan po zwrocie:</strong> ${escapeHtml(condition)}</p>
             <p><strong>Uwagi po zwrocie:</strong><br>${escapeHtml(notesText)}</p>
+            <p><strong>Wartość braków/uszkodzeń:</strong> ${money(loan.damage_cost || 0)}</p>
           </section>`;
     }
 
