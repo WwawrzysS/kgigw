@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-27";
+const APP_VERSION = "2026.06.01-28";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -3343,7 +3343,10 @@ function renderRentalReturns() {
     <div>
       <details class="return-details">
         <summary>
-          <strong>${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</strong>
+          <span class="return-summary-title">
+            <strong>${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</strong>
+            ${rentalReturnStatusBadge(loan)}
+          </span>
           <small>${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} - ${escapeHtml(loan.phone)}</small>
         </summary>
         <div class="return-check">
@@ -3381,6 +3384,22 @@ function renderRentalReturns() {
       <button class="small-button" onclick="printRental('${loan.id}')">Druk wydania</button>
     </div>
   `);
+}
+
+function rentalReturnStatusBadge(loan) {
+  const plannedDate = parseDateOnly(loan.dateTo);
+  const todayDate = parseDateOnly(new Date().toISOString().slice(0, 10));
+  if (!plannedDate || !todayDate || plannedDate >= todayDate) {
+    return `<span class="badge return-on-time">W terminie</span>`;
+  }
+  const daysLate = Math.max(1, Math.round((todayDate - plannedDate) / 86400000));
+  return `<span class="badge return-overdue">Po terminie: ${daysLate} ${daysLate === 1 ? "dzień" : "dni"}</span>`;
+}
+
+function parseDateOnly(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function renderRentalInventory() {
