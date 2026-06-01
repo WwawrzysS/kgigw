@@ -1607,6 +1607,19 @@ textarea {
   color: #3d2c04;
 }
 
+.badge.rental-active {
+  background: #f59e0b;
+  color: #3d2c04;
+}
+
+.badge.rental-ok {
+  background: var(--green);
+}
+
+.badge.rental-damaged {
+  background: var(--red);
+}
+
 .notice {
   margin: 14px;
   padding: 12px;
