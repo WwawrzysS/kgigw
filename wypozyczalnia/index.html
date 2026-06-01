@@ -1140,8 +1140,7 @@
             <thead>
               <tr>
                 <th>Nazwa sprzętu</th>
-                <th>Ilość</th>
-                ${isReturn ? "<th>Stan po zwrocie</th><th>Uwagi</th>" : "<th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
+                ${isReturn ? "<th>Wydano</th><th>Zwrócono</th>" : "<th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
               </tr>
             </thead>
             <tbody>${protocolLineRows(loan, isReturn)}</tbody>
@@ -1176,7 +1175,7 @@
             <p>Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.</p>
             <p><strong>Stan po zwrocie:</strong> ${escapeHtml(condition)}</p>
             <p><strong>Uwagi po zwrocie:</strong><br>${escapeHtml(notesText)}</p>
-            <p><strong>Wartość braków/uszkodzeń:</strong> ${money(loan.damage_cost || 0)}</p>
+            <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(loan.damage_cost || 0)}</p>
           </section>`;
     }
 
@@ -1201,18 +1200,20 @@
     }
 
     function protocolLineRows(loan, isReturn) {
-      const condition = conditionText(loan.return_condition || "ok").replace("Stan po zwrocie: ", "");
+      const returnCondition = loan.return_condition || returnConditionFromNotes(loan.return_notes);
       const rows = (loan.rental_lines || []).map((line) => {
         const note = isReturn ? escapeHtml(loan.return_notes || "") : escapeHtml(loan.notes || "");
         const price = Number(line.price_per_day || 0);
         const valuePerDay = Number(line.quantity || 0) * price;
+        const issued = Number(line.quantity || 0);
+        const returned = line.returned === null || line.returned === undefined ? issued : Number(line.returned || 0);
+        const returnedText = returnCondition === "missing" ? "wg uwag" : `${returned} szt.`;
         return `<tr>
           <td>${escapeHtml(line.item_name)}</td>
-          <td>${escapeHtml(line.quantity)}</td>
-          ${isReturn ? `<td>${escapeHtml(condition)}</td><td>${note || "brak"}</td>` : `<td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
+          ${isReturn ? `<td>${escapeHtml(issued)} szt.</td><td>${escapeHtml(returnedText)}</td>` : `<td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
         </tr>`;
       });
-      return rows.join("") || `<tr><td colspan="${isReturn ? 4 : 5}">Brak pozycji.</td></tr>`;
+      return rows.join("") || `<tr><td colspan="${isReturn ? 3 : 5}">Brak pozycji.</td></tr>`;
     }
 
     function showScreen(id) {
