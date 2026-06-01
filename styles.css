@@ -908,13 +908,44 @@ textarea {
 }
 
 .mail-info-panel {
-  padding: 14px;
+  padding: 18px;
   display: grid;
-  gap: 16px;
+  gap: 18px;
+  width: 100%;
 }
 
-.mail-info-panel > p,
-.mail-note p {
+.mail-main-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+}
+
+.mail-main-card span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mail-main-card strong {
+  grid-column: 1;
+  font-size: clamp(20px, 3vw, 28px);
+  color: var(--green-dark);
+  overflow-wrap: anywhere;
+}
+
+.mail-main-card .small-button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  text-decoration: none;
+}
+
+.mail-info-panel > p {
   margin: 0;
   max-width: 860px;
   color: var(--muted);
@@ -928,12 +959,11 @@ textarea {
 
 .mail-shortcut-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
-.mail-shortcut-card,
-.mail-note {
+.mail-shortcut-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -945,6 +975,7 @@ textarea {
   display: grid;
   gap: 8px;
   align-content: start;
+  min-height: 150px;
 }
 
 .mail-shortcut-card small {
@@ -956,13 +987,7 @@ textarea {
   width: 100%;
   justify-content: center;
   text-decoration: none;
-}
-
-.mail-note ul {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--muted);
-  line-height: 1.55;
+  margin-top: auto;
 }
 
 .funding-details-panel {
@@ -1758,7 +1783,7 @@ textarea {
   }
 
   .mail-shortcut-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sidebar {
@@ -1851,6 +1876,20 @@ textarea {
     justify-self: start;
     max-width: 100%;
     overflow-wrap: anywhere;
+  }
+
+  .mail-main-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mail-main-card .small-button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+  }
+
+  .mail-shortcut-grid {
+    grid-template-columns: 1fr;
   }
 
   .global-search-results {
