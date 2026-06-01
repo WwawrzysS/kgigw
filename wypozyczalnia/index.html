@@ -514,7 +514,11 @@
     const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
-    const parseMoneyInput = (value) => Number(String(value || "0").replace(",", "."));
+    const parseMoneyInput = (value) => {
+      const text = String(value ?? "").trim();
+      if (!text) return 0;
+      return Number(text.replace(",", "."));
+    };
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
     const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
@@ -1064,7 +1068,7 @@
           <option value="other">inne</option>
         </select>
         <label>Wartość braków/uszkodzeń</label>
-        <input id="returnDamageCost-${loan.id}" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
+        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" onblur="normalizeMoneyInput(this)" />
         <label>Uwagi po zwrocie</label>
         <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
         <div class="actions">
@@ -1245,6 +1249,15 @@
         if (text.startsWith("-")) text = text.slice(1).trim();
       }
       return text;
+    }
+
+    function clearZeroMoneyInput(input) {
+      if (["0", "0.00", "0,00"].includes(String(input.value || "").trim())) input.value = "";
+    }
+
+    function normalizeMoneyInput(input) {
+      const value = parseMoneyInput(input.value);
+      input.value = Number.isFinite(value) && value >= 0 ? String(input.value || "").trim() || "0" : input.value;
     }
 
     function replacementValuesText(lines = []) {
