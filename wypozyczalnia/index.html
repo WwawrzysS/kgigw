@@ -355,7 +355,6 @@
         <div class="actions">
           <button class="secondary" type="button" onclick="showScreen('loanScreen')">Wstecz</button>
           <button type="button" onclick="saveLoanFromSummary(false)">Zapisz</button>
-          <button class="secondary" type="button" onclick="saveLoanFromSummary(true)">Zapisz i drukuj</button>
           <button class="secondary" type="button" onclick="saveLoanFromSummary('signature')">Zapisz, podpisz i drukuj</button>
         </div>
       </section>
@@ -904,7 +903,6 @@
           <label>Uwagi po zwrocie</label>
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
           <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
-          <button class="secondary" onclick="confirmReturn('${loan.id}', true)">Potwierdź zwrot i drukuj</button>
           <button class="secondary" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
         </details>` : ""}
       </article>`;
