@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-31";
+const APP_VERSION = "2026.06.01-32";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -3356,11 +3356,15 @@ function rentalSortDate(loan) {
 
 function rentalHistoryRow(loan) {
   const invoice = rentalInvoice(loan.id);
+  const status = rentalLifecycleStatus(loan);
   return `
     <div>
       <details class="return-details">
         <summary>
-          <strong>${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)} - ${formatDate(loan.dateFrom)}</strong>
+          <span class="return-summary-title">
+            <strong>${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)} - ${formatDate(loan.dateFrom)}</strong>
+            <span class="badge ${status.className}">${status.label}</span>
+          </span>
           <small>${escapeHtml(loan.status)} - ${money(loan.total)} - ${escapeHtml(rentalPaymentLabel(loan.paymentStatus))}</small>
         </summary>
         <small>
@@ -3378,6 +3382,29 @@ function rentalHistoryRow(loan) {
       ${deleteAction("rentalLoans", loan.id)}
     </div>
   `;
+}
+
+function rentalLifecycleStatus(loan) {
+  if (loan.status !== "Zwrócone" && !loan.returnedAt) {
+    return { label: "Wypożyczone", className: "rental-active" };
+  }
+  if (rentalReturnedWithIssues(loan)) {
+    return { label: "Zwrócone uszkodzone", className: "rental-damaged" };
+  }
+  return { label: "Zwrócone", className: "rental-ok" };
+}
+
+function rentalReturnedWithIssues(loan) {
+  if (Number(loan.damageCost || 0) > 0) return true;
+  const notes = String(loan.returnNotes || "").trim();
+  if (!notes) return false;
+  const normalized = normalizeText(notes);
+  if (normalized.includes("stan po zwrocie uszkodzony")) return true;
+  if (normalized.includes("stan po zwrocie brak elementow")) return true;
+  if (normalized.includes("stan po zwrocie inne")) return true;
+  const withoutOkState = normalized.replace(/^stan po zwrocie ok\s*-?\s*/, "").trim();
+  if (!withoutOkState) return false;
+  return true;
 }
 
 function renderRentalReturns() {
