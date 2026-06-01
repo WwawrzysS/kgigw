@@ -1,20 +1,15 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-28";
+const APP_VERSION = "2026.06.01-29";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
 const FEE_YEAR = new Date().getFullYear();
 const DOCUMENT_BUCKET = "documents";
 const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
-const PASSWORDS = {
-  admin: "admin123",
-  user: "user123",
-  agata: "AgatA3539",
-  tomek: "SołtyS2025"
-};
 const ACCOUNT_EMAILS = {
   admin: "wawrzysdom@gmail.com",
+  administrator: "wawrzysdom@gmail.com",
   agata: "agatawawrzynek@go2.pl",
   tomek: "tomasztynski@gmail.com"
 };
@@ -466,52 +461,36 @@ if (currentRole) {
 async function handleLogin(event) {
   event.preventDefault();
   const data = formData(event.target);
-  const role = String(data.role || "").trim();
+  const login = String(data.role || "").trim();
   const password = String(data.password || "").trim();
+  const email = resolveLoginEmail(login);
 
-  if (supabaseClient && ACCOUNT_EMAILS[role]) {
-    elements.loginError.textContent = "Sprawdzam konto...";
-    const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
-      email: ACCOUNT_EMAILS[role],
-      password
-    });
-
-    if (error) {
-      elements.loginError.textContent = `Supabase: ${error.message || "nie udało się zalogować."}`;
-      return;
-    }
-
-    const { data: profile, error: profileError } = await supabaseClient
-      .from("profiles")
-      .select("display_name, role")
-      .eq("id", authData.user.id)
-      .single();
-
-    if (profileError || !profile) {
-      elements.loginError.textContent = "Konto działa, ale brakuje profilu w tabeli profiles.";
-      return;
-    }
-
-    currentRole = profile.role;
-    currentUserName = profile.display_name || roleName(profile.role);
-    sessionStorage.setItem(AUTH_KEY, currentRole);
-    sessionStorage.setItem("kgigw-user-name", currentUserName);
-    elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
-    elements.loginError.textContent = "";
-    event.target.reset();
-    document.body.classList.remove("locked");
-    applyRole();
-    await refreshSupabaseData();
+  if (!supabaseClient || !email || !password) {
+    elements.loginError.textContent = "Nie udało się zalogować. Sprawdź login i hasło.";
     return;
   }
 
-  if (PASSWORDS[role] !== password) {
-    elements.loginError.textContent = "Nieprawidłowe hasło.";
+  elements.loginError.textContent = "Sprawdzam konto...";
+  const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password
+  });
+
+  if (error || !authData?.user) {
+    console.error("Nie udało się zalogować przez Supabase Auth.", { login, email, error });
+    elements.loginError.textContent = "Nie udało się zalogować. Sprawdź login i hasło.";
     return;
   }
 
-  currentRole = role;
-  currentUserName = roleName(role);
+  const profile = await loadAuthenticatedProfile(authData.user);
+  if (!profile) {
+    await supabaseClient.auth.signOut();
+    elements.loginError.textContent = "Brak dostępu do tej strony. Skontaktuj się z administratorem.";
+    return;
+  }
+
+  currentRole = profile.role;
+  currentUserName = profile.display_name || roleName(profile.role);
   sessionStorage.setItem(AUTH_KEY, currentRole);
   sessionStorage.setItem("kgigw-user-name", currentUserName);
   elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
@@ -519,13 +498,63 @@ async function handleLogin(event) {
   event.target.reset();
   document.body.classList.remove("locked");
   applyRole();
-  render();
+  await refreshSupabaseData();
+}
+
+function normalizeAccountLogin(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
+}
+
+function resolveLoginEmail(value) {
+  const login = String(value || "").trim();
+  if (login.includes("@")) return login;
+  return ACCOUNT_EMAILS[normalizeAccountLogin(login)] || "";
+}
+
+async function loadAuthenticatedProfile(user) {
+  const userId = user?.id || "";
+  const userEmail = user?.email || "";
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("id, display_name, role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Nie udało się pobrać profilu użytkownika po ID.", { userId, userEmail, error });
+    return null;
+  }
+  if (data) return data;
+
+  const { data: emailProfile, error: emailError } = await supabaseClient
+    .from("profiles")
+    .select("id, display_name, role")
+    .eq("email", userEmail)
+    .maybeSingle();
+
+  if (emailError) {
+    console.error("Nie udało się pobrać profilu użytkownika po e-mailu.", { userId, userEmail, error: emailError });
+    return null;
+  }
+  if (!emailProfile) {
+    console.error("Brak profilu użytkownika w public.profiles.", { userId, userEmail });
+  }
+  return emailProfile || null;
 }
 
 async function logout() {
   if (supabaseClient) {
     await supabaseClient.auth.signOut();
   }
+  clearLocalAuth();
+}
+
+function clearLocalAuth() {
   currentRole = null;
   currentUserName = "";
   sessionStorage.removeItem(AUTH_KEY);
@@ -583,8 +612,22 @@ async function refreshSupabaseData() {
       error: sessionError,
       hasCurrentRole: Boolean(currentRole)
     });
+    clearLocalAuth();
     return;
   }
+
+  const profile = await loadAuthenticatedProfile(sessionData.session.user);
+  if (!profile) {
+    clearLocalAuth();
+    return;
+  }
+  currentRole = profile.role;
+  currentUserName = profile.display_name || roleName(profile.role);
+  sessionStorage.setItem(AUTH_KEY, currentRole);
+  sessionStorage.setItem("kgigw-user-name", currentUserName);
+  elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
+  document.body.classList.remove("locked");
+  applyRole();
 
   let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
