@@ -304,6 +304,7 @@
           <button class="tile" data-screen="inventoryScreen">📦 Dostępny sprzęt</button>
           <button class="tile" data-screen="overdueScreen">⚠ Zaległe zwroty</button>
           <button class="tile" data-screen="searchScreen">🔍 Szukaj</button>
+          <button class="tile" data-screen="historyScreen">📜 Historia</button>
         </div>
         <div class="toolbar">
           <button class="secondary" type="button" onclick="refreshData()">Odśwież</button>
@@ -373,6 +374,24 @@
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
         <div id="searchResults"></div>
       </section>
+
+      <section id="historyScreen" class="card screen hidden">
+        <h2>Historia</h2>
+        <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <input id="historySearch" type="search" placeholder="Szukaj po osobie, sprzęcie, uwagach..." />
+        <div class="filters" id="historyFilters">
+          <button class="active" data-filter="all">Wszystkie</button>
+          <button data-filter="active">Aktywne</button>
+          <button data-filter="returned">Zwrócone</button>
+          <button data-filter="overdue">Po terminie</button>
+        </div>
+        <div id="historyList"></div>
+      </section>
+
+      <section id="historyDetailsScreen" class="card screen hidden">
+        <h2>Szczegóły wypożyczenia</h2>
+        <div id="historyDetails"></div>
+      </section>
     </section>
   </main>
   <section id="printView" aria-hidden="true"></section>
@@ -386,7 +405,7 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", loanSummary: null };
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -399,11 +418,17 @@
     document.querySelector("#loginForm").addEventListener("submit", login);
     document.querySelector("#loanForm").addEventListener("submit", showLoanSummary);
     document.querySelector("#searchInput").addEventListener("input", renderSearch);
+    document.querySelector("#historySearch").addEventListener("input", renderHistory);
     document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
     document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
       state.inventoryFilter = button.dataset.filter;
       document.querySelectorAll("#inventoryFilters button").forEach((item) => item.classList.toggle("active", item === button));
       renderInventory();
+    }));
+    document.querySelectorAll("#historyFilters button").forEach((button) => button.addEventListener("click", () => {
+      state.historyFilter = button.dataset.filter;
+      document.querySelectorAll("#historyFilters button").forEach((item) => item.classList.toggle("active", item === button));
+      renderHistory();
     }));
 
     if ("serviceWorker" in navigator) {
@@ -630,6 +655,7 @@
       renderInventory();
       renderOverdue();
       renderSearch();
+      renderHistory();
     }
 
     function renderLoanItems() {
@@ -711,6 +737,109 @@
         });
       }
       document.querySelector("#searchResults").innerHTML = !search ? "" : results.length ? results.join("") : "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+    }
+
+    function renderHistory() {
+      const search = norm(document.querySelector("#historySearch").value);
+      let rows = [...state.rentals].sort((a, b) => new Date(b.created_at || b.date_from || 0) - new Date(a.created_at || a.date_from || 0));
+      rows = rows.filter((loan) => {
+        const status = historyStatus(loan).key;
+        if (state.historyFilter !== "all" && status !== state.historyFilter) return false;
+        if (!search) return true;
+        const text = [loan.id, person(loan), loan.status, loan.notes, loan.return_notes, itemsText(loan), loan.date_from, loan.date_to, loan.returned_at].map(norm).join(" ");
+        return text.includes(search);
+      });
+      const emptyText = state.rentals.length ? "Brak wypożyczeń pasujących do filtrów." : "Brak zapisanych wypożyczeń.";
+      document.querySelector("#historyList").innerHTML = rows.length ? rows.map(historyCard).join("") : `<p class="muted">${emptyText}</p>`;
+    }
+
+    function historyCard(loan) {
+      const status = historyStatus(loan);
+      const totals = rentalTotals(loan);
+      return `<article class="card">
+        <strong>${escapeHtml(person(loan))}</strong>
+        <p><small>ID: ${escapeHtml(shortId(loan.id))}<br>
+        Od: ${formatDate(loan.date_from)} · Zwrot: ${formatDate(loan.date_to)}${loan.returned_at ? `<br>Data zwrotu: ${formatDate(loan.returned_at)}` : ""}</small></p>
+        <span class="badge ${status.className}">${status.label}</span>
+        <p><small>${escapeHtml(itemsText(loan))}<br>Razem za dobę: ${money(totals.perDay)} · Razem za okres: ${money(totals.total)}</small></p>
+        <div class="actions">
+          <button class="secondary" onclick="showHistoryDetails('${loan.id}')">Szczegóły</button>
+          <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj PDF</button>
+        </div>
+      </article>`;
+    }
+
+    function showHistoryDetails(id) {
+      const loan = state.rentals.find((item) => item.id === id);
+      if (!loan) return showMessage("Nie udało się wczytać historii. Spróbuj ponownie.", true);
+      const status = historyStatus(loan);
+      const totals = rentalTotals(loan);
+      const lines = (loan.rental_lines || []).map((line) => {
+        const price = Number(line.price_per_day || 0);
+        const value = Number(line.quantity || 0) * price;
+        return `<tr><td>${escapeHtml(line.item_name)}</td><td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(value)}</td></tr>`;
+      }).join("");
+      document.querySelector("#historyDetails").innerHTML = `
+        <p><strong>Wypożyczający:</strong> ${escapeHtml(person(loan))}</p>
+        <p><strong>Data wypożyczenia:</strong> ${formatDate(loan.date_from)}<br>
+        <strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
+        ${loan.returned_at ? `<strong>Data zwrotu:</strong> ${formatDate(loan.returned_at)}<br>` : ""}
+        <strong>Status:</strong> ${status.label}<br>
+        <strong>Osoba wydająca:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}<br>
+        ${loan.returned_at ? `<strong>Osoba przyjmująca zwrot:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}` : ""}</p>
+        <p><strong>Uwagi wypożyczenia:</strong> ${escapeHtml(loan.notes || "Brak uwag.")}<br>
+        ${loan.return_notes ? `<strong>Uwagi zwrotu:</strong> ${escapeHtml(loan.return_notes)}` : ""}</p>
+        <table class="summary-table">
+          <thead><tr><th>Sprzęt</th><th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th></tr></thead>
+          <tbody>${lines || "<tr><td colspan='4'>Brak pozycji.</td></tr>"}</tbody>
+        </table>
+        <p><strong>Razem za dobę:</strong> ${money(totals.perDay)}<br>
+        <strong>Liczba dób:</strong> ${totals.days}<br>
+        <strong>Razem za okres:</strong> ${money(totals.total)}</p>
+        <div class="actions">
+          <button class="secondary" onclick="showScreen('historyScreen')">Wstecz</button>
+          <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj protokół wypożyczenia</button>
+          ${loan.returned_at ? `<button class="secondary" onclick="printProtocol('return', prepareProtocolLoan('${loan.id}', true))">Drukuj protokół zwrotu</button>` : ""}
+        </div>
+      `;
+      showScreen("historyDetailsScreen");
+    }
+
+    function historyStatus(loan) {
+      if (isActiveRental(loan) && loan.date_to < today()) return { key: "overdue", label: "po terminie", className: "danger" };
+      if (isActiveRental(loan)) return { key: "active", label: "aktywne", className: "" };
+      return { key: "returned", label: "zwrócone", className: "warn" };
+    }
+
+    function rentalTotals(loan) {
+      const days = Number(loan.days || rentalDays(loan.date_from, loan.date_to) || 1);
+      const perDay = (loan.rental_lines || []).reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.price_per_day || 0), 0);
+      return { days, perDay, total: Number(loan.total || perDay * days) };
+    }
+
+    function prepareProtocolLoan(id, forReturn = false) {
+      const loan = state.rentals.find((item) => item.id === id);
+      if (!loan) return {};
+      const totals = rentalTotals(loan);
+      return {
+        ...loan,
+        days: totals.days,
+        total: totals.total,
+        total_per_day: totals.perDay,
+        return_condition: forReturn ? returnConditionFromNotes(loan.return_notes) : "ok"
+      };
+    }
+
+    function returnConditionFromNotes(notes) {
+      const text = norm(notes);
+      if (text.includes("uszkodzony")) return "damaged";
+      if (text.includes("brak element")) return "missing";
+      if (text.includes("inne")) return "other";
+      return "ok";
+    }
+
+    function shortId(value) {
+      return String(value || "brak").slice(0, 8);
     }
 
     function inventoryCard(item) {
