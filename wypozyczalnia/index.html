@@ -1109,6 +1109,11 @@
       const borrowerSignature = isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego";
       const operatorSignature = isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej";
       const replacementValues = replacementValuesText(loan.rental_lines || []);
+      const notesSection = isReturn ? returnControlSectionHtml(loan) : `
+          <section>
+            <h3>Uwagi</h3>
+            <p>${escapeHtml(loan.notes || "Brak uwag.")}</p>
+          </section>`;
       return `
         <article class="print-document">
           <header class="print-header">
@@ -1145,10 +1150,7 @@
             <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
             <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
           </section>` : ""}
-          <section>
-            <h3>Uwagi</h3>
-            <p>${escapeHtml(isReturn ? (loan.return_notes || "Brak uwag.") : (loan.notes || "Brak uwag."))}</p>
-          </section>
+          ${notesSection}
           <section class="print-signatures">
             <div class="print-signature">${signatureImage ? `<img src="${signatureImage}" alt="Podpis" />` : ""}${borrowerSignature}</div>
             <div class="print-signature">${operatorSignature}</div>
@@ -1156,6 +1158,30 @@
           <footer class="print-footer">Dokument wygenerowany z aplikacji KGiGW Wypożyczalnia.</footer>
         </article>
       `;
+    }
+
+    function returnControlSectionHtml(loan) {
+      const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
+      const notes = returnNotesOnly(loan.return_notes);
+      const notesText = notes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
+      return `
+          <section>
+            <h3>Kontrola zwrotu</h3>
+            <p>Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.</p>
+            <p><strong>Stan po zwrocie:</strong> ${escapeHtml(condition)}</p>
+            <p><strong>Uwagi po zwrocie:</strong><br>${escapeHtml(notesText)}</p>
+          </section>`;
+    }
+
+    function returnNotesOnly(notes) {
+      let text = String(notes || "").trim();
+      if (!text) return "";
+      const statePrefix = conditionText(returnConditionFromNotes(text));
+      if (text.startsWith(statePrefix)) {
+        text = text.slice(statePrefix.length).trim();
+        if (text.startsWith("-")) text = text.slice(1).trim();
+      }
+      return text;
     }
 
     function replacementValuesText(lines = []) {
