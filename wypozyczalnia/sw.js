@@ -1,12 +1,13 @@
-const CACHE_NAME = "kgigw-wypozyczalnia-folder-v20260601-05";
+const CACHE_NAME = "kgigw-wypozyczalnia-folder-v20260601-09";
 const APP_SHELL = [
   "/kgigw/wypozyczalnia/",
   "/kgigw/wypozyczalnia/index.html",
   "/kgigw/supabase-config.js",
   "/kgigw/wypozyczalnia/manifest.json",
-  "/kgigw/icon-192.png",
-  "/kgigw/icon-512.png",
-  "/kgigw/apple-touch-icon.png"
+  "/kgigw/wypozyczalnia/icon-wypozyczalnia-192.png",
+  "/kgigw/wypozyczalnia/icon-wypozyczalnia-512.png",
+  "/kgigw/wypozyczalnia/icon-wypozyczalnia-192.png",
+  "/kgigw/wypozyczalnia/icon-wypozyczalnia-512.png"
 ];
 
 self.addEventListener("install", (event) => {

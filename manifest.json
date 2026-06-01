@@ -9,19 +9,19 @@
   "theme_color": "#1f7a3f",
   "icons": [
     {
-      "src": "/kgigw/icon-192.png",
+      "src": "/kgigw/stoisko/icon-stoisko-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/kgigw/icon-512.png",
+      "src": "/kgigw/stoisko/icon-stoisko-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/kgigw/icon-512.png",
+      "src": "/kgigw/stoisko/icon-stoisko-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

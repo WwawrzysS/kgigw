@@ -1,11 +1,12 @@
-const CACHE_NAME = "kgigw-stoisko-v20260601-07";
+const CACHE_NAME = "kgigw-stoisko-v20260601-09";
 const APP_SHELL = [
   "/kgigw/stoisko/",
   "/kgigw/stoisko/index.html",
   "/kgigw/stoisko/manifest.json",
-  "/kgigw/icon-192.png",
-  "/kgigw/icon-512.png",
-  "/kgigw/apple-touch-icon.png"
+  "/kgigw/stoisko/icon-stoisko-192.png",
+  "/kgigw/stoisko/icon-stoisko-512.png",
+  "/kgigw/stoisko/icon-stoisko-192.png",
+  "/kgigw/stoisko/icon-stoisko-512.png"
 ];
 
 self.addEventListener("install", (event) => {
