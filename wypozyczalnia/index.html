@@ -209,6 +209,25 @@
       border-top: 1px solid var(--border);
       font-weight: 700;
     }
+    .return-notes-box {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fff;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .return-control-details {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 10px;
+      background: #f3f7f2;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
     .summary-table {
       width: 100%;
       border-collapse: collapse;
@@ -939,6 +958,7 @@
         Od: ${formatDate(loan.date_from)} · Zwrot: ${formatDate(loan.date_to)}${loan.returned_at ? `<br>Data zwrotu: ${formatDate(loan.returned_at)}` : ""}</small></p>
         <span class="badge ${status.className}">${status.label}</span>
         <p><small>${escapeHtml(itemsText(loan))}<br>Razem za dobę: ${money(totals.perDay)} · Razem za okres: ${money(totals.total)}</small></p>
+        ${returnNotesDisplayHtml(loan, true)}
         ${settlementBox(loan)}
         <div class="actions">
           <button class="secondary" onclick="showHistoryDetails('${loan.id}')">Szczegóły</button>
@@ -965,8 +985,8 @@
         <strong>Status:</strong> ${status.label}<br>
         <strong>Osoba wydająca:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}<br>
         ${loan.returned_at ? `<strong>Osoba przyjmująca zwrot:</strong> ${escapeHtml(state.profile?.display_name || "Użytkownik")}` : ""}</p>
-        <p><strong>Uwagi wypożyczenia:</strong> ${escapeHtml(loan.notes || "Brak uwag.")}<br>
-        ${loan.return_notes ? `<strong>Uwagi zwrotu:</strong> ${escapeHtml(loan.return_notes)}` : ""}</p>
+        <p><strong>Uwagi wypożyczenia:</strong> ${escapeHtml(loan.notes || "Brak uwag.")}</p>
+        ${returnNotesDisplayHtml(loan)}
         <table class="summary-table">
           <thead><tr><th>Sprzęt</th><th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th></tr></thead>
           <tbody>${lines || "<tr><td colspan='4'>Brak pozycji.</td></tr>"}</tbody>
@@ -1019,6 +1039,56 @@
         <div class="settlement-row"><span>Dopłata za braki/uszkodzenia:</span><span>${damageText}</span></div>
         <div class="settlement-row total"><span>Razem do rozliczenia:</span><span>${totalText}</span></div>
       </section>`;
+    }
+
+    function parseReturnNotesForDisplay(notes) {
+      const original = String(notes || "").trim();
+      if (!original) return { userNotes: "", controlDetails: "" };
+      let text = original;
+      const statePrefix = conditionText(returnConditionFromNotes(text));
+      if (text.startsWith(statePrefix)) {
+        text = text.slice(statePrefix.length).trim();
+        if (text.startsWith("-")) text = text.slice(1).trim();
+      }
+
+      const controlMarker = "Kontrola zwrotu:";
+      const controlIndex = text.indexOf(controlMarker);
+      const beforeControl = controlIndex >= 0 ? text.slice(0, controlIndex).trim() : text;
+      const controlDetails = controlIndex >= 0 ? text.slice(controlIndex + controlMarker.length).trim() : "";
+      const userMarker = "Uwagi użytkownika:";
+      const userIndex = beforeControl.indexOf(userMarker);
+      let userNotes = userIndex >= 0 ? beforeControl.slice(userIndex + userMarker.length).trim() : beforeControl.trim();
+
+      userNotes = userNotes
+        .replace(/^Uwagi po zwrocie:\s*/i, "")
+        .replace(/^-\s*/, "")
+        .trim();
+
+      return { userNotes, controlDetails };
+    }
+
+    function returnNotesDisplayHtml(loan, compact = false) {
+      if (!loan.return_notes) return "";
+      const parsed = parseReturnNotesForDisplay(loan.return_notes);
+      const notesText = parsed.userNotes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
+      if (compact) {
+        return `<p><small><strong>Uwagi zwrotu:</strong> ${escapeHtml(notesText)}</small></p>`;
+      }
+      return `<section class="return-notes-box">
+        <strong>Uwagi zwrotu:</strong><br>
+        ${escapeHtml(notesText)}
+        ${parsed.controlDetails ? `<div class="return-control-details"><strong>Szczegóły kontroli zwrotu:</strong><br>${escapeHtml(formatReturnControlDetails(parsed.controlDetails))}</div>` : ""}
+      </section>`;
+    }
+
+    function formatReturnControlDetails(value) {
+      return String(value || "")
+        .replace(/\s+Razem uszkodzenia:/g, "\nRazem uszkodzenia:")
+        .replace(/\s+Razem braki:/g, "\nRazem braki:")
+        .replace(/\s+Dodatkowa dopłata ręczna:/g, "\nDodatkowa dopłata ręczna:")
+        .replace(/\s+Dopłata razem:/g, "\nDopłata razem:")
+        .replace(/\s*\/\s*/g, " / ")
+        .trim();
     }
 
     function prepareProtocolLoan(id, forReturn = false) {
