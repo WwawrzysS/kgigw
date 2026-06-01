@@ -185,6 +185,30 @@
       color: #92400e;
       font-size: 14px;
     }
+    .settlement-box {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8fbf8;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    .settlement-box strong {
+      color: var(--green-dark);
+    }
+    .settlement-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 0;
+    }
+    .settlement-row.total {
+      margin-top: 4px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+      font-weight: 700;
+    }
     .summary-table {
       width: 100%;
       border-collapse: collapse;
@@ -915,6 +939,7 @@
         Od: ${formatDate(loan.date_from)} · Zwrot: ${formatDate(loan.date_to)}${loan.returned_at ? `<br>Data zwrotu: ${formatDate(loan.returned_at)}` : ""}</small></p>
         <span class="badge ${status.className}">${status.label}</span>
         <p><small>${escapeHtml(itemsText(loan))}<br>Razem za dobę: ${money(totals.perDay)} · Razem za okres: ${money(totals.total)}</small></p>
+        ${settlementBox(loan)}
         <div class="actions">
           <button class="secondary" onclick="showHistoryDetails('${loan.id}')">Szczegóły</button>
           <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj PDF</button>
@@ -949,6 +974,7 @@
         <p><strong>Razem za dobę:</strong> ${money(totals.perDay)}<br>
         <strong>Liczba dób:</strong> ${totals.days}<br>
         <strong>Razem za okres:</strong> ${money(totals.total)}</p>
+        ${settlementBox(loan)}
         <div class="actions">
           <button class="secondary" onclick="showScreen('historyScreen')">Wstecz</button>
           <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj protokół wypożyczenia</button>
@@ -968,6 +994,31 @@
       const days = Number(loan.days || rentalDays(loan.date_from, loan.date_to) || 1);
       const perDay = (loan.rental_lines || []).reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.price_per_day || 0), 0);
       return { days, perDay, total: Number(loan.total || perDay * days) };
+    }
+
+    function settlementTotals(loan) {
+      const totals = rentalTotals(loan);
+      const damage = Number(loan.damage_cost || 0);
+      const safeDamage = Number.isFinite(damage) && damage > 0 ? damage : 0;
+      const isReturned = Boolean(loan.returned_at) || !isActiveRental(loan);
+      return {
+        rentalCost: totals.total,
+        damage: safeDamage,
+        total: totals.total + safeDamage,
+        isReturned
+      };
+    }
+
+    function settlementBox(loan) {
+      const settlement = settlementTotals(loan);
+      const damageText = settlement.isReturned ? money(settlement.damage) : "jeszcze nie dotyczy";
+      const totalText = settlement.isReturned ? money(settlement.total) : money(settlement.rentalCost);
+      return `<section class="settlement-box">
+        <strong>Rozliczenie:</strong>
+        <div class="settlement-row"><span>Koszt wypożyczenia:</span><span>${money(settlement.rentalCost)}</span></div>
+        <div class="settlement-row"><span>Dopłata za braki/uszkodzenia:</span><span>${damageText}</span></div>
+        <div class="settlement-row total"><span>Razem do rozliczenia:</span><span>${totalText}</span></div>
+      </section>`;
     }
 
     function prepareProtocolLoan(id, forReturn = false) {
