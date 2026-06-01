@@ -907,6 +907,64 @@ textarea {
   word-break: normal;
 }
 
+.mail-info-panel {
+  padding: 14px;
+  display: grid;
+  gap: 16px;
+}
+
+.mail-info-panel > p,
+.mail-note p {
+  margin: 0;
+  max-width: 860px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.mail-info-panel h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.mail-shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mail-shortcut-card,
+.mail-note {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 14px;
+}
+
+.mail-shortcut-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.mail-shortcut-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.mail-shortcut-card .small-button {
+  width: 100%;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.mail-note ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .funding-details-panel {
   grid-column: 1 / -1;
 }
@@ -1696,6 +1754,10 @@ textarea {
   }
 
   .admin-export-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mail-shortcut-grid {
     grid-template-columns: 1fr;
   }
 

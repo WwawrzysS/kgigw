@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260601-33" />
+    <link rel="stylesheet" href="styles.css?v=20260602-01" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -573,25 +573,51 @@
           </section>
           <section class="panel doc-tab-panel" data-doc-panel="mail">
             <div class="panel-head">
-              <h2>Poczta</h2>
-              <button id="openMailboxWindow" class="small-button" type="button">Otwórz konfigurację</button>
+              <h2>Poczta i kontakt</h2>
             </div>
-            <div class="notice">
-              Konfiguracja poczty powinna działać w osobnym oknie. Najbezpieczniej użyć Gmail/Outlook albo poczty koła z hasłem aplikacji, bez zapisywania głównego hasła poczty w stronie.
-            </div>
-            <div class="table">
-              <div class="row">
-                <div>
-                  <strong>Status</strong>
-                  <small>Połączenie poczty nie jest jeszcze skonfigurowane.</small>
+            <div class="mail-info-panel">
+              <p>
+                Tutaj w przyszłości będzie można obsługiwać wiadomości, pisma, faktury i załączniki związane z działalnością koła.
+                Na razie ze względów bezpieczeństwa poczta nie jest bezpośrednio podłączona do panelu — nie zapisujemy haseł pocztowych w stronie.
+              </p>
+              <section>
+                <h3>Szybkie skróty do poczty</h3>
+                <div class="mail-shortcut-grid">
+                  <article class="mail-shortcut-card">
+                    <strong>Gmail</strong>
+                    <small>Otwórz pocztę Gmail w nowej karcie.</small>
+                    <a class="small-button" href="https://mail.google.com/" target="_blank" rel="noopener noreferrer">Otwórz Gmail</a>
+                  </article>
+                  <article class="mail-shortcut-card">
+                    <strong>Poczta o2</strong>
+                    <small>Otwórz pocztę o2 w nowej karcie.</small>
+                    <a class="small-button" href="https://poczta.o2.pl/" target="_blank" rel="noopener noreferrer">Otwórz Pocztę o2</a>
+                  </article>
+                  <article class="mail-shortcut-card">
+                    <strong>Outlook</strong>
+                    <small>Otwórz pocztę Outlook w nowej karcie.</small>
+                    <a class="small-button" href="https://outlook.live.com/mail/" target="_blank" rel="noopener noreferrer">Otwórz Outlook</a>
+                  </article>
+                  <article class="mail-shortcut-card">
+                    <strong>Facebook Koła</strong>
+                    <small>Otwórz stronę Koła Gospodyń i Gospodarzy Wiejskich we Włosani na Facebooku.</small>
+                    <a class="small-button" href="https://www.facebook.com/kolowlosan/?locale=pl_PL" target="_blank" rel="noopener noreferrer">Otwórz Facebook Koła</a>
+                  </article>
                 </div>
-              </div>
-              <div class="row">
-                <div>
-                  <strong>Docelowo</strong>
-                  <small>Tu będzie odbiór pism, faktur i wiadomości z możliwością zapisania ich w Dokumentach.</small>
-                </div>
-              </div>
+              </section>
+              <section class="mail-note">
+                <h3>Bezpieczeństwo</h3>
+                <p>Panel nie przechowuje haseł do poczty. Do skrzynek pocztowych logujemy się bezpośrednio na stronach dostawców poczty.</p>
+              </section>
+              <section class="mail-note">
+                <h3>Plan na przyszłość</h3>
+                <ul>
+                  <li>odbiór pism i faktur,</li>
+                  <li>zapisywanie załączników do Dokumentów,</li>
+                  <li>oznaczanie wiadomości jako załatwione,</li>
+                  <li>powiązanie faktur z dokumentami koła.</li>
+                </ul>
+              </section>
             </div>
           </section>
           <form id="documentationForm" class="form-panel doc-tab-panel documentation-form" data-doc-panel="documentation" hidden>
@@ -858,7 +884,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.01-33</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.02-01</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1016,6 +1042,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260601-33"></script>
+    <script src="app.js?v=20260602-01"></script>
   </body>
 </html>
