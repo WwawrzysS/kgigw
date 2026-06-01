@@ -196,7 +196,7 @@
 
     <section id="loginView" class="card">
       <h2>Logowanie</h2>
-      <p class="muted">Zaloguj się kontem z Supabase, tak jak do panelu KGiGW.</p>
+      <p class="muted">Zaloguj się tak jak do panelu KGiGW.</p>
       <form id="loginForm">
         <label>Login</label>
         <input name="login" type="text" required autocomplete="username" />
@@ -365,13 +365,13 @@
 
       if (error) {
         console.error("Nie udało się pobrać profilu użytkownika z public.profiles.", { userId, userEmail, error });
-        setLoginMessage(`Konto Supabase działa (${userEmail || "brak e-maila"}), ale nie udało się pobrać profilu. Sprawdź tabelę profiles i uprawnienia RLS.`, true);
+        setLoginMessage("Brak dostępu do tej strony. Skontaktuj się z administratorem.", true);
         return;
       }
 
       if (!data) {
         console.error("Brak profilu użytkownika w public.profiles.", { userId, userEmail });
-        setLoginMessage(`Konto Supabase działa (${userEmail || "brak e-maila"}), ale brakuje profilu w tabeli profiles. W profiles.id musi być: ${userId}`, true);
+        setLoginMessage("Brak dostępu do tej strony. Skontaktuj się z administratorem.", true);
         return;
       }
       state.profile = data;
