@@ -161,6 +161,9 @@
     }
     .badge.warn { background: #fff7ed; color: var(--warn); }
     .badge.danger { background: #fef3f2; color: var(--danger); }
+    .badge.rental-active { background: #fff7ed; color: var(--warn); }
+    .badge.rental-ok { background: #ecfdf3; color: #166534; }
+    .badge.rental-damaged { background: #fef3f2; color: var(--danger); }
     .actions {
       display: grid;
       gap: 8px;
@@ -781,9 +784,9 @@
       }).eq("id", id);
       if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
       for (const line of loan.rental_lines || []) {
-        const returned = condition === "missing" ? 0 : line.quantity;
-        const damaged = condition === "damaged" ? line.quantity : 0;
-        const missing = condition === "missing" ? line.quantity : 0;
+        const returned = line.quantity;
+        const damaged = 0;
+        const missing = 0;
         const lineResult = await supabaseClient.from("rental_lines").update({ returned, damaged, missing }).eq("id", line.id);
         if (lineResult.error) return showMessage("Zwrot zapisany częściowo. Sprawdź dane w panelu.", true);
       }
@@ -796,9 +799,9 @@
         damage_cost: damageCost,
         rental_lines: (loan.rental_lines || []).map((line) => ({
           ...line,
-          returned: condition === "missing" ? 0 : line.quantity,
-          damaged: condition === "damaged" ? line.quantity : 0,
-          missing: condition === "missing" ? line.quantity : 0
+          returned: line.quantity,
+          damaged: 0,
+          missing: 0
         }))
       };
       showMessage(shouldSign ? "Zapisano. Teraz złóż podpis do protokołu." : shouldPrint ? "Zapisano. Otwieram drukowanie." : "Zwrot zapisany.", false);
@@ -1005,9 +1008,23 @@
     }
 
     function historyStatus(loan) {
-      if (isActiveRental(loan) && loan.date_to < today()) return { key: "overdue", label: "po terminie", className: "danger" };
-      if (isActiveRental(loan)) return { key: "active", label: "aktywne", className: "" };
-      return { key: "returned", label: "zwrócone", className: "warn" };
+      if (isActiveRental(loan) && loan.date_to < today()) return { key: "overdue", label: "Wypożyczone", className: "rental-active" };
+      if (isActiveRental(loan)) return { key: "active", label: "Wypożyczone", className: "rental-active" };
+      if (returnedWithIssues(loan)) return { key: "returned", label: "Zwrócone uszkodzone", className: "rental-damaged" };
+      return { key: "returned", label: "Zwrócone", className: "rental-ok" };
+    }
+
+    function returnedWithIssues(loan) {
+      if (Number(loan.damage_cost || 0) > 0) return true;
+      const notes = String(loan.return_notes || "").trim();
+      if (!notes) return false;
+      const normalized = norm(notes);
+      if (normalized.includes("stan po zwrocie uszkodzony")) return true;
+      if (normalized.includes("stan po zwrocie brak element")) return true;
+      if (normalized.includes("stan po zwrocie inne")) return true;
+      const withoutOkState = normalized.replace(/^stan po zwrocie ok\s*-?\s*/, "").trim();
+      if (!withoutOkState) return false;
+      return true;
     }
 
     function rentalTotals(loan) {
@@ -1193,9 +1210,7 @@
         <label>Stan po zwrocie</label>
         <select id="condition-${loan.id}">
           <option value="ok">OK</option>
-          <option value="damaged">uszkodzony</option>
-          <option value="missing">brak elementów</option>
-          <option value="other">inne</option>
+          <option value="damaged">Uszkodzony</option>
         </select>
         <label>Wartość braków/uszkodzeń</label>
         <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" onblur="normalizeMoneyInput(this)" />
