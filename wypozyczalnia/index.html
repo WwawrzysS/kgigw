@@ -840,6 +840,7 @@
     function renderReturns() {
       const active = state.rentals.filter(isActiveRental);
       document.querySelector("#returnsList").innerHTML = active.length ? active.map(returnCard).join("") : "<p class='muted'>Brak aktualnych wypożyczeń</p>";
+      bindReturnButtons("#returnsList");
       if (state.returnControlId && !active.some((loan) => loan.id === state.returnControlId)) {
         state.returnControlId = null;
         document.querySelector("#returnControlContent").innerHTML = "";
@@ -849,6 +850,7 @@
     function renderOverdue() {
       const overdue = state.rentals.filter((loan) => isActiveRental(loan) && loan.date_to < today());
       document.querySelector("#overdueList").innerHTML = overdue.length ? overdue.map(returnCard).join("") : "<p class='muted'>Brak zaległych zwrotów</p>";
+      bindReturnButtons("#overdueList");
     }
 
     function renderInventory() {
@@ -1011,8 +1013,14 @@
         ${escapeHtml(itemsText(loan))}<br>
         Razem za okres: ${money(totals.total)}</small></p>
         ${overdue ? `<span class="badge danger">Po terminie: ${daysLate} dni</span>` : `<span class="badge">W terminie</span>`}
-        ${isActiveRental(loan) && !searchMode ? `<div class="actions"><button onclick="showReturnControl('${loan.id}')">Sprawdź i zwróć</button></div>` : ""}
+        ${isActiveRental(loan) && !searchMode ? `<div class="actions"><button type="button" data-return-id="${escapeHtml(loan.id)}">Sprawdź i zwróć</button></div>` : ""}
       </article>`;
+    }
+
+    function bindReturnButtons(containerSelector) {
+      document.querySelectorAll(`${containerSelector} [data-return-id]`).forEach((button) => {
+        button.addEventListener("click", () => showReturnControl(button.dataset.returnId));
+      });
     }
 
     function showReturnControl(id) {
@@ -1038,7 +1046,7 @@
         </article>`;
       }).join("");
       document.querySelector("#returnControlContent").innerHTML = `
-        <p><strong>Wypożyczający:</strong> ${escapeHtml(person(loan))}<br>
+        <p><strong>Zwraca:</strong> ${escapeHtml(person(loan))}<br>
         ${loan.phone ? `<strong>Telefon:</strong> ${escapeHtml(loan.phone)}<br>` : ""}
         <strong>Data wypożyczenia:</strong> ${formatDate(loan.date_from)}<br>
         <strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
