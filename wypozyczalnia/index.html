@@ -839,7 +839,7 @@
 
     function renderReturns() {
       const active = state.rentals.filter(isActiveRental);
-      document.querySelector("#returnsList").innerHTML = active.length ? active.map(returnCard).join("") : "<p class='muted'>Brak aktualnych wypożyczeń</p>";
+      document.querySelector("#returnsList").innerHTML = active.length ? active.map((loan) => returnCard(loan)).join("") : "<p class='muted'>Brak aktualnych wypożyczeń</p>";
       bindReturnButtons("#returnsList");
       if (state.returnControlId && !active.some((loan) => loan.id === state.returnControlId)) {
         state.returnControlId = null;
@@ -849,7 +849,7 @@
 
     function renderOverdue() {
       const overdue = state.rentals.filter((loan) => isActiveRental(loan) && loan.date_to < today());
-      document.querySelector("#overdueList").innerHTML = overdue.length ? overdue.map(returnCard).join("") : "<p class='muted'>Brak zaległych zwrotów</p>";
+      document.querySelector("#overdueList").innerHTML = overdue.length ? overdue.map((loan) => returnCard(loan)).join("") : "<p class='muted'>Brak zaległych zwrotów</p>";
       bindReturnButtons("#overdueList");
     }
 
