@@ -440,6 +440,11 @@
         <div id="returnsList"></div>
       </section>
 
+      <section id="returnControlScreen" class="card screen hidden">
+        <h2>Kontrola zwrotu</h2>
+        <div id="returnControlContent"></div>
+      </section>
+
       <section id="inventoryScreen" class="card screen hidden">
         <h2>Dostępny sprzęt</h2>
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
@@ -506,7 +511,7 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
     const parseMoneyInput = (value) => Number(String(value || "0").replace(",", "."));
@@ -748,6 +753,7 @@
       await refreshData();
       if (shouldPrint) printProtocol("return", protocolLoan);
       if (shouldSign) showSignatureScreen("return", protocolLoan);
+      if (!shouldSign) showScreen("returnScreen");
     }
 
     function renderAll() {
@@ -834,6 +840,10 @@
     function renderReturns() {
       const active = state.rentals.filter(isActiveRental);
       document.querySelector("#returnsList").innerHTML = active.length ? active.map(returnCard).join("") : "<p class='muted'>Brak aktualnych wypożyczeń</p>";
+      if (state.returnControlId && !active.some((loan) => loan.id === state.returnControlId)) {
+        state.returnControlId = null;
+        document.querySelector("#returnControlContent").innerHTML = "";
+      }
     }
 
     function renderOverdue() {
@@ -993,29 +1003,68 @@
     function returnCard(loan, searchMode = false) {
       const overdue = isActiveRental(loan) && loan.date_to < today();
       const daysLate = overdue ? Math.ceil((new Date(`${today()}T12:00:00`) - new Date(`${loan.date_to}T12:00:00`)) / 86400000) : 0;
+      const totals = rentalTotals(loan);
       return `<article class="card">
-        <strong>${escapeHtml(itemsText(loan))}</strong>
-        <p><small>Osoba: ${escapeHtml(person(loan))}<br>Od: ${formatDate(loan.date_from)} · Zwrot: ${formatDate(loan.date_to)}</small></p>
+        <strong>${escapeHtml(person(loan))}</strong>
+        <p><small>Data wypożyczenia: ${formatDate(loan.date_from)}<br>
+        Planowany zwrot: ${formatDate(loan.date_to)}<br>
+        ${escapeHtml(itemsText(loan))}<br>
+        Razem za okres: ${money(totals.total)}</small></p>
         ${overdue ? `<span class="badge danger">Po terminie: ${daysLate} dni</span>` : `<span class="badge">W terminie</span>`}
-        ${isActiveRental(loan) && !searchMode ? `<details class="actions">
-          <summary>Zwróć</summary>
-          <label>Data zwrotu</label>
-          <input id="returnedAt-${loan.id}" type="date" value="${today()}" />
-          <label>Stan po zwrocie</label>
-          <select id="condition-${loan.id}">
-            <option value="ok">OK</option>
-            <option value="damaged">uszkodzony</option>
-            <option value="missing">brak elementów</option>
-            <option value="other">inne</option>
-          </select>
-          <label>Uwagi po zwrocie</label>
-          <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
-          <label>Wartość braków/uszkodzeń</label>
-          <input id="returnDamageCost-${loan.id}" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
-          <button onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
-          <button class="secondary" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
-        </details>` : ""}
+        ${isActiveRental(loan) && !searchMode ? `<div class="actions"><button onclick="showReturnControl('${loan.id}')">Sprawdź i zwróć</button></div>` : ""}
       </article>`;
+    }
+
+    function showReturnControl(id) {
+      const loan = state.rentals.find((item) => item.id === id);
+      if (!loan) return showMessage("Nie udało się wczytać wypożyczenia do zwrotu.", true);
+      state.returnControlId = id;
+      renderReturnControl(loan);
+      showScreen("returnControlScreen");
+    }
+
+    function renderReturnControl(loan) {
+      const totals = rentalTotals(loan);
+      const lines = (loan.rental_lines || []).map((line) => {
+        const enrichedLine = enrichLineWithReplacementValue(line);
+        const replacementValue = Number(enrichedLine.replacement_value || 0) > 0 ? `${money(enrichedLine.replacement_value)} / szt.` : "—";
+        return `<article class="item-row">
+          <div>
+            <strong>${escapeHtml(enrichedLine.item_name)}</strong><br>
+            <small>Wydano: ${escapeHtml(enrichedLine.quantity)} szt.<br>
+            Wartość odtworzeniowa: ${replacementValue}<br>
+            Cena za dobę: ${money(enrichedLine.price_per_day || 0)}</small>
+          </div>
+        </article>`;
+      }).join("");
+      document.querySelector("#returnControlContent").innerHTML = `
+        <p><strong>Wypożyczający:</strong> ${escapeHtml(person(loan))}<br>
+        ${loan.phone ? `<strong>Telefon:</strong> ${escapeHtml(loan.phone)}<br>` : ""}
+        <strong>Data wypożyczenia:</strong> ${formatDate(loan.date_from)}<br>
+        <strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
+        <strong>Liczba dób:</strong> ${escapeHtml(totals.days)}<br>
+        <strong>Kwota wypożyczenia:</strong> ${money(totals.total)}</p>
+        <h3>Sprzęt do zwrotu</h3>
+        ${lines || "<p class='muted'>Brak pozycji do zwrotu.</p>"}
+        <label>Data zwrotu</label>
+        <input id="returnedAt-${loan.id}" type="date" value="${today()}" />
+        <label>Stan po zwrocie</label>
+        <select id="condition-${loan.id}">
+          <option value="ok">OK</option>
+          <option value="damaged">uszkodzony</option>
+          <option value="missing">brak elementów</option>
+          <option value="other">inne</option>
+        </select>
+        <label>Wartość braków/uszkodzeń</label>
+        <input id="returnDamageCost-${loan.id}" type="number" min="0" step="0.01" value="0.00" inputmode="decimal" />
+        <label>Uwagi po zwrocie</label>
+        <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
+        <div class="actions">
+          <button class="secondary" type="button" onclick="showScreen('returnScreen')">Wstecz</button>
+          <button type="button" onclick="confirmReturn('${loan.id}')">Potwierdź zwrot</button>
+          <button class="secondary" type="button" onclick="confirmReturn('${loan.id}', 'signature')">Potwierdź zwrot, podpisz i drukuj</button>
+        </div>
+      `;
     }
 
     function setupSignaturePad() {
