@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-18";
+const APP_VERSION = "2026.06.01-19";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -25,7 +25,7 @@ const ORGANIZATION = {
   nip: "0000000000",
   logo: "KGiGW.jpg"
 };
-const STAND_INVOICE_URL = "https://wwawrzyss.github.io/kgigw/stoisko-faktura.html";
+const STAND_INVOICE_URL = "https://wwawrzyss.github.io/kgigw/stoisko/";
 const STAND_INVOICE_DEFAULTS = {
   enabled: false,
   eventName: "Stoisko",
