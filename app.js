@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.01-32";
+const APP_VERSION = "2026.06.01-33";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -5702,7 +5702,7 @@ function rentalReplacementValuesText(items = []) {
     const valueText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "—";
     return `${escapeHtml(item.name)}: ${valueText}`;
   });
-  return values.join(" / ") || "—";
+  return values.join(" | ") || "—";
 }
 
 function returnPrintHtml(loan) {
