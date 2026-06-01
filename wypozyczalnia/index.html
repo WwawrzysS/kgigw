@@ -1411,7 +1411,7 @@
         const valueText = Number(enrichedLine.replacement_value || 0) > 0 ? `${money(enrichedLine.replacement_value)} / szt.` : "—";
         return `${escapeHtml(enrichedLine.item_name)}: ${valueText}`;
       });
-      return values.join(" / ") || "—";
+      return values.join(" | ") || "—";
     }
 
     function protocolLineRows(loan, isReturn) {
