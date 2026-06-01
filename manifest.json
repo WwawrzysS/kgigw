@@ -1,6 +1,7 @@
 {
   "name": "Stoisko KGiGW we Włosani",
   "short_name": "KGiGW Stoisko",
+  "id": "/kgigw/stoisko-faktura.html",
   "start_url": "/kgigw/stoisko-faktura.html",
   "scope": "/kgigw/",
   "display": "standalone",

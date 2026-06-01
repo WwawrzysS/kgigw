@@ -1,44 +1,23 @@
-const CACHE_NAME = "kgigw-wypozyczalnia-v20260601-05";
-const APP_SHELL = [
-  "/kgigw/wypozyczalnia/",
-  "/kgigw/wypozyczalnia/index.html",
-  "/kgigw/supabase-config.js",
-  "/kgigw/wypozyczalnia/manifest.json",
-  "/kgigw/icon-192.png",
-  "/kgigw/icon-512.png",
-  "/kgigw/apple-touch-icon.png"
+const OLD_CACHE_PREFIXES = [
+  "kgigw-wypozyczalnia-",
+  "kgigw-wypozyczalnia-v"
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .catch((error) => console.error("Nie udalo sie zapisac cache wypozyczalni.", error))
-  );
+  event.waitUntil(deleteOldRentalCaches());
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys
-        .filter((key) => key.startsWith("kgigw-wypozyczalnia-") && key !== CACHE_NAME)
-        .map((key) => caches.delete(key))
-    ))
-  );
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      })
-      .catch(() => caches.match(event.request))
+    deleteOldRentalCaches().then(() => self.registration.unregister())
   );
 });
+
+function deleteOldRentalCaches() {
+  return caches.keys().then((keys) => Promise.all(
+    keys
+      .filter((key) => OLD_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix)))
+      .map((key) => caches.delete(key))
+  ));
+}

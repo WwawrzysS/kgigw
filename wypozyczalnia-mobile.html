@@ -3,14 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta http-equiv="refresh" content="0; url=/kgigw/wypozyczalnia/" />
   <link rel="canonical" href="/kgigw/wypozyczalnia/" />
   <title>KGiGW Wypożyczalnia</title>
 </head>
 <body>
   <p>Przenoszę do mobilnej wypożyczalni: <a href="/kgigw/wypozyczalnia/">otwórz Wypożyczalnię Mobile</a>.</p>
   <script>
-    window.location.replace("/kgigw/wypozyczalnia/");
+    async function cleanupOldRentalWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations
+        .filter((registration) => {
+          const worker = registration.active || registration.waiting || registration.installing;
+          return worker && worker.scriptURL.includes("/kgigw/sw-wypozyczalnia.js");
+        })
+        .map((registration) => registration.unregister()));
+    }
+
+    cleanupOldRentalWorker()
+      .catch((error) => console.error("Nie udało się wyczyścić starego PWA wypożyczalni.", error))
+      .finally(() => window.location.replace("/kgigw/wypozyczalnia/"));
   </script>
 </body>
 </html>
