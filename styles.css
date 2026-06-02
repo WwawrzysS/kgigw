@@ -756,6 +756,146 @@ textarea {
   grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr)) auto;
 }
 
+.kitchen-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.kitchen-list-panel,
+.kitchen-details-panel,
+.kitchen-form-panel {
+  width: 100%;
+  max-width: none;
+}
+
+.kitchen-controls {
+  margin: 14px;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr);
+  gap: 12px;
+}
+
+.kitchen-controls input {
+  min-width: 0;
+}
+
+.kitchen-events-list {
+  padding: 0 14px 14px;
+  display: grid;
+  gap: 12px;
+  max-height: 620px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.kitchen-event-card,
+.kitchen-item-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  min-width: 0;
+}
+
+.kitchen-event-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.kitchen-event-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kitchen-event-main strong {
+  font-size: 17px;
+}
+
+.kitchen-event-main small,
+.kitchen-event-main p,
+.kitchen-item-card small,
+.kitchen-item-card p,
+.kitchen-notes {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.kitchen-event-main p,
+.kitchen-item-card p {
+  margin: 0;
+}
+
+.kitchen-card-actions,
+.kitchen-details-actions,
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kitchen-form {
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.kitchen-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kitchen-form textarea {
+  min-height: 96px;
+}
+
+.kitchen-details {
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.kitchen-details-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.kitchen-details-head h2 {
+  margin: 0 0 6px;
+}
+
+.kitchen-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.kitchen-item-card {
+  display: grid;
+  gap: 10px;
+}
+
+.kitchen-item-card span {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.kitchen-empty {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  background: #fbfaf7;
+}
+
 .fee-controls {
   align-items: stretch;
 }
@@ -784,6 +924,7 @@ textarea {
 .event-controls select,
 .funding-controls input,
 .funding-controls select,
+.kitchen-controls input,
 .fee-controls input,
 .fee-controls select {
   min-width: 0;
@@ -1954,10 +2095,27 @@ textarea {
   .invoice-controls,
   .event-controls,
   .funding-controls,
+  .kitchen-controls,
   .documentation-controls,
   .section-doc-controls,
   .section-doc-controls-compact {
     grid-template-columns: 1fr;
+  }
+
+  .kitchen-event-card,
+  .kitchen-details-head {
+    grid-template-columns: 1fr;
+  }
+
+  .kitchen-event-card,
+  .kitchen-details-head {
+    display: grid;
+  }
+
+  .kitchen-card-actions,
+  .kitchen-details-actions,
+  .form-actions {
+    justify-content: flex-start;
   }
 
   .invoice-search-row {
@@ -2131,5 +2289,60 @@ textarea {
 
   .fees-print-document .print-signatures {
     margin-top: 16mm;
+  }
+
+  .kitchen-print-document {
+    max-width: 186mm;
+    margin: 0 auto;
+    font-size: 11px;
+  }
+
+  .kitchen-print-document h1,
+  .kitchen-print-document h2 {
+    text-align: center;
+  }
+
+  .kitchen-print-document h1 {
+    font-size: 18px;
+    margin: 0 0 3mm;
+  }
+
+  .kitchen-print-document h2 {
+    font-size: 15px;
+    margin: 0 0 5mm;
+  }
+
+  .kitchen-print-document p {
+    margin: 2mm 0;
+  }
+
+  .kitchen-print-document table {
+    table-layout: fixed;
+    font-size: 9.5px;
+  }
+
+  .kitchen-print-document th,
+  .kitchen-print-document td {
+    padding: 4px 5px;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  .kitchen-print-document th:nth-child(1),
+  .kitchen-print-document td:nth-child(1) {
+    width: 6%;
+    text-align: center;
+  }
+
+  .kitchen-print-document th:nth-child(2),
+  .kitchen-print-document td:nth-child(2) {
+    width: 20%;
+  }
+
+  .kitchen-print-document th:nth-child(3),
+  .kitchen-print-document td:nth-child(3),
+  .kitchen-print-document th:nth-child(5),
+  .kitchen-print-document td:nth-child(5) {
+    width: 13%;
   }
 }

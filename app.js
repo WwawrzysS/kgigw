@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.02-03";
+const APP_VERSION = "2026.06.02-04";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -44,6 +44,7 @@ const starterData = {
   money: [],
   fundingSources: [],
   events: [],
+  kitchenEvents: [],
   rentalInventory: [
     { id: makeId(), name: "Komplet zastawy", quantity: 48, price: 10, replacementValue: null },
     { id: makeId(), name: "Talerz płytki", quantity: 48, price: 2, replacementValue: null },
@@ -82,6 +83,7 @@ let activeRentalDashboardTimer = null;
 let selectedFundingSourceId = "";
 let editingInvoiceRequestId = "";
 let pendingInvoiceRequestId = "";
+let selectedKitchenEventId = "";
 
 const titles = {
   dashboard: "Pulpit",
@@ -90,6 +92,7 @@ const titles = {
   money: "Finanse",
   funding: "Źródła finansowania",
   events: "Wydarzenia",
+  kitchen: "Kulinarne wspomnienia",
   rentals: "Wypożyczalnia",
   invoices: "Faktury",
   docs: "Dokumenty i poczta",
@@ -177,6 +180,20 @@ const elements = {
   eventSearch: document.querySelector("#eventSearch"),
   eventSort: document.querySelector("#eventSort"),
   clearEventFilters: document.querySelector("#clearEventFilters"),
+  kitchenListPanel: document.querySelector("#kitchenListPanel"),
+  kitchenEventsList: document.querySelector("#kitchenEventsList"),
+  kitchenSearch: document.querySelector("#kitchenSearch"),
+  addKitchenEventButton: document.querySelector("#addKitchenEventButton"),
+  kitchenEventFormPanel: document.querySelector("#kitchenEventFormPanel"),
+  kitchenEventForm: document.querySelector("#kitchenEventForm"),
+  kitchenEventFormTitle: document.querySelector("#kitchenEventFormTitle"),
+  cancelKitchenEvent: document.querySelector("#cancelKitchenEvent"),
+  kitchenDetailsPanel: document.querySelector("#kitchenDetailsPanel"),
+  kitchenDetails: document.querySelector("#kitchenDetails"),
+  kitchenItemFormPanel: document.querySelector("#kitchenItemFormPanel"),
+  kitchenItemForm: document.querySelector("#kitchenItemForm"),
+  kitchenItemFormTitle: document.querySelector("#kitchenItemFormTitle"),
+  cancelKitchenItem: document.querySelector("#cancelKitchenItem"),
   inventoryAddForm: document.querySelector("#inventoryAddForm"),
   rentalInventory: document.querySelector("#rentalInventory"),
   rentalItemsForm: document.querySelector("#rentalItemsForm"),
@@ -315,6 +332,12 @@ document.querySelector("#eventForm").addEventListener("submit", handleEvent);
 ].forEach((control) => control?.addEventListener("input", renderEvents));
 elements.eventSort?.addEventListener("change", renderEvents);
 elements.clearEventFilters?.addEventListener("click", clearEventFilters);
+elements.addKitchenEventButton?.addEventListener("click", () => showKitchenEventForm());
+elements.kitchenSearch?.addEventListener("input", renderKitchen);
+elements.kitchenEventForm?.addEventListener("submit", handleKitchenEvent);
+elements.cancelKitchenEvent?.addEventListener("click", hideKitchenEventForm);
+elements.kitchenItemForm?.addEventListener("submit", handleKitchenItem);
+elements.cancelKitchenItem?.addEventListener("click", hideKitchenItemForm);
 document.querySelector("#inventoryAddForm").addEventListener("submit", handleInventoryAdd);
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
@@ -443,6 +466,8 @@ elements.globalSearch.addEventListener("search", (event) => {
 document.querySelector('input[name="date"]').valueAsDate = new Date();
 document.querySelector('#feeForm input[name="period"]').value = FEE_YEAR;
 document.querySelector('#eventForm input[name="date"]').valueAsDate = new Date();
+const kitchenEventDateInput = document.querySelector('#kitchenEventForm input[name="date"]');
+if (kitchenEventDateInput) kitchenEventDateInput.valueAsDate = new Date();
 document.querySelector('#docForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#documentationForm input[name="date"]').valueAsDate = new Date();
 document.querySelector('#templateForm input[name="date"]').valueAsDate = new Date();
@@ -629,7 +654,7 @@ async function refreshSupabaseData() {
   document.body.classList.remove("locked");
   applyRole();
 
-  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = await Promise.all([
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, kitchenEventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = await Promise.all([
     loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, membership_type, board_role, created_at")
@@ -650,6 +675,10 @@ async function refreshSupabaseData() {
       .from("events")
       .select("id, name, event_date, place, notes")
       .order("event_date", { ascending: true })),
+    loadSupabaseResult("kitchen_events", supabaseClient
+      .from("kitchen_events")
+      .select("id, event_name, event_date, place, notes, created_at, updated_at, kitchen_event_items(id, event_id, item_name, quantity, ingredients, enough_status, notes, created_at, updated_at)")
+      .order("event_date", { ascending: false })),
     loadSupabaseResult("funding_sources", supabaseClient
       .from("funding_sources")
       .select("id, name, type, description, planned_amount, date_from, date_to, status, created_at, updated_at")
@@ -736,6 +765,7 @@ async function refreshSupabaseData() {
   logSupabaseLoadError("magazynu", inventoryResult.error);
   logSupabaseLoadError("wypożyczeń", rentalsResult.error);
   logSupabaseLoadError("wydarzeń", eventsResult.error);
+  logSupabaseLoadError("kulinarnych wspomnień", kitchenEventsResult.error);
   logSupabaseLoadError("źródeł finansowania", fundingSourcesResult.error);
   if (fundingSourcesResult.error) {
     console.error("Nie udało się pobrać funding_sources. Lista źródeł w Finansach pokaże tylko opcję Bez źródła.", fundingSourcesResult.error);
@@ -831,6 +861,8 @@ async function refreshSupabaseData() {
     place: event.place || "",
     notes: event.notes || ""
   }));
+
+  if (!kitchenEventsResult.error) state.kitchenEvents = (kitchenEventsResult.data || []).map(kitchenEventFromSupabase);
 
   if (!fundingSourcesResult.error) state.fundingSources = (fundingSourcesResult.data || []).map((source) => ({
     id: source.id,
@@ -946,6 +978,33 @@ function logSupabaseLoadError(moduleName, error) {
     moduleName,
     error
   });
+}
+
+function kitchenEventFromSupabase(event) {
+  return {
+    id: event.id,
+    name: event.event_name || "",
+    date: event.event_date || "",
+    place: event.place || "",
+    notes: event.notes || "",
+    createdAt: event.created_at || "",
+    updatedAt: event.updated_at || "",
+    items: (event.kitchen_event_items || []).map(kitchenItemFromSupabase)
+  };
+}
+
+function kitchenItemFromSupabase(item) {
+  return {
+    id: item.id,
+    eventId: item.event_id,
+    itemName: item.item_name || "",
+    quantity: item.quantity || "",
+    ingredients: item.ingredients || "",
+    enoughStatus: item.enough_status || "Nie wiadomo",
+    notes: item.notes || "",
+    createdAt: item.created_at || "",
+    updatedAt: item.updated_at || ""
+  };
 }
 
 async function loadSupabaseResult(label, query) {
@@ -1525,6 +1584,146 @@ async function handleEvent(event) {
   event.target.date.valueAsDate = new Date();
   renderEventOptions();
   logActivity("Wydarzenia", "Dodanie wydarzenia", { summary: data.name });
+}
+
+async function handleKitchenEvent(event) {
+  event.preventDefault();
+  if (!canCorrect()) return;
+  const form = event.target;
+  const data = formData(form);
+  const eventId = data.id || "";
+  const payload = {
+    event_name: data.name,
+    event_date: data.date || null,
+    place: data.place || null,
+    notes: data.notes || null,
+    updated_at: new Date().toISOString()
+  };
+
+  if (supabaseClient && currentRole) {
+    if (eventId) {
+      const { error } = await supabaseClient.from("kitchen_events").update(payload).eq("id", eventId);
+      if (error) {
+        alert(`Nie udało się zapisać imprezy w Supabase: ${error.message}`);
+        return;
+      }
+      await logActivity("Kulinarne wspomnienia", "Edycja imprezy kulinarnej", { summary: data.name });
+    } else {
+      const { error } = await supabaseClient.from("kitchen_events").insert(payload);
+      if (error) {
+        alert(`Nie udało się dodać imprezy w Supabase: ${error.message}`);
+        return;
+      }
+      await logActivity("Kulinarne wspomnienia", "Dodanie imprezy kulinarnej", { summary: data.name });
+    }
+    hideKitchenEventForm();
+    await refreshSupabaseData();
+    showToast(eventId ? "Zapisano imprezę" : "Dodano imprezę");
+    return;
+  }
+
+  if (eventId) {
+    const item = state.kitchenEvents.find((entry) => entry.id === eventId);
+    if (item) Object.assign(item, {
+      name: data.name,
+      date: data.date || "",
+      place: data.place || "",
+      notes: data.notes || "",
+      updatedAt: new Date().toISOString()
+    });
+    logActivity("Kulinarne wspomnienia", "Edycja imprezy kulinarnej", { summary: data.name });
+  } else {
+    state.kitchenEvents.push({
+      id: makeId(),
+      name: data.name,
+      date: data.date || "",
+      place: data.place || "",
+      notes: data.notes || "",
+      items: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    logActivity("Kulinarne wspomnienia", "Dodanie imprezy kulinarnej", { summary: data.name });
+  }
+  hideKitchenEventForm();
+  saveState();
+  renderKitchen();
+  showToast(eventId ? "Zapisano imprezę" : "Dodano imprezę");
+}
+
+async function handleKitchenItem(event) {
+  event.preventDefault();
+  if (!canCorrect()) return;
+  const form = event.target;
+  const data = formData(form);
+  const eventId = data.eventId || selectedKitchenEventId;
+  const parent = state.kitchenEvents.find((entry) => entry.id === eventId);
+  if (!parent) return;
+  const itemId = data.id || "";
+  const payload = {
+    event_id: eventId,
+    item_name: data.itemName,
+    quantity: data.quantity || null,
+    ingredients: data.ingredients || null,
+    enough_status: data.enoughStatus || "Nie wiadomo",
+    notes: data.notes || null,
+    updated_at: new Date().toISOString()
+  };
+
+  if (supabaseClient && currentRole) {
+    if (itemId) {
+      const { error } = await supabaseClient.from("kitchen_event_items").update(payload).eq("id", itemId);
+      if (error) {
+        alert(`Nie udało się zapisać potrawy w Supabase: ${error.message}`);
+        return;
+      }
+      await logActivity("Kulinarne wspomnienia", "Edycja potrawy", { summary: `${parent.name} - ${data.itemName}` });
+    } else {
+      const { error } = await supabaseClient.from("kitchen_event_items").insert(payload);
+      if (error) {
+        alert(`Nie udało się dodać potrawy w Supabase: ${error.message}`);
+        return;
+      }
+      await logActivity("Kulinarne wspomnienia", "Dodanie potrawy", { summary: `${parent.name} - ${data.itemName}` });
+    }
+    hideKitchenItemForm();
+    await refreshSupabaseData();
+    selectedKitchenEventId = eventId;
+    renderKitchenDetails();
+    showToast(itemId ? "Zapisano potrawę" : "Dodano potrawę");
+    return;
+  }
+
+  if (itemId) {
+    const item = parent.items.find((entry) => entry.id === itemId);
+    if (item) Object.assign(item, {
+      itemName: data.itemName,
+      quantity: data.quantity || "",
+      ingredients: data.ingredients || "",
+      enoughStatus: data.enoughStatus || "Nie wiadomo",
+      notes: data.notes || "",
+      updatedAt: new Date().toISOString()
+    });
+    logActivity("Kulinarne wspomnienia", "Edycja potrawy", { summary: `${parent.name} - ${data.itemName}` });
+  } else {
+    parent.items.push({
+      id: makeId(),
+      eventId,
+      itemName: data.itemName,
+      quantity: data.quantity || "",
+      ingredients: data.ingredients || "",
+      enoughStatus: data.enoughStatus || "Nie wiadomo",
+      notes: data.notes || "",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    logActivity("Kulinarne wspomnienia", "Dodanie potrawy", { summary: `${parent.name} - ${data.itemName}` });
+  }
+  hideKitchenItemForm();
+  saveState();
+  renderKitchen();
+  renderKitchenDetails();
+  showToast(itemId ? "Zapisano potrawę" : "Dodano potrawę");
 }
 
 async function handleRental(event) {
@@ -2141,6 +2340,7 @@ function render() {
   renderFundingSources();
   renderFundingDetails();
   renderEvents();
+  renderKitchen();
   renderRentals();
   renderDocs();
   renderInvoices();
@@ -2286,6 +2486,20 @@ function globalSearchResults(search) {
     event.name || "Wydarzenie",
     `${formatDate(event.date)} · ${event.place || "Brak miejsca"}`,
     [event.name, event.date, event.place, event.notes]
+  ));
+
+  state.kitchenEvents.forEach((event) => addResult(
+    "Kulinarne wspomnienia",
+    "kitchen",
+    event.name || "Impreza",
+    `${formatDate(event.date)} · ${event.place || "Brak miejsca"} · ${kitchenItemsSummary(event.items)}`,
+    [
+      event.name,
+      event.date,
+      event.place,
+      event.notes,
+      ...(event.items || []).flatMap((item) => [item.itemName, item.quantity, item.ingredients, item.enoughStatus, item.notes])
+    ]
   ));
 
   state.fundingSources.forEach((source) => addResult(
@@ -3338,6 +3552,265 @@ function clearEventFilters() {
   if (elements.eventSearch) elements.eventSearch.value = "";
   if (elements.eventSort) elements.eventSort.value = "date_desc";
   renderEvents();
+}
+
+function renderKitchen() {
+  if (!elements.kitchenEventsList) return;
+  const events = filteredKitchenEvents();
+  elements.kitchenListPanel?.classList.toggle("hidden", Boolean(selectedKitchenEventId));
+  elements.kitchenEventsList.innerHTML = events.length
+    ? events.map(kitchenEventCard).join("")
+    : '<div class="kitchen-empty">Brak imprez pasujących do wyszukiwania.</div>';
+  renderKitchenDetails();
+}
+
+function filteredKitchenEvents() {
+  const search = normalizeSearchText(elements.kitchenSearch?.value || "");
+  return [...(state.kitchenEvents || [])]
+    .filter((event) => {
+      if (!search) return true;
+      const values = [
+        event.name,
+        event.date,
+        formatDate(event.date),
+        event.place,
+        event.notes,
+        ...(event.items || []).flatMap((item) => [item.itemName, item.quantity, item.ingredients, item.enoughStatus, item.notes])
+      ];
+      return values.map(normalizeSearchText).join(" ").includes(search);
+    })
+    .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")) || String(a.name || "").localeCompare(String(b.name || ""), "pl"));
+}
+
+function kitchenEventCard(event) {
+  return `
+    <article class="kitchen-event-card">
+      <div class="kitchen-event-main">
+        <strong>${escapeHtml(event.name || "Impreza bez nazwy")}</strong>
+        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")}</small>
+        <p>${escapeHtml(kitchenItemsSummary(event.items))}</p>
+      </div>
+      <div class="kitchen-card-actions">
+        <button class="small-button" type="button" onclick="openKitchenEvent('${event.id}')">Otwórz</button>
+        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj</button>` : ""}
+        <button class="small-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj</button>
+        ${canCorrect() ? `<button class="delete-button" type="button" onclick="deleteKitchenEvent('${event.id}')">Usuń</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function kitchenItemsSummary(items = []) {
+  if (!items.length) return "Brak potraw";
+  const summary = items.slice(0, 5).map((item) => [item.itemName, item.quantity].filter(Boolean).join(" ")).join(" • ");
+  return items.length > 5 ? `${summary} • ...` : summary;
+}
+
+function openKitchenEvent(id) {
+  selectedKitchenEventId = id;
+  hideKitchenEventForm(false);
+  hideKitchenItemForm(false);
+  renderKitchen();
+  elements.kitchenDetailsPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function closeKitchenEvent() {
+  selectedKitchenEventId = "";
+  hideKitchenEventForm(false);
+  hideKitchenItemForm(false);
+  renderKitchen();
+}
+
+function renderKitchenDetails() {
+  if (!elements.kitchenDetailsPanel || !elements.kitchenDetails) return;
+  const event = state.kitchenEvents.find((entry) => entry.id === selectedKitchenEventId);
+  elements.kitchenDetailsPanel.classList.toggle("hidden", !event);
+  if (!event) {
+    elements.kitchenDetails.innerHTML = "";
+    return;
+  }
+  elements.kitchenDetails.innerHTML = `
+    <div class="kitchen-details-head">
+      <div>
+        <h2>${escapeHtml(event.name || "Impreza")}</h2>
+        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")}</small>
+      </div>
+      <div class="kitchen-details-actions">
+        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenItemForm('${event.id}')">Dodaj potrawę</button>` : ""}
+        <button class="small-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj imprezę</button>
+        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj imprezę</button>` : ""}
+        <button class="small-button" type="button" onclick="closeKitchenEvent()">Wróć</button>
+      </div>
+    </div>
+    ${event.notes ? `<p class="kitchen-notes">${escapeHtml(event.notes)}</p>` : ""}
+    <div class="kitchen-item-grid">
+      ${(event.items || []).length ? event.items.map((item) => kitchenItemCard(event, item)).join("") : '<div class="kitchen-empty">Brak potraw w tej imprezie.</div>'}
+    </div>
+  `;
+}
+
+function kitchenItemCard(event, item) {
+  return `
+    <article class="kitchen-item-card">
+      <div>
+        <strong>${escapeHtml(item.itemName || "Potrawa")}</strong>
+        <small>Ilość: ${escapeHtml(item.quantity || "brak danych")} · Czy wystarczyło: ${escapeHtml(item.enoughStatus || "Nie wiadomo")}</small>
+      </div>
+      ${item.ingredients ? `<p><span>Wykonane z / składniki:</span> ${escapeHtml(item.ingredients)}</p>` : ""}
+      ${item.notes ? `<p><span>Uwagi na przyszłość:</span> ${escapeHtml(item.notes)}</p>` : ""}
+      ${canCorrect() ? `
+        <div class="kitchen-card-actions">
+          <button class="small-button" type="button" onclick="showKitchenItemForm('${event.id}', '${item.id}')">Edytuj</button>
+          <button class="delete-button" type="button" onclick="deleteKitchenItem('${event.id}', '${item.id}')">Usuń</button>
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
+function showKitchenEventForm(id = "") {
+  if (!canCorrect()) return;
+  const form = elements.kitchenEventForm;
+  if (!form) return;
+  const event = id ? state.kitchenEvents.find((entry) => entry.id === id) : null;
+  form.reset();
+  form.id.value = event?.id || "";
+  form.name.value = event?.name || "";
+  form.date.value = event?.date || "";
+  form.place.value = event?.place || "";
+  form.notes.value = event?.notes || "";
+  if (!event) form.date.valueAsDate = new Date();
+  elements.kitchenEventFormTitle.textContent = event ? "Edytuj imprezę" : "Dodaj imprezę";
+  elements.kitchenEventFormPanel?.classList.remove("hidden");
+  elements.kitchenEventFormPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideKitchenEventForm(reset = true) {
+  if (reset) elements.kitchenEventForm?.reset();
+  elements.kitchenEventFormPanel?.classList.add("hidden");
+  if (elements.kitchenEventFormTitle) elements.kitchenEventFormTitle.textContent = "Dodaj imprezę";
+}
+
+function showKitchenItemForm(eventId, itemId = "") {
+  if (!canCorrect()) return;
+  const form = elements.kitchenItemForm;
+  const event = state.kitchenEvents.find((entry) => entry.id === eventId);
+  if (!form || !event) return;
+  const item = itemId ? event.items.find((entry) => entry.id === itemId) : null;
+  form.reset();
+  form.id.value = item?.id || "";
+  form.eventId.value = eventId;
+  form.itemName.value = item?.itemName || "";
+  form.quantity.value = item?.quantity || "";
+  form.ingredients.value = item?.ingredients || "";
+  form.enoughStatus.value = item?.enoughStatus || "Nie wiadomo";
+  form.notes.value = item?.notes || "";
+  elements.kitchenItemFormTitle.textContent = item ? "Edytuj potrawę" : "Dodaj potrawę";
+  elements.kitchenItemFormPanel?.classList.remove("hidden");
+  elements.kitchenItemFormPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideKitchenItemForm(reset = true) {
+  if (reset) elements.kitchenItemForm?.reset();
+  elements.kitchenItemFormPanel?.classList.add("hidden");
+  if (elements.kitchenItemFormTitle) elements.kitchenItemFormTitle.textContent = "Dodaj potrawę";
+}
+
+async function deleteKitchenEvent(id) {
+  if (!canCorrect()) return;
+  const event = state.kitchenEvents.find((entry) => entry.id === id);
+  if (!event) return;
+  const confirmed = confirm(`Usunąć imprezę: ${event.name}? Usunięte zostaną też jej potrawy.`);
+  if (!confirmed) return;
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("kitchen_events").delete().eq("id", id);
+    if (error) {
+      alert(`Nie udało się usunąć imprezy w Supabase: ${error.message}`);
+      return;
+    }
+    await logActivity("Kulinarne wspomnienia", "Usunięcie imprezy kulinarnej", { summary: event.name });
+    if (selectedKitchenEventId === id) selectedKitchenEventId = "";
+    await refreshSupabaseData();
+    showToast("Usunięto imprezę");
+    return;
+  }
+  state.kitchenEvents = state.kitchenEvents.filter((entry) => entry.id !== id);
+  if (selectedKitchenEventId === id) selectedKitchenEventId = "";
+  saveState();
+  renderKitchen();
+  logActivity("Kulinarne wspomnienia", "Usunięcie imprezy kulinarnej", { summary: event.name });
+  showToast("Usunięto imprezę");
+}
+
+async function deleteKitchenItem(eventId, itemId) {
+  if (!canCorrect()) return;
+  const event = state.kitchenEvents.find((entry) => entry.id === eventId);
+  const item = event?.items.find((entry) => entry.id === itemId);
+  if (!event || !item) return;
+  const confirmed = confirm(`Usunąć potrawę: ${item.itemName}?`);
+  if (!confirmed) return;
+  if (supabaseClient && currentRole) {
+    const { error } = await supabaseClient.from("kitchen_event_items").delete().eq("id", itemId);
+    if (error) {
+      alert(`Nie udało się usunąć potrawy w Supabase: ${error.message}`);
+      return;
+    }
+    await logActivity("Kulinarne wspomnienia", "Usunięcie potrawy", { summary: `${event.name} - ${item.itemName}` });
+    await refreshSupabaseData();
+    selectedKitchenEventId = eventId;
+    renderKitchenDetails();
+    showToast("Usunięto potrawę");
+    return;
+  }
+  event.items = event.items.filter((entry) => entry.id !== itemId);
+  saveState();
+  renderKitchenDetails();
+  logActivity("Kulinarne wspomnienia", "Usunięcie potrawy", { summary: `${event.name} - ${item.itemName}` });
+  showToast("Usunięto potrawę");
+}
+
+function printKitchenEvent(id) {
+  const event = state.kitchenEvents.find((entry) => entry.id === id);
+  if (!event) return;
+  elements.printSheet.innerHTML = kitchenPrintHtml(event);
+  window.print();
+}
+
+function kitchenPrintHtml(event) {
+  const items = event.items || [];
+  return `
+    <div class="kitchen-print-document">
+      <h1>KGiGW we Włosani</h1>
+      <h2>Kulinarne wspomnienia</h2>
+      <p><strong>Impreza:</strong> ${escapeHtml(event.name || "Impreza")}</p>
+      <p><strong>Data:</strong> ${formatDate(event.date)} &nbsp; <strong>Miejsce:</strong> ${escapeHtml(event.place || "Brak miejsca")}</p>
+      ${event.notes ? `<p><strong>Uwagi ogólne:</strong> ${escapeHtml(event.notes)}</p>` : ""}
+      <table>
+        <thead>
+          <tr>
+            <th>Lp.</th>
+            <th>Potrawa / produkt</th>
+            <th>Ilość</th>
+            <th>Składniki</th>
+            <th>Czy wystarczyło</th>
+            <th>Uwagi na przyszłość</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.length ? items.map((item, index) => `
+            <tr>
+              <td>${index + 1}</td>
+              <td>${escapeHtml(item.itemName || "")}</td>
+              <td>${escapeHtml(item.quantity || "")}</td>
+              <td>${escapeHtml(item.ingredients || "")}</td>
+              <td>${escapeHtml(item.enoughStatus || "Nie wiadomo")}</td>
+              <td>${escapeHtml(item.notes || "")}</td>
+            </tr>
+          `).join("") : '<tr><td colspan="6">Brak potraw w tej imprezie.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 function renderRentals() {

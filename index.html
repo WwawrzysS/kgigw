@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260602-03" />
+    <link rel="stylesheet" href="styles.css?v=20260602-04" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -39,6 +39,7 @@
         <button class="nav-item" data-view="money">Finanse</button>
         <button class="nav-item" data-view="funding">Źródła finansowania</button>
         <button class="nav-item" data-view="events">Wydarzenia</button>
+        <button class="nav-item" data-view="kitchen">Kulinarne wspomnienia</button>
         <button class="nav-item nav-parent" data-view="rentals" data-subnav="rentalsSubnav">Wypożyczalnia</button>
         <div id="rentalsSubnav" class="nav-submenu">
           <button class="nav-subitem" data-view="rentals" data-rental-tab="new">Nowe wypożyczenie</button>
@@ -350,6 +351,96 @@
               <button id="clearEventFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
             </div>
             <div id="eventsList" class="table event-list-scroll"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="kitchen" class="view">
+        <div class="kitchen-shell">
+          <section id="kitchenListPanel" class="panel kitchen-list-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Kulinarne wspomnienia</h2>
+                <small>Kalendarium potraw, ilości i uwag z wydarzeń koła.</small>
+              </div>
+              <button id="addKitchenEventButton" class="small-button" type="button">Dodaj imprezę</button>
+            </div>
+            <div class="kitchen-controls">
+              <input id="kitchenSearch" type="search" placeholder="Szukaj imprezy, potrawy lub składnika..." />
+            </div>
+            <div id="kitchenEventsList" class="kitchen-events-list"></div>
+          </section>
+
+          <section id="kitchenEventFormPanel" class="panel kitchen-form-panel hidden">
+            <div class="panel-head">
+              <h2 id="kitchenEventFormTitle">Dodaj imprezę</h2>
+            </div>
+            <form id="kitchenEventForm" class="kitchen-form">
+              <input name="id" type="hidden" />
+              <label>
+                Nazwa imprezy
+                <input name="name" required placeholder="Nazwa imprezy" />
+              </label>
+              <label>
+                Data
+                <input name="date" type="date" />
+              </label>
+              <label>
+                Miejsce
+                <input name="place" placeholder="Miejsce" />
+              </label>
+              <label>
+                Uwagi ogólne
+                <textarea name="notes" placeholder="Uwagi ogólne"></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="submit">Zapisz imprezę</button>
+                <button id="cancelKitchenEvent" class="small-button" type="button">Anuluj</button>
+              </div>
+            </form>
+          </section>
+
+          <section id="kitchenDetailsPanel" class="panel kitchen-details-panel hidden">
+            <div id="kitchenDetails" class="kitchen-details"></div>
+          </section>
+
+          <section id="kitchenItemFormPanel" class="panel kitchen-form-panel hidden">
+            <div class="panel-head">
+              <h2 id="kitchenItemFormTitle">Dodaj potrawę</h2>
+            </div>
+            <form id="kitchenItemForm" class="kitchen-form">
+              <input name="id" type="hidden" />
+              <input name="eventId" type="hidden" />
+              <label>
+                Nazwa potrawy / produktu
+                <input name="itemName" required placeholder="Nazwa potrawy / produktu" />
+              </label>
+              <label>
+                Ilość
+                <input name="quantity" placeholder="np. 100 szt., 20 l, 5 blach" />
+              </label>
+              <label>
+                Wykonane z / składniki
+                <textarea name="ingredients" placeholder="Wykonane z / składniki"></textarea>
+              </label>
+              <label>
+                Czy wystarczyło
+                <select name="enoughStatus">
+                  <option>Tak</option>
+                  <option>Za mało</option>
+                  <option>Za dużo</option>
+                  <option>Nie wiadomo</option>
+                </select>
+              </label>
+              <label>
+                Uwagi na przyszłość
+                <textarea name="notes" placeholder="Uwagi na przyszłość"></textarea>
+              </label>
+              <div class="form-actions">
+                <button type="submit">Zapisz potrawę</button>
+                <button id="cancelKitchenItem" class="small-button" type="button">Anuluj</button>
+              </div>
+            </form>
           </section>
         </div>
       </section>
@@ -872,7 +963,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.02-03</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.02-04</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1030,6 +1121,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260602-03"></script>
+    <script src="app.js?v=20260602-04"></script>
   </body>
 </html>
