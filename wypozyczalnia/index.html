@@ -1015,8 +1015,11 @@
     }
 
     function historyStatus(loan) {
-      if (isActiveRental(loan) && loan.date_to < today()) return { key: "overdue", label: "Wypożyczone", className: "rental-active" };
-      if (isActiveRental(loan)) return { key: "active", label: "Wypożyczone", className: "rental-active" };
+      if (isActiveRental(loan) && loan.date_to < today()) {
+        const daysLate = Math.max(1, lateReturnDays(loan.date_to, today()));
+        return { key: "overdue", label: `Po terminie: ${daysLate} ${daysLate === 1 ? "dzień" : "dni"}`, className: "warn" };
+      }
+      if (isActiveRental(loan)) return { key: "active", label: "W terminie", className: "" };
       if (returnedWithIssues(loan)) return { key: "returned", label: "Zwrócone uszkodzone", className: "rental-damaged" };
       return { key: "returned", label: "Zwrócone", className: "rental-ok" };
     }
