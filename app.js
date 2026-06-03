@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.03-01";
+const APP_VERSION = "2026.06.03-02";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -3860,7 +3860,13 @@ function rentalHistoryRow(loan) {
 
 function rentalLifecycleStatus(loan) {
   if (loan.status !== "Zwrócone" && !loan.returnedAt) {
-    return { label: "Wypożyczone", className: "rental-active" };
+    const plannedDate = parseDateOnly(loan.dateTo);
+    const todayDate = parseDateOnly(new Date().toISOString().slice(0, 10));
+    if (!plannedDate || !todayDate || plannedDate >= todayDate) {
+      return { label: "W terminie", className: "return-on-time" };
+    }
+    const daysLate = Math.max(1, Math.round((todayDate - plannedDate) / 86400000));
+    return { label: `Po terminie: ${daysLate} ${daysLate === 1 ? "dzień" : "dni"}`, className: "return-overdue" };
   }
   if (rentalReturnedWithIssues(loan)) {
     return { label: "Zwrócone uszkodzone", className: "rental-damaged" };
