@@ -573,6 +573,13 @@
     const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
     const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
     const rentalDays = (from, to) => Math.max(1, Math.ceil((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000) + 1);
+    const lateReturnDays = (plannedTo, returnedAt) => {
+      if (!plannedTo || !returnedAt) return 0;
+      const planned = new Date(`${plannedTo}T12:00:00`);
+      const returned = new Date(`${returnedAt}T12:00:00`);
+      if (Number.isNaN(planned.getTime()) || Number.isNaN(returned.getTime()) || returned <= planned) return 0;
+      return Math.ceil((returned - planned) / 86400000);
+    };
 
     document.querySelector("#loanForm input[name='dateFrom']").value = today();
     document.querySelector("#loanForm input[name='dateTo']").value = today();
@@ -1038,10 +1045,16 @@
       const damage = Number(loan.damage_cost || 0);
       const safeDamage = Number.isFinite(damage) && damage > 0 ? damage : 0;
       const isReturned = Boolean(loan.returned_at) || !isActiveRental(loan);
+      const actualReturnDate = loan.returned_at || (isReturned ? today() : "");
+      const lateDays = isReturned ? lateReturnDays(loan.date_to, actualReturnDate) : 0;
+      const lateFee = lateDays * totals.perDay;
       return {
         rentalCost: totals.total,
+        plannedCost: totals.total,
+        lateDays,
+        lateFee,
         damage: safeDamage,
-        total: totals.total + safeDamage,
+        total: totals.total + lateFee + safeDamage,
         isReturned
       };
     }
@@ -1052,10 +1065,28 @@
       const totalText = settlement.isReturned ? money(settlement.total) : money(settlement.rentalCost);
       return `<section class="settlement-box">
         <strong>Rozliczenie:</strong>
-        <div class="settlement-row"><span>Koszt wypożyczenia:</span><span>${money(settlement.rentalCost)}</span></div>
+        <div class="settlement-row"><span>Koszt za planowany okres:</span><span>${money(settlement.plannedCost)}</span></div>
+        <div class="settlement-row"><span>Dodatkowe doby po terminie:</span><span>${settlement.lateDays}</span></div>
+        <div class="settlement-row"><span>Dopłata za opóźnienie:</span><span>${money(settlement.lateFee)}</span></div>
         <div class="settlement-row"><span>Dopłata za braki/uszkodzenia:</span><span>${damageText}</span></div>
         <div class="settlement-row total"><span>Razem do rozliczenia:</span><span>${totalText}</span></div>
       </section>`;
+    }
+
+    function returnDelayInfoHtml(loan, returnedAt) {
+      const settlement = settlementTotals({ ...loan, returned_at: returnedAt });
+      return `
+        <strong>Rozliczenie opóźnienia:</strong>
+        <div class="settlement-row"><span>Dodatkowe doby po terminie:</span><span>${settlement.lateDays}</span></div>
+        <div class="settlement-row"><span>Dopłata za opóźnienie:</span><span>${money(settlement.lateFee)}</span></div>
+      `;
+    }
+
+    function updateReturnDelayInfo(id) {
+      const loan = state.rentals.find((item) => item.id === id);
+      const target = document.querySelector(`#returnDelayInfo-${id}`);
+      const returnedAt = document.querySelector(`#returnedAt-${id}`)?.value || today();
+      if (loan && target) target.innerHTML = returnDelayInfoHtml(loan, returnedAt);
     }
 
     function parseReturnNotesForDisplay(notes) {
@@ -1117,6 +1148,7 @@
         days: totals.days,
         total: totals.total,
         total_per_day: totals.perDay,
+        settlement: settlementTotals(loan),
         rental_lines: (loan.rental_lines || []).map((line) => enrichLineWithReplacementValue(line)),
         return_condition: forReturn ? returnConditionFromNotes(loan.return_notes) : "ok"
       };
@@ -1195,18 +1227,21 @@
         </article>`;
       }).join("");
       const missingReplacementWarning = (loan.rental_lines || []).some((line) => Number(enrichLineWithReplacementValue(line).replacement_value || 0) <= 0);
+      const initialSettlement = settlementTotals({ ...loan, returned_at: today() });
       document.querySelector("#returnControlContent").innerHTML = `
         <p><strong>Zwraca:</strong> ${escapeHtml(person(loan))}<br>
         ${loan.phone ? `<strong>Telefon:</strong> ${escapeHtml(loan.phone)}<br>` : ""}
         <strong>Data wypożyczenia:</strong> ${formatDate(loan.date_from)}<br>
         <strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
         <strong>Liczba dób:</strong> ${escapeHtml(totals.days)}<br>
-        <strong>Kwota wypożyczenia:</strong> ${money(totals.total)}</p>
+        <strong>Kwota wypożyczenia:</strong> ${money(totals.total)}<br>
+        <strong>Status zwrotu:</strong> ${initialSettlement.lateDays > 0 ? `Po terminie: ${initialSettlement.lateDays} ${initialSettlement.lateDays === 1 ? "dzień" : "dni"} - dopłata ${money(initialSettlement.lateFee)}` : "W terminie"}</p>
         <h3>Sprzęt do zwrotu</h3>
         ${lines || "<p class='muted'>Brak pozycji do zwrotu.</p>"}
         ${missingReplacementWarning ? `<p class="readonly-note">Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna.</p>` : ""}
         <label>Data zwrotu</label>
-        <input id="returnedAt-${loan.id}" type="date" value="${today()}" />
+        <input id="returnedAt-${loan.id}" type="date" value="${today()}" onchange="updateReturnDelayInfo('${loan.id}')" />
+        <div id="returnDelayInfo-${loan.id}" class="settlement-box">${returnDelayInfoHtml(loan, today())}</div>
         <label>Stan po zwrocie</label>
         <select id="condition-${loan.id}">
           <option value="ok">OK</option>
@@ -1321,6 +1356,7 @@
       const borrowerSignature = isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego";
       const operatorSignature = isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej";
       const replacementValues = replacementValuesText(loan.rental_lines || []);
+      const settlement = settlementTotals(loan);
       const notesSection = isReturn ? returnControlSectionHtml(loan) : `
           <section>
             <h3>Uwagi</h3>
@@ -1359,7 +1395,18 @@
           ${!isReturn ? `<section>
             <h3>Oświadczenie</h3>
             <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
+            <p>W przypadku zwrotu sprzętu po ustalonym terminie może zostać naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.</p>
             <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
+          </section>` : ""}
+          ${isReturn ? `<section>
+            <h3>Rozliczenie zwrotu</h3>
+            <p><strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
+            <strong>Rzeczywista data zwrotu:</strong> ${formatDate(loan.returned_at)}<br>
+            <strong>Koszt za planowany okres:</strong> ${money(settlement.plannedCost)}<br>
+            <strong>Dodatkowe doby po terminie:</strong> ${settlement.lateDays}<br>
+            <strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}<br>
+            <strong>Dopłata za braki/uszkodzenia:</strong> ${money(settlement.damage)}<br>
+            <strong>Razem do rozliczenia:</strong> ${money(settlement.total)}</p>
           </section>` : ""}
           ${notesSection}
           <section class="print-signatures">

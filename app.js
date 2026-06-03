@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.02-04";
+const APP_VERSION = "2026.06.03-01";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -3846,6 +3846,7 @@ function rentalHistoryRow(loan) {
           ${loan.returnNotes ? `<br>Uwagi zwrotu: ${escapeHtml(loan.returnNotes)}` : ""}
           <br>Faktura: ${invoice ? `wystawiona nr ${escapeHtml(invoice.number)}` : "Brak faktury"}
         </small>
+        ${loan.returnedAt ? rentalSettlementHtml(loan) : ""}
       </details>
     </div>
     <div class="row-actions">
@@ -5742,6 +5743,50 @@ function rentalDays(dateFrom, dateTo) {
   return Math.max(1, diff);
 }
 
+function rentalLateDays(dateTo, returnedAt) {
+  if (!dateTo || !returnedAt) return 0;
+  const planned = new Date(`${dateTo}T12:00:00`);
+  const returned = new Date(`${returnedAt}T12:00:00`);
+  if (Number.isNaN(planned.getTime()) || Number.isNaN(returned.getTime()) || returned <= planned) return 0;
+  return Math.ceil((returned - planned) / 86400000);
+}
+
+function rentalPerDayTotal(loan) {
+  return (loan.items || []).reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0), 0);
+}
+
+function rentalSettlementTotals(loan, returnedAt = loan.returnedAt || "") {
+  const perDay = rentalPerDayTotal(loan);
+  const plannedDays = Number(loan.days || rentalDays(loan.dateFrom, loan.dateTo) || 1);
+  const plannedCost = Number(loan.total || perDay * plannedDays || 0);
+  const lateDays = rentalLateDays(loan.dateTo, returnedAt);
+  const lateFee = lateDays * perDay;
+  const damageCost = Number(loan.damageCost || 0);
+  const damage = Number.isFinite(damageCost) && damageCost > 0 ? damageCost : 0;
+  return {
+    plannedCost,
+    perDay,
+    lateDays,
+    lateFee,
+    damage,
+    total: plannedCost + lateFee + damage
+  };
+}
+
+function rentalSettlementHtml(loan) {
+  const settlement = rentalSettlementTotals(loan);
+  return `
+    <div class="finance-summary">
+      <strong>Rozliczenie</strong>
+      <small>Koszt za planowany okres: ${money(settlement.plannedCost)}</small>
+      <small>Dodatkowe doby po terminie: ${settlement.lateDays}</small>
+      <small>Dopłata za opóźnienie: ${money(settlement.lateFee)}</small>
+      <small>Dopłata za braki/uszkodzenia: ${money(settlement.damage)}</small>
+      <small>Razem do rozliczenia: ${money(settlement.total)}</small>
+    </div>
+  `;
+}
+
 function rentalTotal(items, days) {
   return items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0) * days, 0);
 }
@@ -6159,6 +6204,7 @@ function rentalPrintHtml(loan) {
     <section style="margin-top: 8mm;">
       <h3>Oświadczenie</h3>
       <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
+      <p>W przypadku zwrotu sprzętu po ustalonym terminie może zostać naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.</p>
       <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
     </section>
     <div class="print-signatures">
@@ -6179,6 +6225,7 @@ function rentalReplacementValuesText(items = []) {
 }
 
 function returnPrintHtml(loan) {
+  const settlement = rentalSettlementTotals(loan);
   const rows = (loan.returnItems || loan.items.map((item) => ({
     name: item.name,
     issued: item.quantity,
@@ -6214,7 +6261,16 @@ function returnPrintHtml(loan) {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p><strong>Doplata za braki/uszkodzenia:</strong> ${money(loan.damageCost || 0)}</p>
+    <section>
+      <h3>Rozliczenie zwrotu</h3>
+      <p><strong>Planowany termin zwrotu:</strong> ${formatDate(loan.dateTo)}</p>
+      <p><strong>Rzeczywista data zwrotu:</strong> ${formatDate(loan.returnedAt)}</p>
+      <p><strong>Koszt za planowany okres:</strong> ${money(settlement.plannedCost)}</p>
+      <p><strong>Dodatkowe doby po terminie:</strong> ${settlement.lateDays}</p>
+      <p><strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}</p>
+      <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(settlement.damage)}</p>
+      <p><strong>Razem do rozliczenia:</strong> ${money(settlement.total)}</p>
+    </section>
     <p><strong>Uwagi do zwrotu:</strong> ${escapeHtml(loan.returnNotes || "Brak")}</p>
     <div class="print-signatures">
       <div class="signature-line">Podpis zwracajacego</div>
