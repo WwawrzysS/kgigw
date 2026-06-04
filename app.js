@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-05";
+const APP_VERSION = "2026.06.04-20";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -222,7 +222,6 @@ const elements = {
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
   docTabs: document.querySelectorAll("[data-doc-tab]"),
   docPanels: document.querySelectorAll("[data-doc-panel]"),
-  infoTabs: document.querySelectorAll("[data-info-tab]"),
   infoPanels: document.querySelectorAll("[data-info-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
@@ -441,6 +440,7 @@ elements.navSubitems.forEach((button) => {
     switchView(button.dataset.view);
     if (button.dataset.rentalTab) switchRentalTab(button.dataset.rentalTab);
     if (button.dataset.docTab) switchDocTab(button.dataset.docTab);
+    if (button.dataset.infoTab) switchInfoTab(button.dataset.infoTab);
     closeMobileMenu();
   });
 });
@@ -451,10 +451,6 @@ elements.rentalSubtabs.forEach((button) => {
 
 elements.docTabs.forEach((button) => {
   button.addEventListener("click", () => switchDocTab(button.dataset.docTab));
-});
-
-elements.infoTabs.forEach((button) => {
-  button.addEventListener("click", () => switchInfoTab(button.dataset.infoTab));
 });
 
 elements.adminTabs.forEach((button) => {
@@ -1301,7 +1297,8 @@ function switchInfoTab(tabName) {
     panel.hidden = !active;
     panel.style.display = active ? "" : "none";
   });
-  elements.infoTabs.forEach((item) => {
+  elements.navSubitems.forEach((item) => {
+    if (!item.dataset.infoTab) return;
     item.classList.toggle("active", item.dataset.infoTab === tabName);
   });
 }
@@ -2440,6 +2437,7 @@ function openGlobalSearchResult(view, tab = "") {
   switchView(view);
   if (view === "rentals" && tab) switchRentalTab(tab);
   if (view === "docs" && tab) switchDocTab(tab);
+  if (view === "info" && tab) switchInfoTab(tab);
   elements.globalSearchResults?.classList.add("hidden");
 }
 

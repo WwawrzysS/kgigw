@@ -811,10 +811,6 @@ textarea {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.info-tabs {
-  grid-column: 1 / -1;
-}
-
 .info-tab-panel {
   display: none;
 }
