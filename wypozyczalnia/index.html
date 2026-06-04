@@ -169,6 +169,12 @@
       gap: 8px;
       margin-top: 12px;
     }
+    .wide-action {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      white-space: normal;
+    }
     summary {
       border-radius: 12px;
       padding: 12px 14px;
@@ -514,8 +520,8 @@
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
         <section class="return-notes-box">
           <strong>Udostępnij zapisany PDF</strong>
-          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Następnie otwórz Pobrane w telefonie, wybierz zapisany protokół i udostępnij go klientowi.</p>
-          <button type="button" onclick="openDownloadsHelp()">Otwórz Pobrane</button>
+          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Następnie otwórz w telefonie aplikację Pliki albo Pobrane, wybierz zapisany protokół i udostępnij go klientowi.</p>
+          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz aplikację Pliki / Pobrane</button>
         </section>
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
         <div id="searchResults"></div>
@@ -1104,14 +1110,7 @@
     }
 
     function openDownloadsHelp() {
-      try {
-        window.location.href = "content://com.android.providers.downloads.documents/root/downloads";
-      } catch (error) {
-        console.warn("Nie udało się otworzyć Pobranych z przeglądarki.", error);
-      }
-      setTimeout(() => {
-        showMessage("Otwórz aplikację Pliki lub Pobrane w telefonie i udostępnij zapisany PDF ręcznie.", false);
-      }, 400);
+      showMessage("Otwórz aplikację Pliki lub Pobrane w telefonie i udostępnij zapisany PDF ręcznie.", false);
     }
 
     function historyStatus(loan) {
