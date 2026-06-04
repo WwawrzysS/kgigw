@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-06";
+const APP_VERSION = "2026.06.04-07";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -6324,7 +6324,7 @@ function rentalPrintHtml(loan) {
     <section style="margin-top: 8mm;">
       <h3>Oświadczenie</h3>
       <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
-      <p>W przypadku zwrotu sprzętu po ustalonym terminie może zostać naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.</p>
+      <p>W przypadku zwrotu sprzętu po ustalonym terminie zostanie naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.</p>
       <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
     </section>
     <div class="print-signatures">
