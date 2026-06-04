@@ -12,6 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>KGiGW Wypożyczalnia Mobile</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="/kgigw/supabase-config.js"></script>
   <style>
     :root {
@@ -1009,8 +1010,10 @@
           <button class="secondary" onclick="showScreen('historyScreen')">Wstecz</button>
           <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj protokół wypożyczenia</button>
           <button class="secondary" onclick="shareProtocol('loan', '${loan.id}')">Udostępnij protokół wypożyczenia</button>
+          <button class="secondary" onclick="shareProtocolPdf('loan', '${loan.id}')">Udostępnij protokół wypożyczenia PDF</button>
           ${loan.returned_at ? `<button class="secondary" onclick="printProtocol('return', prepareProtocolLoan('${loan.id}', true))">Drukuj protokół zwrotu</button>` : ""}
           ${loan.returned_at ? `<button class="secondary" onclick="shareProtocol('return', '${loan.id}')">Udostępnij protokół zwrotu</button>` : ""}
+          ${loan.returned_at ? `<button class="secondary" onclick="shareProtocolPdf('return', '${loan.id}')">Udostępnij protokół zwrotu PDF</button>` : ""}
         </div>
         <div id="shareFallbackText"></div>
       `;
@@ -1096,6 +1099,152 @@
         `Uwagi: ${loan.notes || "Brak uwag."}`,
         "Pełny protokół można zapisać jako PDF przez opcję Drukuj."
       ].join("\n");
+    }
+
+    async function shareProtocolPdf(type, id) {
+      const loan = prepareProtocolLoan(id, type === "return");
+      if (!loan.id) return showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+      if (!window.jspdf?.jsPDF) return showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+      showMessage("Tworzę PDF...", false);
+      try {
+        const pdfBlob = buildProtocolPdfBlob(type, loan);
+        const filename = protocolPdfFilename(type, loan);
+        const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+        if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: [pdfFile] })) {
+          showMessage("Ten telefon nie obsługuje udostępniania plików PDF z przeglądarki. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+          return;
+        }
+        showMessage("Otwieram udostępnianie telefonu...", false);
+        await navigator.share({
+          title: type === "return" ? "Protokół zwrotu KGiGW" : "Protokół wypożyczenia KGiGW",
+          text: type === "return" ? "Protokół zwrotu sprzętu KGiGW we Włosani" : "Protokół wypożyczenia sprzętu KGiGW we Włosani",
+          files: [pdfFile]
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.warn("Nie udało się udostępnić PDF.", error);
+        showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+      }
+    }
+
+    function buildProtocolPdfBlob(type, loan) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "mm", format: "a4" });
+      const page = { width: 210, height: 297, margin: 14 };
+      let y = 16;
+      const lineHeight = 6;
+      const addText = (text, options = {}) => {
+        const size = options.size || 10;
+        doc.setFont("helvetica", options.bold ? "bold" : "normal");
+        doc.setFontSize(size);
+        const lines = doc.splitTextToSize(String(text || ""), page.width - page.margin * 2);
+        lines.forEach((line) => {
+          if (y > page.height - page.margin) {
+            doc.addPage();
+            y = page.margin;
+          }
+          doc.text(line, page.margin, y);
+          y += lineHeight;
+        });
+        if (options.gap) y += options.gap;
+      };
+      const addSection = (title) => {
+        y += 2;
+        addText(title, { bold: true, size: 12, gap: 1 });
+      };
+      const isReturn = type === "return";
+      const title = isReturn ? "Protokół zwrotu sprzętu" : "Protokół wypożyczenia sprzętu";
+      const settlement = settlementTotals(loan);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("KGiGW we Włosani", page.width / 2, y, { align: "center" });
+      y += 8;
+      doc.setFontSize(14);
+      doc.text(title, page.width / 2, y, { align: "center" });
+      y += 10;
+
+      addSection("Dane");
+      addText(`Numer/ID: ${loan.id || "brak"}`);
+      addText(`Data wygenerowania: ${formatDate(today())}`);
+      addText(`Wypożyczający: ${person(loan)}`);
+      addText(`Data wypożyczenia: ${formatDate(loan.date_from)}`);
+      addText(`Planowany termin zwrotu: ${formatDate(loan.date_to)}`);
+      if (isReturn) addText(`Data zwrotu: ${formatDate(loan.returned_at)}`);
+      addText(`${isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca"}: ${state.profile?.display_name || "Użytkownik"}`, { gap: 2 });
+
+      addSection("Sprzęt");
+      (loan.rental_lines || []).forEach((line) => {
+        const quantity = Number(line.quantity || 0);
+        const price = Number(line.price_per_day || 0);
+        const value = quantity * price;
+        if (isReturn) {
+          const returned = line.returned === null || line.returned === undefined ? quantity : Number(line.returned || 0);
+          addText(`- ${line.item_name || "Sprzęt"} | wydano: ${quantity} szt. | zwrócono: ${returned} szt.`);
+        } else {
+          addText(`- ${line.item_name || "Sprzęt"} | ilość: ${quantity} | cena za dobę: ${money(price)} | wartość za dobę: ${money(value)}`);
+        }
+      });
+      if (!(loan.rental_lines || []).length) addText("- Brak pozycji.");
+
+      if (!isReturn) {
+        addSection("Kwoty");
+        addText(`Razem za dobę: ${money(loan.total_per_day || 0)}`);
+        addText(`Liczba dób: ${loan.days || 1}`);
+        addText(`Razem za okres: ${money(loan.total || 0)}`);
+        addSection("Oświadczenie");
+        addText("Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.");
+        addText("W przypadku zwrotu sprzętu po ustalonym terminie zostanie naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.");
+        addText(`Wartości odtworzeniowe wypożyczonego sprzętu: ${replacementValuesPlainText(loan.rental_lines || [])}`);
+        addSection("Uwagi");
+        addText(loan.notes || "Brak uwag.");
+      } else {
+        addSection("Rozliczenie zwrotu");
+        addText(`Koszt za planowany okres: ${money(settlement.plannedCost)}`);
+        addText(`Dodatkowe doby po terminie: ${settlement.lateDays}`);
+        addText(`Dopłata za opóźnienie: ${money(settlement.lateFee)}`);
+        addText(`Dopłata za braki/uszkodzenia: ${money(settlement.damage)}`);
+        addText(`Razem do rozliczenia: ${money(settlement.total)}`);
+        addSection("Kontrola zwrotu");
+        const parsed = parseReturnNotesForDisplay(loan.return_notes);
+        const notes = parsed.userNotes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
+        const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
+        addText("Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.");
+        addText(`Stan po zwrocie: ${condition}`);
+        addText(`Uwagi po zwrocie: ${notes}`);
+      }
+
+      y += 12;
+      if (y > page.height - 38) {
+        doc.addPage();
+        y = page.margin + 8;
+      }
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.line(page.margin, y, page.margin + 70, y);
+      doc.line(page.width - page.margin - 70, y, page.width - page.margin, y);
+      y += 6;
+      doc.text(isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego", page.margin + 35, y, { align: "center" });
+      doc.text(isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej", page.width - page.margin - 35, y, { align: "center" });
+      return doc.output("blob");
+    }
+
+    function protocolPdfFilename(type, loan) {
+      const prefix = type === "return" ? "protokol-zwrotu-KGiGW" : "protokol-wypozyczenia-KGiGW";
+      const name = sanitizeFilePart(person(loan));
+      const date = sanitizeFilePart((type === "return" ? loan.returned_at : loan.date_from) || today());
+      return `${prefix}-${name}-${date}.pdf`;
+    }
+
+    function sanitizeFilePart(value) {
+      return String(value || "brak")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ł/g, "l")
+        .replace(/Ł/g, "L")
+        .replace(/[^a-zA-Z0-9-]+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase() || "brak";
     }
 
     function historyStatus(loan) {
