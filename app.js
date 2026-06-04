@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-17";
+const APP_VERSION = "2026.06.04-18";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -15,12 +15,12 @@ const ACCOUNT_EMAILS = {
 };
 const ORGANIZATION = {
   name: "Koło Gospodyń i Gospodarzy Wiejskich we Włosani",
-  street: "Królowej Polski 49",
+  street: "ul. Kamienna 2",
   city: "32-031 Włosań",
-  nip: "0000000000",
+  nip: "9442293245",
+  regon: "540913923",
   logo: "KGiGW.jpg"
 };
-const organizationNipText = () => ORGANIZATION.nip === "0000000000" ? "do uzupełnienia" : ORGANIZATION.nip;
 const STAND_INVOICE_URL = "https://wwawrzyss.github.io/kgigw/stoisko/";
 const STAND_INVOICE_DEFAULTS = {
   enabled: false,
@@ -6641,7 +6641,7 @@ function organizationHeaderHtml() {
   return `
     <img class="print-logo" src="${escapeHtml(ORGANIZATION.logo)}" alt="Logo KGiGW">
     <h1>${escapeHtml(ORGANIZATION.name)}</h1>
-    <p>${escapeHtml(ORGANIZATION.street)}<br>${escapeHtml(ORGANIZATION.city)}</p>
+    <p>${escapeHtml(ORGANIZATION.street)}<br>${escapeHtml(ORGANIZATION.city)}<br>NIP: ${escapeHtml(ORGANIZATION.nip)} · REGON: ${escapeHtml(ORGANIZATION.regon)}</p>
   `;
 }
 
@@ -6693,7 +6693,8 @@ function invoicePrintHtml(invoice) {
             ${escapeHtml(ORGANIZATION.name)}<br>
             ${escapeHtml(ORGANIZATION.street)}<br>
             ${escapeHtml(ORGANIZATION.city)}<br>
-            NIP: ${escapeHtml(organizationNipText())}
+            NIP: ${escapeHtml(ORGANIZATION.nip)}<br>
+            REGON: ${escapeHtml(ORGANIZATION.regon)}
           </td>
           <td>
             ${escapeHtml(invoice.buyerName)}<br>

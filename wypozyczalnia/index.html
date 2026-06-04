@@ -571,6 +571,13 @@
       agata: "agatawawrzynek@go2.pl",
       tomek: "tomasztynski@gmail.com"
     };
+    const ORGANIZATION = {
+      name: "Koło Gospodyń i Gospodarzy Wiejskich we Włosani",
+      street: "ul. Kamienna 2",
+      city: "32-031 Włosań",
+      nip: "9442293245",
+      regon: "540913923"
+    };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
     const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
@@ -1083,7 +1090,9 @@
         const notes = parsed.userNotes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
         const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
         return [
-          "KGiGW we Włosani",
+          ORGANIZATION.name,
+          `${ORGANIZATION.street}, ${ORGANIZATION.city}`,
+          `NIP: ${ORGANIZATION.nip} · REGON: ${ORGANIZATION.regon}`,
           "Protokół zwrotu sprzętu",
           `Wypożyczający: ${person(loan)}`,
           `Data wypożyczenia: ${formatDate(loan.date_from)}`,
@@ -1100,7 +1109,9 @@
         ].join("\n");
       }
       return [
-        "KGiGW we Włosani",
+        ORGANIZATION.name,
+        `${ORGANIZATION.street}, ${ORGANIZATION.city}`,
+        `NIP: ${ORGANIZATION.nip} · REGON: ${ORGANIZATION.regon}`,
         "Protokół wypożyczenia sprzętu",
         `Wypożyczający: ${person(loan)}`,
         `Data wypożyczenia: ${formatDate(loan.date_from)}`,
@@ -1468,7 +1479,8 @@
       return `
         <article class="print-document">
           <header class="print-header">
-            <h1>KGiGW we Włosani</h1>
+            <h1>${escapeHtml(ORGANIZATION.name)}</h1>
+            <p>${escapeHtml(ORGANIZATION.street)}, ${escapeHtml(ORGANIZATION.city)}<br>NIP: ${escapeHtml(ORGANIZATION.nip)} · REGON: ${escapeHtml(ORGANIZATION.regon)}</p>
             <h2>${title}</h2>
           </header>
           <section class="print-grid">
