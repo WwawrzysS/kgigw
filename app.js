@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.03-02";
+const APP_VERSION = "2026.06.04-04";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -123,6 +123,9 @@ const elements = {
   unpaidInvoicesList: document.querySelector("#unpaidInvoicesList"),
   lateFees: document.querySelector("#lateFees"),
   rentalCount: document.querySelector("#rentalCount"),
+  dashboardTodayTitle: document.querySelector("#dashboardTodayTitle"),
+  dashboardTodaySummary: document.querySelector("#dashboardTodaySummary"),
+  dashboardFocus: document.querySelector("#dashboardFocus"),
   recentMoney: document.querySelector("#recentMoney"),
   upcomingEvents: document.querySelector("#upcomingEvents"),
   membersList: document.querySelector("#membersList"),
@@ -183,6 +186,8 @@ const elements = {
   kitchenListPanel: document.querySelector("#kitchenListPanel"),
   kitchenEventsList: document.querySelector("#kitchenEventsList"),
   kitchenSearch: document.querySelector("#kitchenSearch"),
+  kitchenSort: document.querySelector("#kitchenSort"),
+  clearKitchenFilters: document.querySelector("#clearKitchenFilters"),
   addKitchenEventButton: document.querySelector("#addKitchenEventButton"),
   kitchenEventFormPanel: document.querySelector("#kitchenEventFormPanel"),
   kitchenEventForm: document.querySelector("#kitchenEventForm"),
@@ -334,6 +339,8 @@ elements.eventSort?.addEventListener("change", renderEvents);
 elements.clearEventFilters?.addEventListener("click", clearEventFilters);
 elements.addKitchenEventButton?.addEventListener("click", () => showKitchenEventForm());
 elements.kitchenSearch?.addEventListener("input", renderKitchen);
+elements.kitchenSort?.addEventListener("change", renderKitchen);
+elements.clearKitchenFilters?.addEventListener("click", clearKitchenFilters);
 elements.kitchenEventForm?.addEventListener("submit", handleKitchenEvent);
 elements.cancelKitchenEvent?.addEventListener("click", hideKitchenEventForm);
 elements.kitchenItemForm?.addEventListener("submit", handleKitchenItem);
@@ -2612,12 +2619,81 @@ function renderDashboard() {
   setupLateFeeDashboardRotation(lateFeeRows, lateFees);
   renderActiveRentalDashboardLine(activeRentals);
   setupActiveRentalDashboardRotation(activeRentals);
+  renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoices, unpaidInvoicesTotal, balance);
 
   const recent = [...state.money].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  elements.recentMoney.innerHTML = recent.length ? recent.map(moneyRow).join("") : "Brak wpisów.";
+  elements.recentMoney.innerHTML = recent.length ? recent.map(moneyRow).join("") : `<div class="dashboard-empty-state"><strong>Brak wpisów</strong><small>Po dodaniu pierwszej operacji zobaczysz ją tutaj.</small></div>`;
 
   const upcoming = [...state.events].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
-  elements.upcomingEvents.innerHTML = upcoming.length ? upcoming.map(eventRow).join("") : "Brak wydarzeń.";
+  elements.upcomingEvents.innerHTML = upcoming.length ? upcoming.map(eventRow).join("") : `<div class="dashboard-empty-state"><strong>Brak zaplanowanych wydarzeń</strong><small>Dodaj wydarzenie, aby pojawiło się na pulpicie.</small></div>`;
+}
+
+function renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoices, unpaidInvoicesTotal, balance) {
+  if (!elements.dashboardFocus) return;
+
+  const standInvoiceRequests = (state.invoiceRequests || []).filter((item) => {
+    const status = String(item.status || '').toLowerCase();
+    return !status || status === 'do wystawienia' || status === 'w trakcie' || status === 'zgłoszenie';
+  });
+  const nextEvent = [...state.events].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))[0] || null;
+
+  const focusItems = [
+    {
+      kind: lateFeeRows.length ? 'danger' : 'ok',
+      title: lateFeeRows.length ? `Zaległe składki: ${lateFeeRows.length} osób` : 'Składki są pod kontrolą',
+      detail: lateFeeRows.length ? `Łączna zaległość na dziś: ${money(lateFees)}.` : 'Obecnie brak osób z zaległością na dziś.'
+    },
+    {
+      kind: unpaidInvoices.length ? 'warning' : 'ok',
+      title: unpaidInvoices.length ? `Nieopłacone faktury: ${unpaidInvoices.length}` : 'Brak nieopłaconych faktur',
+      detail: unpaidInvoices.length ? `Do rozliczenia pozostało ${money(unpaidInvoicesTotal)}.` : 'Wszystkie faktury są obecnie opłacone.'
+    },
+    {
+      kind: activeRentals.length ? 'info' : 'ok',
+      title: activeRentals.length ? `Aktywne wypożyczenia: ${activeRentals.length}` : 'Brak aktywnych wypożyczeń',
+      detail: activeRentals.length ? `Aktualnie aktywne wypożyczenia wymagają kontroli terminów.` : 'Magazyn jest obecnie wolny od aktywnych wypożyczeń.'
+    },
+    {
+      kind: standInvoiceRequests.length ? 'warning' : 'ok',
+      title: standInvoiceRequests.length ? `Zgłoszenia ze stoiska: ${standInvoiceRequests.length}` : 'Brak zgłoszeń ze stoiska',
+      detail: standInvoiceRequests.length ? 'Sprawdź moduł Faktury i dokończ wystawianie dokumentów.' : 'Nie ma nowych zgłoszeń oczekujących na wystawienie.'
+    },
+    {
+      kind: nextEvent ? 'info' : 'neutral',
+      title: nextEvent ? `Najbliższe wydarzenie: ${nextEvent.name}` : 'Brak najbliższego wydarzenia',
+      detail: nextEvent ? `${formatDate(nextEvent.date)} · ${nextEvent.place || 'Brak miejsca'}` : 'Dodaj wydarzenie, jeśli chcesz widzieć je na pulpicie.'
+    },
+    {
+      kind: balance < 0 ? 'danger' : 'ok',
+      title: balance < 0 ? 'Uwaga na saldo kasy' : 'Saldo kasy wygląda dobrze',
+      detail: balance < 0 ? `Stan kasy wynosi ${money(balance)}.` : `Aktualne saldo to ${money(balance)}.`
+    }
+  ];
+
+  elements.dashboardFocus.innerHTML = focusItems.map((item) => `
+    <div class="dashboard-focus-item dashboard-focus-${item.kind}">
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </div>
+  `).join('');
+
+  if (elements.dashboardTodayTitle) {
+    if (lateFeeRows.length) {
+      elements.dashboardTodayTitle.textContent = `${lateFeeRows.length} osób ma zaległości`;
+      elements.dashboardTodaySummary.textContent = `Na dziś do sprawdzenia jest ${money(lateFees)} zaległych składek.`;
+    } else if (unpaidInvoices.length) {
+      elements.dashboardTodayTitle.textContent = `${unpaidInvoices.length} faktur czeka na opłacenie`;
+      elements.dashboardTodaySummary.textContent = `Łączna kwota nieopłaconych faktur: ${money(unpaidInvoicesTotal)}.`;
+    } else if (standInvoiceRequests.length) {
+      elements.dashboardTodayTitle.textContent = `${standInvoiceRequests.length} zgłoszeń ze stoiska do sprawdzenia`;
+      elements.dashboardTodaySummary.textContent = 'W module Faktury możesz od razu dokończyć wystawienie dokumentów.';
+    } else {
+      elements.dashboardTodayTitle.textContent = 'Program gotowy do pracy';
+      elements.dashboardTodaySummary.textContent = nextEvent
+        ? `Najbliższe wydarzenie: ${nextEvent.name} — ${formatDate(nextEvent.date)}.`
+        : 'Najważniejsze moduły są gotowe do codziennej pracy.';
+    }
+  }
 }
 
 function renderMembers() {
@@ -3557,6 +3633,11 @@ function clearEventFilters() {
 function renderKitchen() {
   if (!elements.kitchenEventsList) return;
   const events = filteredKitchenEvents();
+  const allEvents = state.kitchenEvents || [];
+  const kitchenEventsCount = document.querySelector("#kitchenEventsCount");
+  const kitchenDishesCount = document.querySelector("#kitchenDishesCount");
+  if (kitchenEventsCount) kitchenEventsCount.textContent = allEvents.length;
+  if (kitchenDishesCount) kitchenDishesCount.textContent = allEvents.reduce((sum, event) => sum + (event.items || []).length, 0);
   elements.kitchenListPanel?.classList.toggle("hidden", Boolean(selectedKitchenEventId));
   elements.kitchenEventsList.innerHTML = events.length
     ? events.map(kitchenEventCard).join("")
@@ -3566,6 +3647,7 @@ function renderKitchen() {
 
 function filteredKitchenEvents() {
   const search = normalizeSearchText(elements.kitchenSearch?.value || "");
+  const sort = elements.kitchenSort?.value || "date_desc";
   return [...(state.kitchenEvents || [])]
     .filter((event) => {
       if (!search) return true;
@@ -3579,21 +3661,48 @@ function filteredKitchenEvents() {
       ];
       return values.map(normalizeSearchText).join(" ").includes(search);
     })
-    .sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")) || String(a.name || "").localeCompare(String(b.name || ""), "pl"));
+    .sort(kitchenSortComparator(sort));
+}
+
+function kitchenSortComparator(sort) {
+  const byDate = (a, b) => String(a.date || a.createdAt || "").localeCompare(String(b.date || b.createdAt || ""));
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pl");
+  const byPlace = (a, b) => String(a.place || "").localeCompare(String(b.place || ""), "pl") || byName(a, b);
+  if (sort === "date_asc") return byDate;
+  if (sort === "name_asc") return byName;
+  if (sort === "name_desc") return (a, b) => byName(b, a);
+  if (sort === "place_asc") return byPlace;
+  return (a, b) => byDate(b, a) || byName(a, b);
+}
+
+function clearKitchenFilters() {
+  if (elements.kitchenSearch) elements.kitchenSearch.value = "";
+  if (elements.kitchenSort) elements.kitchenSort.value = "date_desc";
+  renderKitchen();
 }
 
 function kitchenEventCard(event) {
+  const items = event.items || [];
+  const hasNotes = Boolean(String(event.notes || "").trim());
   return `
     <article class="kitchen-event-card">
+      <div class="kitchen-event-date-block">
+        <strong>${formatDate(event.date)}</strong>
+        <small>${escapeHtml(event.place || "Brak miejsca")}</small>
+      </div>
       <div class="kitchen-event-main">
+        <p class="kitchen-card-eyebrow">Impreza kulinarna</p>
         <strong>${escapeHtml(event.name || "Impreza bez nazwy")}</strong>
-        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")}</small>
-        <p>${escapeHtml(kitchenItemsSummary(event.items))}</p>
+        <div class="kitchen-event-badges">
+          <span>🍲 Potrawy: ${items.length}</span>
+          ${hasNotes ? "<span>📝 Uwagi: są</span>" : "<span>📝 Uwagi: brak</span>"}
+        </div>
+        <p class="kitchen-items-preview">${escapeHtml(kitchenItemsSummary(items))}</p>
       </div>
       <div class="kitchen-card-actions">
-        <button class="small-button" type="button" onclick="openKitchenEvent('${event.id}')">Otwórz</button>
-        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj</button>` : ""}
-        <button class="small-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj</button>
+        <button class="small-button kitchen-open-button" type="button" onclick="openKitchenEvent('${event.id}')">Otwórz</button>
+        ${canCorrect() ? `<button class="small-button secondary-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj</button>` : ""}
+        <button class="small-button secondary-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj</button>
         ${canCorrect() ? `<button class="delete-button" type="button" onclick="deleteKitchenEvent('${event.id}')">Usuń</button>` : ""}
       </div>
     </article>
@@ -3630,19 +3739,24 @@ function renderKitchenDetails() {
     return;
   }
   elements.kitchenDetails.innerHTML = `
-    <div class="kitchen-details-head">
+    <div class="kitchen-details-head kitchen-details-hero">
       <div>
+        <p class="eyebrow">Szczegóły imprezy</p>
         <h2>${escapeHtml(event.name || "Impreza")}</h2>
-        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")}</small>
+        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")} · Potrawy: ${(event.items || []).length}</small>
       </div>
       <div class="kitchen-details-actions">
-        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenItemForm('${event.id}')">Dodaj potrawę</button>` : ""}
-        <button class="small-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj imprezę</button>
-        ${canCorrect() ? `<button class="small-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj imprezę</button>` : ""}
-        <button class="small-button" type="button" onclick="closeKitchenEvent()">Wróć</button>
+        ${canCorrect() ? `<button class="small-button kitchen-open-button" type="button" onclick="showKitchenItemForm('${event.id}')">+ Dodaj potrawę</button>` : ""}
+        <button class="small-button secondary-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj imprezę</button>
+        ${canCorrect() ? `<button class="small-button secondary-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj imprezę</button>` : ""}
+        <button class="small-button secondary-button" type="button" onclick="closeKitchenEvent()">Wróć do imprez</button>
       </div>
     </div>
-    ${event.notes ? `<p class="kitchen-notes">${escapeHtml(event.notes)}</p>` : ""}
+    ${event.notes ? `<div class="kitchen-notes-box"><strong>Uwagi ogólne</strong><p>${escapeHtml(event.notes)}</p></div>` : ""}
+    <div class="kitchen-section-head">
+      <strong>Potrawy i produkty</strong>
+      <small>Co przygotowano, ile było i co warto zapamiętać na kolejną imprezę.</small>
+    </div>
     <div class="kitchen-item-grid">
       ${(event.items || []).length ? event.items.map((item) => kitchenItemCard(event, item)).join("") : '<div class="kitchen-empty">Brak potraw w tej imprezie.</div>'}
     </div>

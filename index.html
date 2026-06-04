@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260603-02" />
+    <link rel="stylesheet" href="styles.css?v=20260604-04" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -84,33 +84,77 @@
       </header>
 
       <section id="dashboard" class="view active-view">
-        <div class="stats-grid">
-          <article class="stat"><span>Stan kasy</span><strong id="cashBalance">0 zł</strong></article>
-          <article class="stat unpaid-invoices-stat" role="button" tabindex="0" onclick="switchView('invoices')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('invoices')">
+        <section class="panel dashboard-hero">
+          <div>
+            <small class="dashboard-eyebrow">Panel startowy</small>
+            <h2>Centrum zarządzania KGiGW</h2>
+            <p>Najważniejsze informacje o kole w jednym miejscu — finanse, składki, wypożyczenia, faktury i wydarzenia.</p>
+          </div>
+          <div class="dashboard-hero-status">
+            <span class="dashboard-hero-label">Na dziś</span>
+            <strong id="dashboardTodayTitle">Program gotowy do pracy</strong>
+            <small id="dashboardTodaySummary">Sprawdź podsumowanie i szybkie akcje poniżej.</small>
+          </div>
+        </section>
+
+        <div class="stats-grid dashboard-stats-grid">
+          <article class="stat dashboard-stat dashboard-stat-balance">
+            <span>Stan kasy</span>
+            <strong id="cashBalance">0 zł</strong>
+            <small class="dashboard-stat-note">Aktualne saldo wszystkich aktywnych wpływów i wydatków.</small>
+          </article>
+          <article class="stat unpaid-invoices-stat dashboard-stat dashboard-stat-warning" role="button" tabindex="0" onclick="switchView('invoices')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('invoices')">
             <span id="unpaidInvoicesSummary">Nieopłacone faktury: 0 zł</span>
             <strong id="unpaidInvoicesList" class="unpaid-invoices-line">Brak nieopłaconych faktur</strong>
+            <small class="dashboard-stat-note">Kliknij, aby przejść do listy faktur.</small>
           </article>
-          <article class="stat dashboard-link-stat" role="button" tabindex="0" onclick="switchView('fees')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('fees')">
+          <article class="stat dashboard-link-stat dashboard-stat dashboard-stat-danger" role="button" tabindex="0" onclick="switchView('fees')" onkeydown="if(event.key === 'Enter' || event.key === ' ') switchView('fees')">
             <span>Zaległe składki</span>
             <strong id="lateFees">0,00 zł / brak zaległości</strong>
+            <small class="dashboard-stat-note">Kliknij, aby otworzyć moduł Składki.</small>
           </article>
-          <article class="stat dashboard-link-stat" role="button" tabindex="0" onclick="switchView('rentals'); switchRentalTab('history')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { switchView('rentals'); switchRentalTab('history'); }">
+          <article class="stat dashboard-link-stat dashboard-stat dashboard-stat-info" role="button" tabindex="0" onclick="switchView('rentals'); switchRentalTab('history')" onkeydown="if(event.key === 'Enter' || event.key === ' ') { switchView('rentals'); switchRentalTab('history'); }">
             <span>Aktywne wypożyczenia</span>
             <strong id="rentalCount">0 / brak aktywnych</strong>
+            <small class="dashboard-stat-note">Kliknij, aby otworzyć historię wypożyczeń.</small>
           </article>
         </div>
-        <div class="split">
-          <section class="panel">
+
+        <div class="dashboard-middle-grid">
+          <section class="panel dashboard-focus-panel">
+            <div class="panel-head">
+              <h2>Na dziś / Wymaga uwagi</h2>
+            </div>
+            <div id="dashboardFocus" class="dashboard-focus-list"></div>
+          </section>
+
+          <section class="panel dashboard-actions-panel">
+            <div class="panel-head">
+              <h2>Szybkie akcje</h2>
+            </div>
+            <div class="dashboard-actions-grid">
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('fees')">Dodaj składkę</button>
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('money')">Dodaj wpływ / wydatek</button>
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('events')">Dodaj wydarzenie</button>
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('invoices')">Wystaw fakturę</button>
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('documents')">Dodaj dokument</button>
+              <button type="button" class="small-button dashboard-action-button" onclick="switchView('administration'); switchAdminTab('stand-invoice')">Stoisko faktura</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="split dashboard-bottom-grid">
+          <section class="panel dashboard-list-panel">
             <div class="panel-head">
               <h2>Ostatnie operacje</h2>
             </div>
-            <div id="recentMoney" class="list empty-list">Brak wpisów.</div>
+            <div id="recentMoney" class="list empty-list dashboard-list">Brak wpisów.</div>
           </section>
-          <section class="panel">
+          <section class="panel dashboard-list-panel">
             <div class="panel-head">
               <h2>Ostatnie informacje o wydarzeniach</h2>
             </div>
-            <div id="upcomingEvents" class="list empty-list">Brak wydarzeń.</div>
+            <div id="upcomingEvents" class="list empty-list dashboard-list">Brak wydarzeń.</div>
           </section>
         </div>
       </section>
@@ -357,16 +401,41 @@
 
       <section id="kitchen" class="view">
         <div class="kitchen-shell">
-          <section id="kitchenListPanel" class="panel kitchen-list-panel">
-            <div class="panel-head">
-              <div>
+          <section id="kitchenListPanel" class="panel kitchen-list-panel kitchen-memory-panel">
+            <div class="kitchen-hero-card">
+              <div class="kitchen-hero-copy">
+                <p class="eyebrow">Archiwum imprez i potraw</p>
                 <h2>Kulinarne wspomnienia</h2>
-                <small>Kalendarium potraw, ilości i uwag z wydarzeń koła.</small>
+                <p>Najpierw wybierz imprezę. W środku zobaczysz potrawy, ilości, składniki i uwagi, żeby przy kolejnej imprezie łatwo zaplanować zakupy oraz pracę.</p>
               </div>
-              <button id="addKitchenEventButton" class="small-button" type="button">Dodaj imprezę</button>
+              <div class="kitchen-hero-side">
+                <div class="kitchen-stat-card">
+                  <span id="kitchenEventsCount">0</span>
+                  <small>imprezy</small>
+                </div>
+                <div class="kitchen-stat-card">
+                  <span id="kitchenDishesCount">0</span>
+                  <small>potrawy</small>
+                </div>
+                <button id="addKitchenEventButton" class="small-button kitchen-add-button" type="button">+ Dodaj imprezę</button>
+              </div>
             </div>
-            <div class="kitchen-controls">
-              <input id="kitchenSearch" type="search" placeholder="Szukaj imprezy, potrawy lub składnika..." />
+            <div class="kitchen-toolbar">
+              <input id="kitchenSearch" type="search" placeholder="Szukaj imprezy, potrawy, miejsca lub składnika..." />
+              <select id="kitchenSort">
+                <option value="date_desc">Data: najnowsze</option>
+                <option value="date_asc">Data: najstarsze</option>
+                <option value="name_asc">Nazwa A-Z</option>
+                <option value="name_desc">Nazwa Z-A</option>
+                <option value="place_asc">Miejsce A-Z</option>
+              </select>
+              <button id="clearKitchenFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
+            </div>
+            <div class="kitchen-list-title">
+              <div>
+                <strong>Lista imprez</strong>
+                <small>Otwórz imprezę, żeby sprawdzić potrawy, ilości i uwagi na przyszłość.</small>
+              </div>
             </div>
             <div id="kitchenEventsList" class="kitchen-events-list"></div>
           </section>
@@ -963,7 +1032,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.03-02</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-04</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1121,6 +1190,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260603-02"></script>
+    <script src="app.js?v=20260604-04"></script>
   </body>
 </html>
