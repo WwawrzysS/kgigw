@@ -518,8 +518,14 @@
       <section id="searchScreen" class="card screen hidden">
         <h2>Szukaj</h2>
         <section class="return-notes-box">
-          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz Pliki</button>
-          <p class="muted">Zapisz protokół jako PDF, otwórz Pliki w telefonie, przejdź do Pobrane i udostępnij dokument klientowi.</p>
+          <strong>Aby wysłać protokół PDF:</strong>
+          <ol>
+            <li>Otwórz szczegóły wypożyczenia.</li>
+            <li>Kliknij Drukuj protokół.</li>
+            <li>Wybierz Zapisz jako PDF.</li>
+            <li>Otwórz aplikację Pliki / Pobrane w telefonie.</li>
+            <li>Wybierz zapisany PDF i udostępnij go klientowi.</li>
+          </ol>
         </section>
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
@@ -1106,22 +1112,6 @@
         `Uwagi: ${loan.notes || "Brak uwag."}`,
         "Pełny protokół można zapisać jako PDF przez opcję Drukuj."
       ].join("\n");
-    }
-
-    function openDownloadsHelp() {
-      const filesIntent = "intent://com.android.documentsui#Intent;scheme=content;action=android.intent.action.VIEW;end";
-      let appWasHidden = false;
-      const markHidden = () => {
-        if (document.hidden) appWasHidden = true;
-      };
-      document.addEventListener("visibilitychange", markHidden, { once: true });
-      window.location.href = filesIntent;
-      setTimeout(() => {
-        document.removeEventListener("visibilitychange", markHidden);
-        if (!appWasHidden && !document.hidden) {
-          showMessage("Nie udało się automatycznie otworzyć aplikacji Pliki. Otwórz Pliki lub Pobrane ręcznie.", false);
-        }
-      }, 1200);
     }
 
     function historyStatus(loan) {

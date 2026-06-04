@@ -1,4 +1,4 @@
-const CACHE_NAME = "kgigw-wypozyczalnia-folder-v20260604-15";
+const CACHE_NAME = "kgigw-wypozyczalnia-folder-v20260604-16";
 const APP_SHELL = [
   "/kgigw/wypozyczalnia/",
   "/kgigw/wypozyczalnia/index.html",
