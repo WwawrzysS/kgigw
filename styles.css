@@ -819,6 +819,139 @@ textarea {
   display: block;
 }
 
+.info-links-view {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.info-links-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 18px;
+  align-items: stretch;
+  padding: 20px;
+  border: 1px solid rgba(31, 122, 63, 0.18);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(31, 122, 63, 0.08), rgba(255, 255, 255, 0.92));
+}
+
+.info-links-hero small {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.info-links-hero h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.info-links-hero p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.info-links-security {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid rgba(186, 124, 0, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 248, 230, 0.9);
+}
+
+.info-links-security strong {
+  color: #8a5a00;
+}
+
+.info-links-security span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.info-links-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.info-link-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.info-link-icon {
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--green);
+  color: #fff;
+  font-weight: 900;
+}
+
+.info-link-content {
+  min-width: 0;
+}
+
+.info-link-content h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.info-link-content p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.info-link-url {
+  display: block;
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.info-link-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.info-link-actions .small-button {
+  min-width: 120px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.info-link-actions .secondary {
+  background: #ece7df;
+  color: var(--ink);
+}
+
+.info-link-actions .secondary:hover {
+  background: #ded8cf;
+}
+
 .panel {
   min-width: 0;
   overflow: hidden;
@@ -2274,6 +2407,11 @@ textarea {
 
   .mail-shortcut-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .info-links-hero,
+  .info-links-grid {
+    grid-template-columns: 1fr;
   }
 
   .sidebar {

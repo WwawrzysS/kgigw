@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-20";
+const APP_VERSION = "2026.06.04-21";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -422,6 +422,7 @@ document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
 document.querySelector("#openMailboxWindow")?.addEventListener("click", openMailboxConfig);
+document.addEventListener("click", handleCopyLinkClick);
 document.addEventListener("click", closeMobileMenuFromPage);
 
 elements.navItems.forEach((button) => {
@@ -2403,6 +2404,32 @@ function showToast(message, type = "success") {
     toast.classList.add("toast-hide");
     window.setTimeout(() => toast.remove(), 250);
   }, 3200);
+}
+
+async function handleCopyLinkClick(event) {
+  const button = event.target.closest("[data-copy-link]");
+  if (!button) return;
+  const link = button.dataset.copyLink || "";
+  if (!link) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(link);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = link;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    showToast("Skopiowano link.");
+  } catch (error) {
+    console.warn("Nie udało się skopiować linku", error);
+    showToast("Nie udało się skopiować linku.", "error");
+  }
 }
 
 function renderGlobalSearchResults() {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-20" />
+    <link rel="stylesheet" href="styles.css?v=20260604-21" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -1019,9 +1019,72 @@
             <div class="panel-head">
               <h2>Linki</h2>
             </div>
-            <div class="empty-state">
-              <strong>Brak linków.</strong>
-              <small>Linki dodamy w kolejnym etapie.</small>
+            <div class="info-links-view">
+              <article class="info-links-hero">
+                <div>
+                  <small>Centrum skrótów</small>
+                  <h3>Najważniejsze linki KGiGW</h3>
+                  <p>Tutaj zapisane są najważniejsze linki do programu KGiGW. Strona Stoisko oraz Wypożyczalnia mają wersje mobilne, które można dodać do ekranu głównego telefonu. Dla Wypożyczalni dostępny jest też plik APK do instalacji na Androidzie.</p>
+                </div>
+                <div class="info-links-security">
+                  <strong>Bezpieczeństwo</strong>
+                  <span>Nie zapisuj tutaj haseł. Hasła przechowuj tylko w karcie awaryjnej.</span>
+                </div>
+              </article>
+
+              <div class="info-links-grid">
+                <article class="info-link-card">
+                  <div class="info-link-icon">KG</div>
+                  <div class="info-link-content">
+                    <h3>Strona główna</h3>
+                    <p>Główny panel KGiGW do zarządzania kołem.</p>
+                    <a class="info-link-url" href="https://wwawrzyss.github.io/kgigw/" target="_blank" rel="noopener">https://wwawrzyss.github.io/kgigw/</a>
+                  </div>
+                  <div class="info-link-actions">
+                    <a class="small-button" href="https://wwawrzyss.github.io/kgigw/" target="_blank" rel="noopener">Otwórz</a>
+                    <button class="small-button secondary" type="button" data-copy-link="https://wwawrzyss.github.io/kgigw/">Kopiuj link</button>
+                  </div>
+                </article>
+
+                <article class="info-link-card">
+                  <div class="info-link-icon">S</div>
+                  <div class="info-link-content">
+                    <h3>Strona Stoisko</h3>
+                    <p>Mobilna strona do obsługi stoiska i sprzedaży. Można dodać ją do ekranu głównego telefonu jako skrót/aplikację web.</p>
+                    <a class="info-link-url" href="https://wwawrzyss.github.io/kgigw/stoisko/" target="_blank" rel="noopener">https://wwawrzyss.github.io/kgigw/stoisko/</a>
+                  </div>
+                  <div class="info-link-actions">
+                    <a class="small-button" href="https://wwawrzyss.github.io/kgigw/stoisko/" target="_blank" rel="noopener">Otwórz</a>
+                    <button class="small-button secondary" type="button" data-copy-link="https://wwawrzyss.github.io/kgigw/stoisko/">Kopiuj link</button>
+                  </div>
+                </article>
+
+                <article class="info-link-card">
+                  <div class="info-link-icon">W</div>
+                  <div class="info-link-content">
+                    <h3>Strona Wypożyczalnia</h3>
+                    <p>Mobilna strona Wypożyczalni. Można dodać ją do ekranu głównego telefonu jako skrót/aplikację web.</p>
+                    <a class="info-link-url" href="https://wwawrzyss.github.io/kgigw/wypozyczalnia/" target="_blank" rel="noopener">https://wwawrzyss.github.io/kgigw/wypozyczalnia/</a>
+                  </div>
+                  <div class="info-link-actions">
+                    <a class="small-button" href="https://wwawrzyss.github.io/kgigw/wypozyczalnia/" target="_blank" rel="noopener">Otwórz</a>
+                    <button class="small-button secondary" type="button" data-copy-link="https://wwawrzyss.github.io/kgigw/wypozyczalnia/">Kopiuj link</button>
+                  </div>
+                </article>
+
+                <article class="info-link-card">
+                  <div class="info-link-icon">APK</div>
+                  <div class="info-link-content">
+                    <h3>Aplikacja Wypożyczalnia APK</h3>
+                    <p>Plik APK do instalacji aplikacji Wypożyczalni na telefonie Android.</p>
+                    <a class="info-link-url" href="https://wwawrzyss.github.io/kgigw/apk/Wypozyczalnia-KGiGW-debug-v2026.06.04-03.apk" target="_blank" rel="noopener">https://wwawrzyss.github.io/kgigw/apk/Wypozyczalnia-KGiGW-debug-v2026.06.04-03.apk</a>
+                  </div>
+                  <div class="info-link-actions">
+                    <a class="small-button" href="https://wwawrzyss.github.io/kgigw/apk/Wypozyczalnia-KGiGW-debug-v2026.06.04-03.apk" target="_blank" rel="noopener">Otwórz</a>
+                    <button class="small-button secondary" type="button" data-copy-link="https://wwawrzyss.github.io/kgigw/apk/Wypozyczalnia-KGiGW-debug-v2026.06.04-03.apk">Kopiuj link</button>
+                  </div>
+                </article>
+              </div>
             </div>
           </section>
         </div>
@@ -1045,7 +1108,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-20</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-21</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1203,6 +1266,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-20"></script>
+    <script src="app.js?v=20260604-21"></script>
   </body>
 </html>
