@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-19";
+const APP_VERSION = "2026.06.04-05";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -97,7 +97,7 @@ const titles = {
   rentals: "Wypożyczalnia",
   invoices: "Faktury",
   docs: "Dokumenty i poczta",
-  board: "Zarząd",
+  info: "Informacje",
   administration: "Administracja"
 };
 
@@ -222,6 +222,8 @@ const elements = {
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
   docTabs: document.querySelectorAll("[data-doc-tab]"),
   docPanels: document.querySelectorAll("[data-doc-panel]"),
+  infoTabs: document.querySelectorAll("[data-info-tab]"),
+  infoPanels: document.querySelectorAll("[data-info-panel]"),
   printSheet: document.querySelector("#printSheet"),
   docsList: document.querySelector("#docsList"),
   documentationForm: document.querySelector("#documentationForm"),
@@ -449,6 +451,10 @@ elements.rentalSubtabs.forEach((button) => {
 
 elements.docTabs.forEach((button) => {
   button.addEventListener("click", () => switchDocTab(button.dataset.docTab));
+});
+
+elements.infoTabs.forEach((button) => {
+  button.addEventListener("click", () => switchInfoTab(button.dataset.infoTab));
 });
 
 elements.adminTabs.forEach((button) => {
@@ -1238,6 +1244,7 @@ function switchView(view) {
   elements.views.forEach((section) => section.classList.toggle("active-view", section.id === view));
   if (view === "rentals") switchRentalTab("new");
   if (view === "docs") switchDocTab("documents");
+  if (view === "info") switchInfoTab("board");
   render();
 }
 
@@ -1284,6 +1291,18 @@ function switchDocTab(tabName) {
   });
   elements.docTabs.forEach((item) => {
     item.classList.toggle("active", item.dataset.docTab === tabName);
+  });
+}
+
+function switchInfoTab(tabName) {
+  elements.infoPanels.forEach((panel) => {
+    const active = panel.dataset.infoPanel === tabName;
+    panel.classList.toggle("active-info-panel", active);
+    panel.hidden = !active;
+    panel.style.display = active ? "" : "none";
+  });
+  elements.infoTabs.forEach((item) => {
+    item.classList.toggle("active", item.dataset.infoTab === tabName);
   });
 }
 

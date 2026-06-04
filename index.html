@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-19" />
+    <link rel="stylesheet" href="styles.css?v=20260604-05" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -56,7 +56,7 @@
           <button class="nav-subitem" data-view="docs" data-doc-tab="templates">Wzory</button>
           <button class="nav-subitem" data-view="docs" data-doc-tab="notes">Notatki</button>
         </div>
-        <button class="nav-item" data-view="board">Zarząd</button>
+        <button class="nav-item" data-view="info">Informacje</button>
         <button class="nav-item admin-role-only hidden-role" data-view="administration" hidden>Administracja</button>
       </nav>
       <div class="sidebar-actions">
@@ -1003,13 +1003,26 @@
         </div>
       </section>
 
-      <section id="board" class="view">
-        <div class="workspace">
-          <section class="panel">
+      <section id="info" class="view">
+        <div class="workspace info-shell">
+          <div class="subtabs info-tabs" role="tablist" aria-label="Informacje">
+            <button class="subtab active" type="button" data-info-tab="board">Zarząd</button>
+            <button class="subtab" type="button" data-info-tab="links">Linki</button>
+          </div>
+          <section class="panel info-tab-panel active-info-panel" data-info-panel="board">
             <div class="panel-head">
-              <h2>Zarząd koła</h2>
+              <h2>Zarząd</h2>
             </div>
             <div id="boardList" class="table"></div>
+          </section>
+          <section class="panel info-tab-panel" data-info-panel="links" hidden>
+            <div class="panel-head">
+              <h2>Linki</h2>
+            </div>
+            <div class="empty-state">
+              <strong>Brak linków.</strong>
+              <small>Linki dodamy w kolejnym etapie.</small>
+            </div>
           </section>
         </div>
       </section>
@@ -1032,7 +1045,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-19</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-05</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1190,6 +1203,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-19"></script>
+    <script src="app.js?v=20260604-05"></script>
   </body>
 </html>
