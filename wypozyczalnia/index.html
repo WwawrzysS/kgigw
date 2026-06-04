@@ -514,9 +514,8 @@
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
         <section class="return-notes-box">
           <strong>Udostępnij zapisany PDF</strong>
-          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Potem wybierz zapisany plik i udostępnij.</p>
-          <input id="pdfShareInput" type="file" accept="application/pdf,.pdf" hidden />
-          <button type="button" onclick="choosePdfToShare()">Wybierz PDF i udostępnij</button>
+          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Następnie otwórz Pobrane w telefonie, wybierz zapisany protokół i udostępnij go klientowi.</p>
+          <button type="button" onclick="openDownloadsHelp()">Otwórz Pobrane</button>
         </section>
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
         <div id="searchResults"></div>
@@ -593,7 +592,6 @@
     document.querySelector("#loanForm").addEventListener("submit", showLoanSummary);
     document.querySelector("#searchInput").addEventListener("input", renderSearch);
     document.querySelector("#historySearch").addEventListener("input", renderHistory);
-    document.querySelector("#pdfShareInput").addEventListener("change", shareSelectedPdf);
     setupSignaturePad();
     document.querySelectorAll("[data-screen]").forEach((button) => button.addEventListener("click", () => showScreen(button.dataset.screen)));
     document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
@@ -1105,42 +1103,15 @@
       ].join("\n");
     }
 
-    function choosePdfToShare() {
-      const input = document.querySelector("#pdfShareInput");
-      if (!input) return showMessage("Nie udało się wybrać pliku PDF.", true);
-      input.value = "";
-      input.click();
-    }
-
-    async function shareSelectedPdf(event) {
-      const input = event.target;
-      const file = input.files?.[0];
-      if (!file) return;
-      if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
-        showMessage("Wybierz plik PDF.", true);
-        input.value = "";
-        return;
-      }
+    function openDownloadsHelp() {
       try {
-        if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: [file] })) {
-          showMessage("Ten telefon nie obsługuje udostępniania plików z przeglądarki. Otwórz plik PDF w Pobrane i udostępnij go ręcznie.", true);
-          input.value = "";
-          return;
-        }
-        showMessage("Otwieram udostępnianie telefonu.", false);
-        await navigator.share({
-          title: "Protokół KGiGW",
-          text: "Protokół KGiGW we Włosani",
-          files: [file]
-        });
+        window.location.href = "content://com.android.providers.downloads.documents/root/downloads";
       } catch (error) {
-        if (error?.name !== "AbortError") {
-          console.warn("Nie udało się udostępnić wybranego PDF.", error);
-          showMessage("Nie udało się udostępnić pliku. Otwórz plik PDF w Pobrane i udostępnij go ręcznie.", true);
-        }
-      } finally {
-        input.value = "";
+        console.warn("Nie udało się otworzyć Pobranych z przeglądarki.", error);
       }
+      setTimeout(() => {
+        showMessage("Otwórz aplikację Pliki lub Pobrane w telefonie i udostępnij zapisany PDF ręcznie.", false);
+      }, 400);
     }
 
     function historyStatus(loan) {
