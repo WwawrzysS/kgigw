@@ -1,10 +1,8 @@
-const CACHE_NAME = "kgigw-stoisko-v20260601-09";
+const CACHE_NAME = "kgigw-stoisko-v20260604-17";
 const APP_SHELL = [
   "/kgigw/stoisko/",
   "/kgigw/stoisko/index.html",
   "/kgigw/stoisko/manifest.json",
-  "/kgigw/stoisko/icon-stoisko-192.png",
-  "/kgigw/stoisko/icon-stoisko-512.png",
   "/kgigw/stoisko/icon-stoisko-192.png",
   "/kgigw/stoisko/icon-stoisko-512.png"
 ];
