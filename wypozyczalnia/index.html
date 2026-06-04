@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>KGiGW Wypożyczalnia Mobile</title>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
   <script src="/kgigw/supabase-config.js"></script>
   <style>
     :root {
@@ -321,6 +321,79 @@
       text-align: center;
     }
     #printView { display: none; }
+    .pdf-export {
+      position: fixed;
+      left: -10000px;
+      top: 0;
+      width: 190mm;
+      background: #fff;
+      color: #111;
+      font-family: Arial, sans-serif;
+      z-index: -1;
+    }
+    .pdf-export .print-document {
+      width: 190mm;
+      max-width: 190mm;
+      margin: 0 auto;
+      padding: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #111;
+      background: #fff;
+    }
+    .pdf-export .print-header {
+      border-bottom: 2px solid #111;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      text-align: center;
+    }
+    .pdf-export .print-header h1 {
+      margin: 0;
+      font-size: 18px;
+      color: #111;
+    }
+    .pdf-export .print-header h2 {
+      margin: 6px 0 0;
+      font-size: 16px;
+      color: #111;
+    }
+    .pdf-export .print-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 18px;
+      margin-bottom: 16px;
+    }
+    .pdf-export .print-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+    }
+    .pdf-export .print-table th,
+    .pdf-export .print-table td {
+      border: 1px solid #333;
+      padding: 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .pdf-export .print-table th { background: #f0f0f0; }
+    .pdf-export .print-signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      margin-top: 34px;
+    }
+    .pdf-export .print-signature {
+      border-top: 1px solid #111;
+      padding-top: 7px;
+      text-align: center;
+    }
+    .pdf-export .print-footer {
+      border-top: 1px solid #999;
+      margin-top: 26px;
+      padding-top: 8px;
+      font-size: 11px;
+      text-align: center;
+    }
     @media print {
       @page { size: A4; margin: 14mm; }
       body { background: #fff; color: #111; }
@@ -1104,10 +1177,25 @@
     async function shareProtocolPdf(type, id) {
       const loan = prepareProtocolLoan(id, type === "return");
       if (!loan.id) return showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
-      if (!window.jspdf?.jsPDF) return showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+      if (!window.html2pdf) return showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
       showMessage("Tworzę PDF...", false);
+      let container = null;
       try {
-        const pdfBlob = buildProtocolPdfBlob(type, loan);
+        container = document.createElement("section");
+        container.className = "pdf-export";
+        container.innerHTML = protocolDocumentHtml(type, loan);
+        document.body.appendChild(container);
+        const pdfBlob = await window.html2pdf()
+          .set({
+            margin: 14,
+            filename: protocolPdfFilename(type, loan),
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+            pagebreak: { mode: ["css", "legacy"] }
+          })
+          .from(container.firstElementChild)
+          .outputPdf("blob");
         const filename = protocolPdfFilename(type, loan);
         const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
         if (!navigator.share || !navigator.canShare || !navigator.canShare({ files: [pdfFile] })) {
@@ -1124,108 +1212,9 @@
         if (error?.name === "AbortError") return;
         console.warn("Nie udało się udostępnić PDF.", error);
         showMessage("Nie udało się udostępnić PDF. Użyj opcji Drukuj / Zapisz jako PDF.", true);
+      } finally {
+        if (container) container.remove();
       }
-    }
-
-    function buildProtocolPdfBlob(type, loan) {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      const page = { width: 210, height: 297, margin: 14 };
-      let y = 16;
-      const lineHeight = 6;
-      const addText = (text, options = {}) => {
-        const size = options.size || 10;
-        doc.setFont("helvetica", options.bold ? "bold" : "normal");
-        doc.setFontSize(size);
-        const lines = doc.splitTextToSize(String(text || ""), page.width - page.margin * 2);
-        lines.forEach((line) => {
-          if (y > page.height - page.margin) {
-            doc.addPage();
-            y = page.margin;
-          }
-          doc.text(line, page.margin, y);
-          y += lineHeight;
-        });
-        if (options.gap) y += options.gap;
-      };
-      const addSection = (title) => {
-        y += 2;
-        addText(title, { bold: true, size: 12, gap: 1 });
-      };
-      const isReturn = type === "return";
-      const title = isReturn ? "Protokół zwrotu sprzętu" : "Protokół wypożyczenia sprzętu";
-      const settlement = settlementTotals(loan);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text("KGiGW we Włosani", page.width / 2, y, { align: "center" });
-      y += 8;
-      doc.setFontSize(14);
-      doc.text(title, page.width / 2, y, { align: "center" });
-      y += 10;
-
-      addSection("Dane");
-      addText(`Numer/ID: ${loan.id || "brak"}`);
-      addText(`Data wygenerowania: ${formatDate(today())}`);
-      addText(`Wypożyczający: ${person(loan)}`);
-      addText(`Data wypożyczenia: ${formatDate(loan.date_from)}`);
-      addText(`Planowany termin zwrotu: ${formatDate(loan.date_to)}`);
-      if (isReturn) addText(`Data zwrotu: ${formatDate(loan.returned_at)}`);
-      addText(`${isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca"}: ${state.profile?.display_name || "Użytkownik"}`, { gap: 2 });
-
-      addSection("Sprzęt");
-      (loan.rental_lines || []).forEach((line) => {
-        const quantity = Number(line.quantity || 0);
-        const price = Number(line.price_per_day || 0);
-        const value = quantity * price;
-        if (isReturn) {
-          const returned = line.returned === null || line.returned === undefined ? quantity : Number(line.returned || 0);
-          addText(`- ${line.item_name || "Sprzęt"} | wydano: ${quantity} szt. | zwrócono: ${returned} szt.`);
-        } else {
-          addText(`- ${line.item_name || "Sprzęt"} | ilość: ${quantity} | cena za dobę: ${money(price)} | wartość za dobę: ${money(value)}`);
-        }
-      });
-      if (!(loan.rental_lines || []).length) addText("- Brak pozycji.");
-
-      if (!isReturn) {
-        addSection("Kwoty");
-        addText(`Razem za dobę: ${money(loan.total_per_day || 0)}`);
-        addText(`Liczba dób: ${loan.days || 1}`);
-        addText(`Razem za okres: ${money(loan.total || 0)}`);
-        addSection("Oświadczenie");
-        addText("Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.");
-        addText("W przypadku zwrotu sprzętu po ustalonym terminie zostanie naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.");
-        addText(`Wartości odtworzeniowe wypożyczonego sprzętu: ${replacementValuesPlainText(loan.rental_lines || [])}`);
-        addSection("Uwagi");
-        addText(loan.notes || "Brak uwag.");
-      } else {
-        addSection("Rozliczenie zwrotu");
-        addText(`Koszt za planowany okres: ${money(settlement.plannedCost)}`);
-        addText(`Dodatkowe doby po terminie: ${settlement.lateDays}`);
-        addText(`Dopłata za opóźnienie: ${money(settlement.lateFee)}`);
-        addText(`Dopłata za braki/uszkodzenia: ${money(settlement.damage)}`);
-        addText(`Razem do rozliczenia: ${money(settlement.total)}`);
-        addSection("Kontrola zwrotu");
-        const parsed = parseReturnNotesForDisplay(loan.return_notes);
-        const notes = parsed.userNotes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
-        const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
-        addText("Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.");
-        addText(`Stan po zwrocie: ${condition}`);
-        addText(`Uwagi po zwrocie: ${notes}`);
-      }
-
-      y += 12;
-      if (y > page.height - 38) {
-        doc.addPage();
-        y = page.margin + 8;
-      }
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.line(page.margin, y, page.margin + 70, y);
-      doc.line(page.width - page.margin - 70, y, page.width - page.margin, y);
-      y += 6;
-      doc.text(isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego", page.margin + 35, y, { align: "center" });
-      doc.text(isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej", page.width - page.margin - 35, y, { align: "center" });
-      return doc.output("blob");
     }
 
     function protocolPdfFilename(type, loan) {
