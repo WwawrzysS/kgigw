@@ -520,8 +520,8 @@
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
         <section class="return-notes-box">
           <strong>Udostępnij zapisany PDF</strong>
-          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Następnie otwórz w telefonie aplikację Pliki albo Pobrane, wybierz zapisany protokół i udostępnij go klientowi.</p>
-          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz aplikację Pliki / Pobrane</button>
+          <p class="muted">Najpierw zapisz protokół jako PDF przez Drukuj / Zapisz jako PDF. Następnie otwórz w telefonie Pobrane albo Pliki, wybierz zapisany protokół i udostępnij go klientowi.</p>
+          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz Pobrane</button>
         </section>
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
         <div id="searchResults"></div>
@@ -1110,7 +1110,19 @@
     }
 
     function openDownloadsHelp() {
-      showMessage("Otwórz aplikację Pliki lub Pobrane w telefonie i udostępnij zapisany PDF ręcznie.", false);
+      const downloadsIntent = "intent://com.android.providers.downloads.documents/root/downloads#Intent;scheme=content;action=android.intent.action.VIEW;type=vnd.android.document/root;end";
+      let appWasHidden = false;
+      const markHidden = () => {
+        if (document.hidden) appWasHidden = true;
+      };
+      document.addEventListener("visibilitychange", markHidden, { once: true });
+      window.location.href = downloadsIntent;
+      setTimeout(() => {
+        document.removeEventListener("visibilitychange", markHidden);
+        if (!appWasHidden && !document.hidden) {
+          showMessage("Nie udało się automatycznie otworzyć folderu Pobrane. Otwórz aplikację Pliki lub Pobrane w telefonie ręcznie.", false);
+        }
+      }, 1200);
     }
 
     function historyStatus(loan) {
