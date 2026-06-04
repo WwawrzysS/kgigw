@@ -518,8 +518,8 @@
       <section id="searchScreen" class="card screen hidden">
         <h2>Szukaj</h2>
         <section class="return-notes-box">
-          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz Pobrane</button>
-          <p class="muted">Zapisz protokół jako PDF, a potem otwórz Pobrane i udostępnij plik klientowi.</p>
+          <button class="wide-action" type="button" onclick="openDownloadsHelp()">Otwórz Pliki</button>
+          <p class="muted">Zapisz protokół jako PDF, otwórz Pliki w telefonie, przejdź do Pobrane i udostępnij dokument klientowi.</p>
         </section>
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
         <input id="searchInput" type="search" placeholder="Szukaj sprzętu, osoby, uwag, statusu..." />
@@ -1109,17 +1109,17 @@
     }
 
     function openDownloadsHelp() {
-      const downloadsIntent = "intent://com.android.externalstorage.documents/document/primary%3ADownload#Intent;scheme=content;action=android.intent.action.VIEW;type=vnd.android.document/directory;end";
+      const filesIntent = "intent://com.android.documentsui#Intent;scheme=content;action=android.intent.action.VIEW;end";
       let appWasHidden = false;
       const markHidden = () => {
         if (document.hidden) appWasHidden = true;
       };
       document.addEventListener("visibilitychange", markHidden, { once: true });
-      window.location.href = downloadsIntent;
+      window.location.href = filesIntent;
       setTimeout(() => {
         document.removeEventListener("visibilitychange", markHidden);
         if (!appWasHidden && !document.hidden) {
-          showMessage("Nie udało się automatycznie otworzyć Pobranych. Otwórz aplikację Pliki lub Pobrane w telefonie ręcznie.", false);
+          showMessage("Nie udało się automatycznie otworzyć aplikacji Pliki. Otwórz Pliki lub Pobrane ręcznie.", false);
         }
       }, 1200);
     }
