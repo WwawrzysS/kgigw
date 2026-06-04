@@ -1008,10 +1008,94 @@
         <div class="actions">
           <button class="secondary" onclick="showScreen('historyScreen')">Wstecz</button>
           <button onclick="printProtocol('loan', prepareProtocolLoan('${loan.id}'))">Drukuj protokół wypożyczenia</button>
+          <button class="secondary" onclick="shareProtocol('loan', '${loan.id}')">Udostępnij protokół wypożyczenia</button>
           ${loan.returned_at ? `<button class="secondary" onclick="printProtocol('return', prepareProtocolLoan('${loan.id}', true))">Drukuj protokół zwrotu</button>` : ""}
+          ${loan.returned_at ? `<button class="secondary" onclick="shareProtocol('return', '${loan.id}')">Udostępnij protokół zwrotu</button>` : ""}
         </div>
+        <div id="shareFallbackText"></div>
       `;
       showScreen("historyDetailsScreen");
+    }
+
+    async function shareProtocol(type, id) {
+      const loan = prepareProtocolLoan(id, type === "return");
+      if (!loan.id) return showMessage("Nie udało się udostępnić. Spróbuj użyć opcji Drukuj / PDF.", true);
+      const text = protocolShareText(type, loan);
+      const title = type === "return" ? "Protokół zwrotu KGiGW" : "Protokół wypożyczenia KGiGW";
+      const fallback = document.querySelector("#shareFallbackText");
+      if (fallback) fallback.innerHTML = "";
+      try {
+        if (navigator.share) {
+          showMessage("Otwieram udostępnianie telefonu.", false);
+          await navigator.share({ title, text });
+          return;
+        }
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          showMessage("Tekst protokołu skopiowany do schowka.", false);
+          return;
+        }
+        showShareFallbackText(text);
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.warn("Nie udało się udostępnić protokołu.", error);
+        showMessage("Nie udało się udostępnić. Spróbuj użyć opcji Drukuj / PDF.", true);
+      }
+    }
+
+    function showShareFallbackText(text) {
+      const target = document.querySelector("#shareFallbackText");
+      if (!target) return showMessage("Nie udało się udostępnić. Spróbuj użyć opcji Drukuj / PDF.", true);
+      target.innerHTML = `
+        <section class="return-notes-box">
+          <strong>Tekst protokołu do skopiowania:</strong>
+          <textarea readonly rows="12">${escapeHtml(text)}</textarea>
+        </section>
+      `;
+      showMessage("Skopiuj tekst protokołu i wklej go w wiadomości.", false);
+    }
+
+    function protocolShareText(type, loan) {
+      const settlement = settlementTotals(loan);
+      const lines = (loan.rental_lines || []).map((line) => {
+        const quantity = Number(line.quantity || 0);
+        const price = Number(line.price_per_day || 0);
+        return `- ${line.item_name || "Sprzęt"}: ${quantity} szt., ${money(price)} / doba`;
+      }).join("\n") || "- Brak pozycji";
+      if (type === "return") {
+        const parsed = parseReturnNotesForDisplay(loan.return_notes);
+        const notes = parsed.userNotes || "Brak uwag. Sprzęt zwrócony bez zgłoszonych braków lub uszkodzeń.";
+        const condition = conditionText(loan.return_condition || returnConditionFromNotes(loan.return_notes)).replace("Stan po zwrocie: ", "");
+        return [
+          "KGiGW we Włosani",
+          "Protokół zwrotu sprzętu",
+          `Wypożyczający: ${person(loan)}`,
+          `Data wypożyczenia: ${formatDate(loan.date_from)}`,
+          `Planowany zwrot: ${formatDate(loan.date_to)}`,
+          `Data zwrotu: ${formatDate(loan.returned_at)}`,
+          "Sprzęt:",
+          lines,
+          `Stan po zwrocie: ${condition}`,
+          `Uwagi po zwrocie: ${notes}`,
+          `Koszt wypożyczenia: ${money(settlement.plannedCost)}`,
+          `Dopłata za opóźnienie: ${money(settlement.lateFee)}`,
+          `Dopłata za braki/uszkodzenia: ${money(settlement.damage)}`,
+          `Razem do rozliczenia: ${money(settlement.total)}`
+        ].join("\n");
+      }
+      return [
+        "KGiGW we Włosani",
+        "Protokół wypożyczenia sprzętu",
+        `Wypożyczający: ${person(loan)}`,
+        `Data wypożyczenia: ${formatDate(loan.date_from)}`,
+        `Planowany zwrot: ${formatDate(loan.date_to)}`,
+        "Sprzęt:",
+        lines,
+        `Koszt wypożyczenia: ${money(settlement.plannedCost)}`,
+        `Wartości odtworzeniowe: ${replacementValuesPlainText(loan.rental_lines || [])}`,
+        `Uwagi: ${loan.notes || "Brak uwag."}`,
+        "Pełny protokół można zapisać jako PDF przez opcję Drukuj."
+      ].join("\n");
     }
 
     function historyStatus(loan) {
@@ -1460,6 +1544,15 @@
         const enrichedLine = line.replacement_value === undefined ? enrichLineWithReplacementValue(line) : line;
         const valueText = Number(enrichedLine.replacement_value || 0) > 0 ? `${money(enrichedLine.replacement_value)} / szt.` : "—";
         return `${escapeHtml(enrichedLine.item_name)}: ${valueText}`;
+      });
+      return values.join(" | ") || "—";
+    }
+
+    function replacementValuesPlainText(lines = []) {
+      const values = lines.map((line) => {
+        const enrichedLine = line.replacement_value === undefined ? enrichLineWithReplacementValue(line) : line;
+        const valueText = Number(enrichedLine.replacement_value || 0) > 0 ? `${money(enrichedLine.replacement_value)} / szt.` : "—";
+        return `${enrichedLine.item_name || "Sprzęt"}: ${valueText}`;
       });
       return values.join(" | ") || "—";
     }
