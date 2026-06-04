@@ -101,12 +101,20 @@ body:not(.locked) .login-screen {
   max-height: 100vh;
   min-height: 100vh;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding: 24px 18px;
   background: #263c33;
   color: #fff;
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+
+.sidebar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .brand {
