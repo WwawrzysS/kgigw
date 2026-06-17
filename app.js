@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.05-01";
+const APP_VERSION = "2026.06.04-24";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -5904,7 +5904,7 @@ function rentalDays(dateFrom, dateTo) {
   if (!dateFrom || !dateTo) return 1;
   const start = new Date(`${dateFrom}T12:00:00`);
   const end = new Date(`${dateTo}T12:00:00`);
-  const diff = Math.ceil((end - start) / 86400000) + 1;
+  const diff = Math.ceil((end - start) / 86400000);
   return Math.max(1, diff);
 }
 
