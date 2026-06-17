@@ -595,7 +595,7 @@
     const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
     const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
-    const rentalDays = (from, to) => Math.max(1, Math.ceil((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000) + 1);
+    const rentalDays = (from, to) => Math.max(1, Math.ceil((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000));
     const lateReturnDays = (plannedTo, returnedAt) => {
       if (!plannedTo || !returnedAt) return 0;
       const planned = new Date(`${plannedTo}T12:00:00`);
@@ -864,6 +864,10 @@
     function renderLoanSummary() {
       const draft = state.loanSummary;
       if (!draft) return;
+      const summaryDays = rentalDays(draft.dateFrom, draft.dateTo);
+      const summaryTotal = draft.totalPerDay * summaryDays;
+      draft.days = summaryDays;
+      draft.total = summaryTotal;
       const rows = draft.selected.map((row) => {
         const linePerDay = row.quantity * row.price;
         return `<tr>
@@ -886,8 +890,8 @@
           <tbody>${rows}</tbody>
         </table>
         <p><strong>Razem za dobę:</strong> ${money(draft.totalPerDay)}<br>
-        <strong>Liczba dób:</strong> ${draft.days}<br>
-        <strong>Razem za okres:</strong> ${money(draft.total)}</p>
+        <strong>Liczba dób:</strong> ${summaryDays}<br>
+        <strong>Razem za okres:</strong> ${money(summaryTotal)}</p>
       `;
     }
 
