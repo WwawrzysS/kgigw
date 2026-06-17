@@ -656,7 +656,10 @@
         setLoginMessage("Nie udało się zalogować. Sprawdź login i hasło.", true);
         return;
       }
-      await loadProfile(data.user);
+      const profile = await loadProfile(data.user);
+      if (profile) {
+        await logActivity("Logowanie", "Użytkownik zalogował się do Strony Wypożyczalnia");
+      }
     }
 
     function normalizeLogin(value) {
@@ -693,6 +696,27 @@
       document.querySelector("#userInfo").textContent = `${data.display_name || "Użytkownik"} (${data.role})`;
       document.querySelector("#readonlyNote").classList.toggle("hidden", canWrite());
       await refreshData();
+      return data;
+    }
+
+    async function logActivity(action, summary) {
+      if (!state.profile?.id) return;
+      try {
+        const { error } = await supabaseClient.from("audit_log").insert({
+          user_id: state.profile.id,
+          table_name: "Wypożyczalnia",
+          action,
+          details: {
+            summary,
+            user: state.profile.display_name || "Użytkownik"
+          }
+        });
+        if (error) {
+          console.error("Nie udało się zapisać logu aktywności Wypożyczalni.", error);
+        }
+      } catch (error) {
+        console.error("Nie udało się zapisać logu aktywności Wypożyczalni.", error);
+      }
     }
 
     async function refreshData() {
@@ -1612,6 +1636,7 @@
     }
 
     async function logout() {
+      await logActivity("Wylogowanie", "Użytkownik wylogował się ze Strony Wypożyczalnia");
       await supabaseClient.auth.signOut();
       location.reload();
     }
