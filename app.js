@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-27";
+const APP_VERSION = "2026.06.04-28";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -5995,22 +5995,22 @@ function rentalSettlementTotals(loan, returnedAt = loan.returnedAt || "") {
 }
 
 function rentalSettlementHtml(loan) {
-  const settlement = rentalSettlementTotals(loan);
-  const meta = rentalMetaForLoan(loan);
-  const depositReturn = Math.max(0, Number(meta.depositAmount || 0) - Number(settlement.damage || 0));
-  const depositRows = meta.depositAmount || settlement.damage ? `
-      <small>Kaucja pobrana: ${money(meta.depositAmount || 0)}</small>
-      <small>Kaucja do zwrotu: ${money(depositReturn)}</small>
-  ` : "";
+  const settlement = rentalFinalSettlement(loan);
+  const resultRow = settlement.refundToClient > 0
+    ? `<small>Do zwrotu klientowi: ${money(settlement.refundToClient)}</small>`
+    : `<small>Do zapłaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
   return `
     <div class="finance-summary">
-      <strong>Rozliczenie</strong>
-      <small>Koszt za planowany okres: ${money(settlement.plannedCost)}</small>
+      <strong>Rozliczenie zwrotu</strong>
+      <small>Kwota wypożyczenia po rabacie: ${money(settlement.plannedCost)}</small>
       <small>Dodatkowe doby po terminie: ${settlement.lateDays}</small>
       <small>Dopłata za opóźnienie: ${money(settlement.lateFee)}</small>
-      <small>Dopłata za braki/uszkodzenia: ${money(settlement.damage)}</small>
-      ${depositRows}
-      <small>Razem do rozliczenia: ${money(settlement.total)}</small>
+      <small>Pranie obrusów: ${money(settlement.tablecloth.washing)}</small>
+      <small>Uporczywe plamy: ${money(settlement.tablecloth.stainFee)}</small>
+      <small>Braki/uszkodzenia: ${money(settlement.manualDamage)}</small>
+      <small>Razem należność: ${money(settlement.finalDue)}</small>
+      <small>Kaucja pobrana przy wydaniu: ${money(settlement.deposit)}</small>
+      ${resultRow}
     </div>
   `;
 }
@@ -6064,6 +6064,42 @@ function tableclothReturnNotes(fee) {
   ].join("\n");
 }
 
+function parsePolishMoneyValue(value) {
+  const cleaned = String(value || "")
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(",", ".");
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function tableclothReturnFeeFromNotes(notes = "") {
+  const text = String(notes || "");
+  const washingMatch = text.match(/Pranie obrus[^\n:]*:\s*([^\n]+)/i);
+  const stainMatch = text.match(/Uporczywe plamy:\s*([^\n]+)/i);
+  const washing = washingMatch ? parsePolishMoneyValue(washingMatch[1]) : 0;
+  const stainFee = stainMatch ? parsePolishMoneyValue(stainMatch[1]) : 0;
+  return { washing, stainFee, total: washing + stainFee };
+}
+
+function rentalFinalSettlement(loan, returnedAt = loan.returnedAt || "") {
+  const settlement = rentalSettlementTotals(loan, returnedAt);
+  const meta = rentalMetaForLoan(loan);
+  const tablecloth = tableclothReturnFeeFromNotes(loan.returnNotes || "");
+  const manualDamage = Math.max(0, Number(settlement.damage || 0) - Number(tablecloth.total || 0));
+  const finalDue = Number(settlement.plannedCost || 0) + Number(settlement.lateFee || 0) + Number(tablecloth.washing || 0) + Number(tablecloth.stainFee || 0) + manualDamage;
+  const deposit = Number(meta.depositAmount || 0);
+  return {
+    ...settlement,
+    tablecloth,
+    manualDamage,
+    finalDue,
+    deposit,
+    dueAtReturn: Math.max(0, finalDue - deposit),
+    refundToClient: Math.max(0, deposit - finalDue)
+  };
+}
+
 function tableclothReturnFormHtml(loan) {
   const issued = tableclothIssuedCountFromItems(loan.items || []);
   if (!issued) return "";
@@ -6091,7 +6127,20 @@ function tableclothReturnSummaryHtml(loan, fee) {
   const manual = condition === "ok" ? 0 : Number(document.querySelector(`#returnDamage-${loan.id}`)?.value || 0);
   const safeManual = Number.isFinite(manual) && manual > 0 ? manual : 0;
   const returnFee = safeManual + Number(fee.total || 0);
-  const settlement = rentalSettlementTotals({ ...loan, damageCost: returnFee }, new Date().toISOString().slice(0, 10));
+  const settlement = rentalFinalSettlement({ ...loan, damageCost: returnFee, returnNotes: tableclothReturnNotes(fee) }, new Date().toISOString().slice(0, 10));
+  const resultRow = settlement.refundToClient > 0
+    ? `<small>Do zwrotu klientowi: ${money(settlement.refundToClient)}</small>`
+    : `<small>Do zapłaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
+  return `
+    ${fee.total ? "" : "<small>Brak dopłat za pranie.</small>"}
+    <small>Kwota wypożyczenia po rabacie: ${money(settlement.plannedCost)}</small>
+    <small>Pranie obrusów: ${money(fee.washing || 0)}</small>
+    <small>Uporczywe plamy: ${money(fee.stainFee || 0)}</small>
+    <small>Braki/uszkodzenia: ${money(safeManual)}</small>
+    <small>Razem należność: ${money(settlement.finalDue)}</small>
+    <small>Kaucja pobrana przy wydaniu: ${money(settlement.deposit)}</small>
+    ${resultRow}
+  `;
   const laundryText = fee.total ? "" : "<small>Brak dopłat za pranie.</small>";
   return `
     ${laundryText}
@@ -6166,7 +6215,7 @@ function buildRentalMeta(baseTotal, data = {}) {
     depositType: deposit.type,
     depositValue: deposit.value,
     depositAmount: deposit.amount,
-    collectedAtIssue: afterDiscount + deposit.amount
+    collectedAtIssue: deposit.amount
   };
 }
 
@@ -6212,7 +6261,7 @@ function rentalMetaForLoan(loan) {
       depositType: "none",
       depositValue: 0,
       depositAmount: 0,
-      collectedAtIssue: fallbackTotal
+      collectedAtIssue: 0
     };
   }
   return {
@@ -6221,7 +6270,7 @@ function rentalMetaForLoan(loan) {
     discountAmount: Number(parsed.discountAmount || 0),
     afterDiscount: Number(parsed.afterDiscount || fallbackTotal),
     depositAmount: Number(parsed.depositAmount || 0),
-    collectedAtIssue: Number(parsed.collectedAtIssue || (Number(parsed.afterDiscount || fallbackTotal) + Number(parsed.depositAmount || 0)))
+    collectedAtIssue: Number(parsed.depositAmount || 0)
   };
 }
 
@@ -6234,14 +6283,28 @@ function rentalIssueSettlementHtml(loan) {
       <small>Kwota przed rabatem: ${money(meta.baseTotal)}</small>
       <small>Rabat: ${money(meta.discountAmount)}</small>
       ${discountReason}
-      <small>Kwota po rabacie: ${money(meta.afterDiscount)}</small>
-      <small>Kaucja zwrotna: ${money(meta.depositAmount)}</small>
-      <small>Razem pobrano przy wydaniu: ${money(meta.collectedAtIssue)}</small>
+      <small>Kwota wypożyczenia po rabacie: ${money(meta.afterDiscount)}</small>
+      <small>Kaucja pobrana przy wydaniu: ${money(meta.depositAmount)}</small>
+      <small>Do pobrania przy wydaniu: ${money(meta.collectedAtIssue)}</small>
+      <small>Rozliczenie wypożyczenia nastąpi przy zwrocie.</small>
     </div>
   `;
 }
 
 function rentalReturnDepositHtml(loan) {
+  const finalSettlement = rentalFinalSettlement(loan);
+  if (!finalSettlement.deposit && !finalSettlement.finalDue) return "";
+  const finalResult = finalSettlement.refundToClient > 0
+    ? `<strong>Do zwrotu klientowi:</strong> ${money(finalSettlement.refundToClient)}`
+    : `<strong>Do zapłaty przy zwrocie:</strong> ${money(finalSettlement.dueAtReturn)}`;
+  return `
+    <section>
+      <h3>Rozliczenie kaucji</h3>
+      <p><strong>Razem należność:</strong> ${money(finalSettlement.finalDue)}<br>
+      <strong>Kaucja pobrana przy wydaniu:</strong> ${money(finalSettlement.deposit)}<br>
+      ${finalResult}</p>
+    </section>
+  `;
   const meta = rentalMetaForLoan(loan);
   const settlement = rentalSettlementTotals(loan);
   const deposit = Number(meta.depositAmount || 0);
@@ -6666,9 +6729,9 @@ function rentalPrintHtml(loan) {
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <p><strong>Razem netto:</strong> ${money(net)}</p>
+    <p><strong>Ustalona kwota netto po rabacie:</strong> ${money(net)}</p>
     <p><strong>VAT 23%:</strong> ${money(vat)}</p>
-    <p><strong>Razem brutto do zaplaty:</strong> ${money(gross)}</p>
+    <p><strong>Ustalona kwota brutto:</strong> ${money(gross)}</p>
     ${rentalIssueSettlementHtml(loan)}
     <p><strong>Uwagi:</strong> ${escapeHtml(rentalUserNotes(loan.notes) || "Brak")}</p>
     <section style="margin-top: 8mm;">
@@ -6695,7 +6758,7 @@ function rentalReplacementValuesText(items = []) {
 }
 
 function returnPrintHtml(loan) {
-  const settlement = rentalSettlementTotals(loan);
+  const settlement = rentalFinalSettlement(loan);
   const rows = (loan.returnItems || loan.items.map((item) => ({
     name: item.name,
     issued: item.quantity,
@@ -6741,7 +6804,17 @@ function returnPrintHtml(loan) {
       <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(settlement.damage)}</p>
       <p><strong>Razem do rozliczenia:</strong> ${money(settlement.total)}</p>
     </section>
-    ${rentalReturnDepositHtml(loan)}
+    <section>
+      <h3>Rozliczenie końcowe</h3>
+      <p><strong>Kwota wypożyczenia po rabacie:</strong> ${money(settlement.plannedCost)}</p>
+      <p><strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}</p>
+      <p><strong>Pranie obrusów:</strong> ${money(settlement.tablecloth.washing)}</p>
+      <p><strong>Uporczywe plamy:</strong> ${money(settlement.tablecloth.stainFee)}</p>
+      <p><strong>Braki/uszkodzenia:</strong> ${money(settlement.manualDamage)}</p>
+      <p><strong>Razem należność:</strong> ${money(settlement.finalDue)}</p>
+      <p><strong>Kaucja pobrana przy wydaniu:</strong> ${money(settlement.deposit)}</p>
+      <p><strong>${settlement.refundToClient > 0 ? "Do zwrotu klientowi" : "Do zapłaty przy zwrocie"}:</strong> ${money(settlement.refundToClient > 0 ? settlement.refundToClient : settlement.dueAtReturn)}</p>
+    </section>
     <p><strong>Uwagi do zwrotu:</strong> ${escapeHtml(loan.returnNotes || "Brak")}</p>
     <div class="print-signatures">
       <div class="signature-line">Podpis zwracajacego</div>
