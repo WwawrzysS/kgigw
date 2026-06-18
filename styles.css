@@ -217,6 +217,12 @@ body:not(.locked) .login-screen {
   margin-bottom: 3px;
 }
 
+.user-badge .app-version-inline {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+
 .hidden-role,
 .admin-only.hidden-role,
 .admin-role-only.hidden-role {
@@ -1915,7 +1921,63 @@ textarea {
 }
 
 .inventory-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.inventory-category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 12px 0;
+}
+
+.inventory-category-filters button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.inventory-category-filters button.active {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.inventory-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.inventory-section-header {
+  padding: 14px;
+  background: #f8fbf8;
+  border-bottom: 1px solid var(--line);
+}
+
+.inventory-section-header h3 {
+  margin: 0 0 5px;
+  color: var(--green-dark);
+  font-size: 18px;
+}
+
+.inventory-section-header p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.inventory-section-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
 }
 
 .inventory-add-form {
@@ -1956,6 +2018,37 @@ textarea {
   margin-bottom: 6px;
 }
 
+.inventory-card-main {
+  display: grid;
+  gap: 10px;
+}
+
+.inventory-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inventory-stat-grid span {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #faf9f6;
+}
+
+.inventory-stat-grid small {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.inventory-stat-grid b {
+  display: block;
+  font-size: 14px;
+}
+
 .inventory-card small,
 .rental-item-line small {
   color: var(--muted);
@@ -1964,9 +2057,16 @@ textarea {
 
 .inventory-edit {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
+}
+
+.inventory-edit label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .rental-item-line {
@@ -2457,6 +2557,14 @@ textarea {
   }
 
   .nav {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .inventory-edit {
     grid-template-columns: 1fr;
   }
 

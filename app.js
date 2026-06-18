@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-28";
+const APP_VERSION = "2026.06.04-29";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -68,6 +68,7 @@ const starterData = {
 prepareLocalVersion();
 let state = loadState();
 let activeView = "dashboard";
+let rentalInventoryCategoryFilter = "all";
 let query = "";
 let currentRole = sessionStorage.getItem(AUTH_KEY);
 let currentUserName = sessionStorage.getItem("kgigw-user-name") || "";
@@ -110,6 +111,7 @@ const elements = {
   loginError: document.querySelector("#loginError"),
   sidebar: document.querySelector(".sidebar"),
   currentRole: document.querySelector("#currentRole"),
+  sidebarAppVersion: document.querySelector("#sidebarAppVersion"),
   mobileMenuButton: document.querySelector("#mobileMenuButton"),
   toastContainer: document.querySelector("#toastContainer"),
   viewTitle: document.querySelector("#viewTitle"),
@@ -269,6 +271,7 @@ const elements = {
 document.body.classList.toggle("locked", !currentRole);
 document.querySelectorAll("#exportData, .import-button").forEach((item) => item.classList.add("admin-only"));
 elements.currentRole.textContent = currentUserName ? `${currentUserName} (${roleName(currentRole)})` : roleName(currentRole);
+if (elements.sidebarAppVersion) elements.sidebarAppVersion.textContent = `v${APP_VERSION}`;
 if (elements.appVersion) elements.appVersion.textContent = APP_VERSION;
 elements.loginForm.addEventListener("submit", handleLogin);
 document.querySelector("#logoutButton").addEventListener("click", logout);
@@ -352,6 +355,13 @@ elements.cancelKitchenEvent?.addEventListener("click", hideKitchenEventForm);
 elements.kitchenItemForm?.addEventListener("submit", handleKitchenItem);
 elements.cancelKitchenItem?.addEventListener("click", hideKitchenItemForm);
 document.querySelector("#inventoryAddForm").addEventListener("submit", handleInventoryAdd);
+document.querySelectorAll("[data-inventory-category]").forEach((button) => {
+  button.addEventListener("click", () => {
+    rentalInventoryCategoryFilter = button.dataset.inventoryCategory || "all";
+    document.querySelectorAll("[data-inventory-category]").forEach((item) => item.classList.toggle("active", item === button));
+    renderRentalInventory();
+  });
+});
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
@@ -4142,24 +4152,107 @@ function parseDateOnly(value) {
 }
 
 function renderRentalInventory() {
-  elements.rentalInventory.innerHTML = state.rentalInventory.map((item) => {
-    const available = availableQuantity(item.id);
-    const borrowed = borrowedQuantity(item.id);
-    const returned = returnedQuantity(item.id);
-    const replacementText = Number(item.replacementValue || 0) > 0 ? `${money(item.replacementValue)} / szt.` : "—";
+  const visibleItems = state.rentalInventory.filter((item) => rentalInventoryCategoryFilter === "all" || rentalInventoryCategory(item).key === rentalInventoryCategoryFilter);
+  elements.rentalInventory.innerHTML = visibleItems.length ? rentalInventorySectionsHtml(visibleItems) : "<p class='muted'>Brak pozycji magazynu w tej sekcji.</p>";
+}
+
+const RENTAL_INVENTORY_SECTIONS = [
+  {
+    key: "packages",
+    title: "Pakiety do wypożyczenia",
+    description: "Pakiety służą do szybkiego tworzenia wypożyczeń. Przy brakach i uszkodzeniach rozliczaj pojedyncze elementy z sekcji poniżej."
+  },
+  {
+    key: "tableware",
+    title: "Zastawa — elementy osobne",
+    description: "Elementy osobne służą do pojedynczego wypożyczenia albo rozliczenia braków i uszkodzeń."
+  },
+  {
+    key: "cutlery",
+    title: "Sztućce — elementy osobne",
+    description: "Sztućce osobno służą głównie do rozliczania braków, uszkodzeń albo pojedynczego wypożyczenia."
+  },
+  {
+    key: "serving",
+    title: "Serwowanie",
+    description: "Elementy serwujące są dodatkiem do zastawy i mogą być wypożyczane razem z pełnym zestawem albo osobno."
+  },
+  {
+    key: "tables",
+    title: "Stoły i obrusy / pranie",
+    description: "Stoły i obrusy są doliczane osobno. Obrus oznacza opłatę za pranie i przygotowanie."
+  },
+  {
+    key: "other",
+    title: "Pozostałe",
+    description: "Pozycje spoza głównych grup magazynu. Ta sekcja pilnuje, żeby nic nie zniknęło z listy."
+  }
+];
+
+function rentalInventoryName(value) {
+  return normalizeSearchText(value).replace(/ł/g, "l");
+}
+
+function rentalInventoryCategory(item) {
+  const name = rentalInventoryName(item.name);
+  if (name.startsWith("pakiet")) return RENTAL_INVENTORY_SECTIONS[0];
+  if (["talerz plaski", "talerz plytki", "talerz gleboki", "talerzyk deserowy", "filizanka", "spodek", "szklanka", "bulionowka"].some((part) => name.includes(part))) return RENTAL_INVENTORY_SECTIONS[1];
+  if (["widelec", "noz", "lyzka stolowa", "lyzeczka", "widelczyk do ciasta"].some((part) => name.includes(part))) return RENTAL_INVENTORY_SECTIONS[2];
+  if (["waza", "polmisek", "miska 1400 ml", "miska 1000 ml", "miska plaska buffet", "sosjerka"].some((part) => name.includes(part))) return RENTAL_INVENTORY_SECTIONS[3];
+  if (name.startsWith("sprzet") || name.startsWith("obsluga")) return RENTAL_INVENTORY_SECTIONS[4];
+  return RENTAL_INVENTORY_SECTIONS[5];
+}
+
+function rentalInventorySectionsHtml(items) {
+  return RENTAL_INVENTORY_SECTIONS.map((section) => {
+    if (rentalInventoryCategoryFilter !== "all" && section.key !== rentalInventoryCategoryFilter) return "";
+    const sectionItems = items.filter((item) => rentalInventoryCategory(item).key === section.key);
+    if (!sectionItems.length) return "";
     return `
-      <article class="inventory-card">
-        <strong>${escapeHtml(item.name)}</strong>
-        <small>Stan magazynu: ${available} szt. - Wypożyczone: ${borrowed} szt. - Zwrócone łącznie: ${returned} szt. - Stan całkowity: ${item.quantity} szt. - ${money(item.price)} / doba</small>
-        <small>Wartość odtworzeniowa: ${replacementText}</small>
-        <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
-          <input type="number" min="0" step="1" value="${item.quantity}" aria-label="Ilosc ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
-          <input type="number" min="0" step="0.01" value="${item.price}" aria-label="Cena ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
-          <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="Wartość odtworzeniowa ${escapeHtml(item.name)}" placeholder="Wartość odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
+      <section class="inventory-section">
+        <div class="inventory-section-header">
+          <h3>${escapeHtml(section.title)}</h3>
+          <p>${escapeHtml(section.description)}</p>
         </div>
-      </article>
+        <div class="inventory-section-list">
+          ${sectionItems.map((item) => rentalInventoryCard(item)).join("")}
+        </div>
+      </section>
     `;
   }).join("");
+}
+
+function rentalInventoryCard(item) {
+  const available = availableQuantity(item.id);
+  const borrowed = borrowedQuantity(item.id);
+  const damaged = damagedQuantity(item.id);
+  const replacementText = Number(item.replacementValue || 0) > 0 ? `${money(item.replacementValue)} / szt.` : "—";
+  return `
+    <article class="inventory-card">
+      <div class="inventory-card-main">
+        <strong>${escapeHtml(item.name)}</strong>
+        <div class="inventory-stat-grid">
+          <span><small>Stan całkowity</small><b>${escapeHtml(item.quantity)} szt.</b></span>
+          <span><small>Dostępne</small><b>${escapeHtml(available)} szt.</b></span>
+          <span><small>Wypożyczone</small><b>${escapeHtml(borrowed)} szt.</b></span>
+          <span><small>Uszkodzone</small><b>${escapeHtml(damaged)} szt.</b></span>
+          <span><small>Cena za dobę</small><b>${money(item.price)}</b></span>
+          <span><small>Wartość odtworzeniowa</small><b>${replacementText}</b></span>
+        </div>
+      </div>
+      <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
+        <label>Ilość w magazynie
+          <input type="number" min="0" step="1" value="${item.quantity}" aria-label="Ilość w magazynie ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
+        </label>
+        <label>Cena za dobę
+          <input type="number" min="0" step="0.01" value="${item.price}" aria-label="Cena za dobę ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
+        </label>
+        <label>Wartość odtworzeniowa
+          <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="Wartość odtworzeniowa ${escapeHtml(item.name)}" placeholder="Wartość odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
+        </label>
+      </div>
+    </article>
+  `;
 }
 
 function renderRentalItemInputs() {
@@ -5931,6 +6024,13 @@ function returnedQuantity(itemId) {
     .flatMap((loan) => loan.returnItems || loan.items.map((item) => ({ id: item.id, returned: item.quantity })))
     .filter((entry) => entry.id === itemId)
     .reduce((sum, entry) => sum + Number(entry.returned || 0), 0);
+}
+
+function damagedQuantity(itemId) {
+  return state.rentalLoans
+    .flatMap((loan) => loan.returnItems || [])
+    .filter((entry) => entry.id === itemId)
+    .reduce((sum, entry) => sum + Number(entry.damaged || 0), 0);
 }
 
 function updateRentalSummary() {
