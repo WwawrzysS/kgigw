@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-26" />
+    <link rel="stylesheet" href="styles.css?v=20260604-27" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -645,36 +645,6 @@
               </label>
             </div>
             <div id="rentalItemsForm" class="rental-items-form"></div>
-            <div class="notice compact-notice">Obrus należy zwrócić czysty i suchy. W razie zwrotu zabrudzonego obrusu może zostać doliczona opłata za pranie.</div>
-            <div class="form-grid">
-              <label>
-                Rabat
-                <select name="discountType" onchange="updateRentalSummary()">
-                  <option value="none">Brak rabatu</option>
-                  <option value="percent">Procent</option>
-                  <option value="amount">Kwota</option>
-                </select>
-              </label>
-              <label>
-                Wartosc rabatu
-                <input name="discountValue" type="number" min="0" step="0.01" placeholder="0" oninput="updateRentalSummary()" />
-              </label>
-            </div>
-            <input name="discountReason" placeholder="Powod rabatu (opcjonalnie)" />
-            <div class="form-grid">
-              <label>
-                Kaucja zwrotna
-                <select name="depositType" onchange="updateRentalSummary()">
-                  <option value="none">Brak kaucji</option>
-                  <option value="fixed">Kwota stala</option>
-                  <option value="percent">Procent wartosci</option>
-                </select>
-              </label>
-              <label>
-                Wartosc kaucji
-                <input name="depositValue" type="number" min="0" step="0.01" placeholder="0" oninput="updateRentalSummary()" />
-              </label>
-            </div>
             <select name="paymentStatus">
               <option value="unpaid">Nieopłacone</option>
               <option value="cash">Opłacone gotówką</option>
@@ -684,8 +654,38 @@
             <textarea name="notes" placeholder="Uwagi, np. kaucja, uszkodzenia przed wydaniem"></textarea>
             <div class="rental-summary">
               <span>Dni: <strong id="rentalDays">1</strong></span>
-              <span>Razem: <strong id="rentalTotal">0 zł</strong></span>
+              <span>Kwota przed rabatem: <strong id="rentalTotal">0 zł</strong></span>
+              <div class="form-grid">
+                <label>
+                  Rabat
+                  <select name="discountType" onchange="updateRentalSummary()">
+                    <option value="none">Brak rabatu</option>
+                    <option value="percent">Rabat procentowy</option>
+                    <option value="amount">Rabat kwotowy</option>
+                  </select>
+                </label>
+                <label id="rentalDiscountValueWrap">
+                  Wartość rabatu
+                  <input name="discountValue" type="number" min="0" step="0.01" placeholder="0" oninput="updateRentalSummary()" />
+                </label>
+              </div>
+              <input id="rentalDiscountReason" name="discountReason" placeholder="Powód rabatu (opcjonalnie)" />
               <span>Rabat: <strong id="rentalDiscount">0 zł</strong></span>
+              <span>Do zapłaty po rabacie: <strong id="rentalAfterDiscount">0 zł</strong></span>
+              <div class="form-grid">
+                <label>
+                  Kaucja zwrotna
+                  <select name="depositType" onchange="updateRentalSummary()">
+                    <option value="none">Brak kaucji</option>
+                    <option value="fixed">Kaucja ustalona</option>
+                    <option value="percent">Kaucja procentowa</option>
+                  </select>
+                </label>
+                <label id="rentalDepositValueWrap">
+                  Wartość kaucji
+                  <input name="depositValue" type="number" min="0" step="0.01" placeholder="0" oninput="updateRentalSummary()" />
+                </label>
+              </div>
               <span>Kaucja: <strong id="rentalDeposit">0 zł</strong></span>
               <span>Do pobrania przy wydaniu: <strong id="rentalCollected">0 zł</strong></span>
             </div>
@@ -1141,7 +1141,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-26</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-27</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1299,6 +1299,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-26"></script>
+    <script src="app.js?v=20260604-27"></script>
   </body>
 </html>

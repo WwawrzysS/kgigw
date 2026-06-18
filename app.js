@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-26";
+const APP_VERSION = "2026.06.04-27";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -206,6 +206,7 @@ const elements = {
   rentalDays: document.querySelector("#rentalDays"),
   rentalTotal: document.querySelector("#rentalTotal"),
   rentalDiscount: document.querySelector("#rentalDiscount"),
+  rentalAfterDiscount: document.querySelector("#rentalAfterDiscount"),
   rentalDeposit: document.querySelector("#rentalDeposit"),
   rentalCollected: document.querySelector("#rentalCollected"),
   rentalsList: document.querySelector("#rentalsList"),
@@ -4105,7 +4106,13 @@ function renderRentalReturns() {
             <option value="transfer" ${loan.paymentStatus === "transfer" ? "selected" : ""}>Opłacone przelewem</option>
             <option value="invoice_later" ${loan.paymentStatus === "invoice_later" ? "selected" : ""}>Faktura / płatność później</option>
           </select>
-          <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="Dopłata za braki/uszkodzenia" oninput="updateTableclothReturnSummary('${loan.id}')" />
+          <select id="returnCondition-${loan.id}" onchange="toggleMainReturnDamageField('${loan.id}'); updateTableclothReturnSummary('${loan.id}')">
+            <option value="ok">Stan po zwrocie: OK</option>
+            <option value="damaged">Stan po zwrocie: Uszkodzony</option>
+          </select>
+          <div id="returnDamageWrap-${loan.id}" class="hidden">
+            <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="Dopłata za braki/uszkodzenia" oninput="updateTableclothReturnSummary('${loan.id}')" />
+          </div>
           ${tableclothReturnFormHtml(loan)}
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi do zwrotu, np. uszkodzone, brakuje sztuk, zabrudzone obrusy"></textarea>
         </div>
@@ -5304,14 +5311,16 @@ async function returnRental(id) {
   const confirmed = confirm("Oznaczyc to wypozyczenie jako zwrocone?");
   if (!confirmed) return;
   const notes = document.querySelector(`#returnNotes-${id}`)?.value || "";
-  const damageCost = Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
+  const returnCondition = document.querySelector(`#returnCondition-${id}`)?.value || "ok";
+  const damageCost = returnCondition === "ok" ? 0 : Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
   const tableclothFee = tableclothReturnFeeFromInputs(loan);
   if (!tableclothFee.ok) {
     alert("Liczba obrusów do prania lub z plamami nie może być większa niż liczba wypożyczonych obrusów.");
     return;
   }
   const returnExtraFee = damageCost + Number(tableclothFee.total || 0);
-  const returnNotes = [notes, tableclothReturnNotes(tableclothFee)].filter(Boolean).join("\n\n");
+  const conditionNote = returnCondition === "ok" ? "Stan po zwrocie: OK" : "Stan po zwrocie: Uszkodzony";
+  const returnNotes = [conditionNote, notes, tableclothReturnNotes(tableclothFee)].filter(Boolean).join("\n\n");
   const paymentStatus = document.querySelector(`#returnPayment-${id}`)?.value || loan.paymentStatus || "unpaid";
   const returnItems = loan.items.map((item, index) => ({
     lineId: item.lineId,
@@ -5935,10 +5944,16 @@ function updateRentalSummary() {
   const baseTotal = rentalTotal(items, days);
   const meta = buildRentalMeta(baseTotal, data);
   elements.rentalDays.textContent = days;
-  elements.rentalTotal.textContent = money(meta.afterDiscount);
+  elements.rentalTotal.textContent = money(baseTotal);
   if (elements.rentalDiscount) elements.rentalDiscount.textContent = money(meta.discountAmount);
+  if (elements.rentalAfterDiscount) elements.rentalAfterDiscount.textContent = money(meta.afterDiscount);
   if (elements.rentalDeposit) elements.rentalDeposit.textContent = money(meta.depositAmount);
   if (elements.rentalCollected) elements.rentalCollected.textContent = money(meta.collectedAtIssue);
+  const discountActive = data.discountType && data.discountType !== "none";
+  const depositActive = data.depositType && data.depositType !== "none";
+  document.querySelector("#rentalDiscountValueWrap")?.classList.toggle("hidden", !discountActive);
+  document.querySelector("#rentalDiscountReason")?.classList.toggle("hidden", !discountActive);
+  document.querySelector("#rentalDepositValueWrap")?.classList.toggle("hidden", !depositActive);
 }
 
 function rentalDays(dateFrom, dateTo) {
@@ -6072,7 +6087,8 @@ function tableclothReturnFormHtml(loan) {
 }
 
 function tableclothReturnSummaryHtml(loan, fee) {
-  const manual = Number(document.querySelector(`#returnDamage-${loan.id}`)?.value || 0);
+  const condition = document.querySelector(`#returnCondition-${loan.id}`)?.value || "ok";
+  const manual = condition === "ok" ? 0 : Number(document.querySelector(`#returnDamage-${loan.id}`)?.value || 0);
   const safeManual = Number.isFinite(manual) && manual > 0 ? manual : 0;
   const returnFee = safeManual + Number(fee.total || 0);
   const settlement = rentalSettlementTotals({ ...loan, damageCost: returnFee }, new Date().toISOString().slice(0, 10));
@@ -6097,6 +6113,15 @@ function updateTableclothReturnSummary(id) {
     return;
   }
   target.innerHTML = tableclothReturnSummaryHtml(loan, fee);
+}
+
+function toggleMainReturnDamageField(id) {
+  const condition = document.querySelector(`#returnCondition-${id}`)?.value || "ok";
+  const wrap = document.querySelector(`#returnDamageWrap-${id}`);
+  const input = document.querySelector(`#returnDamage-${id}`);
+  const isOk = condition === "ok";
+  wrap?.classList.toggle("hidden", isOk);
+  if (isOk && input) input.value = "0";
 }
 
 function rentalTotal(items, days) {
@@ -6136,7 +6161,7 @@ function buildRentalMeta(baseTotal, data = {}) {
     discountType: discount.type,
     discountValue: discount.value,
     discountAmount: discount.amount,
-    discountReason: data.discountReason || "",
+    discountReason: discount.amount > 0 ? data.discountReason || "" : "",
     afterDiscount,
     depositType: deposit.type,
     depositValue: deposit.value,
