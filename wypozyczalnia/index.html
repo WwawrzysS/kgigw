@@ -458,6 +458,7 @@
           <input name="dateTo" type="date" required />
           <label>Co wypożycza</label>
           <div id="loanItems"></div>
+          <p class="readonly-note">Obrus należy zwrócić czysty i suchy. W razie zwrotu zabrudzonego obrusu może zostać doliczona opłata za pranie.</p>
           <label>Uwagi</label>
           <textarea name="notes" placeholder="Uwagi do wypożyczenia"></textarea>
           <div class="actions">
@@ -829,12 +830,15 @@
       const loan = state.rentals.find((item) => item.id === id);
       if (!loan) return;
       if (!Number.isFinite(damageCost) || damageCost < 0) return showMessage("Wpisz poprawną wartość braków/uszkodzeń.", true);
-      const returnNotes = [conditionText(condition), notes].filter(Boolean).join(" - ");
+      const tableclothFee = tableclothReturnFeeFromInputs(loan);
+      if (!tableclothFee.ok) return showMessage("Liczba obrusów do prania lub z plamami nie może być większa niż liczba wypożyczonych obrusów.", true);
+      const returnFee = damageCost + Number(tableclothFee.total || 0);
+      const returnNotes = [conditionText(condition), notes, tableclothReturnNotes(tableclothFee)].filter(Boolean).join("\n\n");
       const { error } = await supabaseClient.from("rentals").update({
         status: "Zwrócone",
         returned_at: returnedAt,
         return_notes: returnNotes,
-        damage_cost: damageCost
+        damage_cost: returnFee
       }).eq("id", id);
       if (error) return showMessage("Nie udało się zapisać. Sprawdź dane i spróbuj ponownie.", true);
       for (const line of loan.rental_lines || []) {
@@ -850,7 +854,7 @@
         returned_at: returnedAt,
         return_notes: returnNotes,
         return_condition: condition,
-        damage_cost: damageCost,
+        damage_cost: returnFee,
         rental_lines: (loan.rental_lines || []).map((line) => ({
           ...line,
           returned: line.quantity,
@@ -1215,6 +1219,89 @@
       </section>`;
     }
 
+    function isTableclothName(name) {
+      return norm(name).includes("obrus");
+    }
+
+    function tableclothIssuedCount(loan) {
+      return (loan.rental_lines || [])
+        .filter((line) => isTableclothName(line.item_name))
+        .reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    }
+
+    function tableclothLaundryFee(washCount, stainCount) {
+      const wash = Math.max(0, Number(washCount || 0));
+      const stains = Math.max(0, Number(stainCount || 0));
+      const washing = wash <= 0 ? 0 : 75 + Math.max(0, wash - 1) * 25;
+      const stainFee = stains * 15;
+      return { wash, stains, washing, stainFee, total: washing + stainFee };
+    }
+
+    function tableclothReturnFeeFromInputs(loan) {
+      const issued = tableclothIssuedCount(loan);
+      if (!issued) return { issued: 0, ok: true, ...tableclothLaundryFee(0, 0) };
+      const wash = Number(document.querySelector(`#returnLaundry-${loan.id}`)?.value || 0);
+      const stains = Number(document.querySelector(`#returnStains-${loan.id}`)?.value || 0);
+      if (!Number.isFinite(wash) || !Number.isFinite(stains) || wash < 0 || stains < 0 || wash > issued || stains > issued) {
+        return { issued, ok: false };
+      }
+      return { issued, ok: true, ...tableclothLaundryFee(wash, stains) };
+    }
+
+    function tableclothReturnNotes(fee) {
+      if (!fee?.total) return "";
+      return [
+        "Dodatkowe opłaty za obrusy:",
+        `Liczba obrusów do prania: ${fee.wash}`,
+        `Liczba obrusów z uporczywymi plamami: ${fee.stains}`,
+        `Pranie obrusów: ${money(fee.washing)}`,
+        `Uporczywe plamy: ${money(fee.stainFee)}`,
+        `Razem opłaty za obrusy: ${money(fee.total)}`
+      ].join("\n");
+    }
+
+    function tableclothReturnSectionHtml(loan) {
+      const issued = tableclothIssuedCount(loan);
+      if (!issued) return "";
+      return `<section class="settlement-box">
+        <strong>Dodatkowe opłaty za obrusy</strong>
+        <p class="muted">Domyślnie 0 zł. Wpisz tylko wtedy, gdy obrus wrócił zabrudzony.</p>
+        <label>Liczba obrusów do prania</label>
+        <input id="returnLaundry-${loan.id}" type="number" min="0" max="${issued}" step="1" value="0" oninput="updateTableclothReturnSummary('${loan.id}')" />
+        <label>Liczba obrusów z uporczywymi plamami</label>
+        <input id="returnStains-${loan.id}" type="number" min="0" max="${issued}" step="1" value="0" oninput="updateTableclothReturnSummary('${loan.id}')" />
+        <div id="returnTableclothSummary-${loan.id}">${tableclothReturnSummaryHtml(loan, tableclothLaundryFee(0, 0))}</div>
+      </section>`;
+    }
+
+    function tableclothReturnSummaryHtml(loan, fee) {
+      const manual = parseMoneyInput(document.querySelector(`#returnDamageCost-${loan.id}`)?.value || 0);
+      const safeManual = Number.isFinite(manual) && manual > 0 ? manual : 0;
+      const returnFee = safeManual + Number(fee.total || 0);
+      const settlement = settlementTotals({ ...loan, returned_at: document.querySelector(`#returnedAt-${loan.id}`)?.value || today(), damage_cost: returnFee });
+      const laundryText = fee.total ? "" : "<div class='settlement-row'><span>Brak dopłat za pranie.</span><span>0,00 zł</span></div>";
+      return `
+        ${laundryText}
+        <div class="settlement-row"><span>Kwota wypożyczenia:</span><span>${money(settlement.plannedCost)}</span></div>
+        <div class="settlement-row"><span>Pranie obrusów:</span><span>${money(fee.washing || 0)}</span></div>
+        <div class="settlement-row"><span>Uporczywe plamy:</span><span>${money(fee.stainFee || 0)}</span></div>
+        <div class="settlement-row"><span>Dopłata przy zwrocie:</span><span>${money(returnFee)}</span></div>
+        <div class="settlement-row total"><span>Razem:</span><span>${money(settlement.total)}</span></div>
+      `;
+    }
+
+    function updateTableclothReturnSummary(id) {
+      const loan = state.rentals.find((entry) => entry.id === id);
+      const target = document.querySelector(`#returnTableclothSummary-${id}`);
+      if (!loan || !target) return;
+      const fee = tableclothReturnFeeFromInputs(loan);
+      if (!fee.ok) {
+        target.innerHTML = "<p class='error-text'>Liczba sztuk nie może być większa niż liczba wypożyczonych obrusów.</p>";
+        return;
+      }
+      target.innerHTML = tableclothReturnSummaryHtml(loan, fee);
+    }
+
     function returnDelayInfoHtml(loan, returnedAt) {
       const settlement = settlementTotals({ ...loan, returned_at: returnedAt });
       return `
@@ -1382,7 +1469,7 @@
         ${lines || "<p class='muted'>Brak pozycji do zwrotu.</p>"}
         ${missingReplacementWarning ? `<p class="readonly-note">Brak wartości odtworzeniowej dla części sprzętu. Kwota może być niepełna.</p>` : ""}
         <label>Data zwrotu</label>
-        <input id="returnedAt-${loan.id}" type="date" value="${today()}" onchange="updateReturnDelayInfo('${loan.id}')" />
+        <input id="returnedAt-${loan.id}" type="date" value="${today()}" onchange="updateReturnDelayInfo('${loan.id}'); updateTableclothReturnSummary('${loan.id}')" />
         <div id="returnDelayInfo-${loan.id}" class="settlement-box">${returnDelayInfoHtml(loan, today())}</div>
         <label>Stan po zwrocie</label>
         <select id="condition-${loan.id}">
@@ -1390,7 +1477,8 @@
           <option value="damaged">Uszkodzony</option>
         </select>
         <label>Wartość braków/uszkodzeń</label>
-        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" onblur="normalizeMoneyInput(this)" />
+        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" oninput="updateTableclothReturnSummary('${loan.id}')" onblur="normalizeMoneyInput(this); updateTableclothReturnSummary('${loan.id}')" />
+        ${tableclothReturnSectionHtml(loan)}
         <label>Uwagi po zwrocie</label>
         <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
         <div class="actions">
