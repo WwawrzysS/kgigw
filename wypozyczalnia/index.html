@@ -458,25 +458,6 @@
           <input name="dateTo" type="date" required />
           <label>Co wypożycza</label>
           <div id="loanItems"></div>
-          <p class="readonly-note">Obrus należy zwrócić czysty i suchy. W razie zwrotu zabrudzonego obrusu może zostać doliczona opłata za pranie.</p>
-          <label>Rabat</label>
-          <select name="discountType">
-            <option value="none">Brak rabatu</option>
-            <option value="percent">Procent</option>
-            <option value="amount">Kwota</option>
-          </select>
-          <label>Wartosc rabatu</label>
-          <input name="discountValue" type="number" min="0" step="0.01" placeholder="0" />
-          <label>Powod rabatu</label>
-          <input name="discountReason" placeholder="Opcjonalnie" />
-          <label>Kaucja zwrotna</label>
-          <select name="depositType">
-            <option value="none">Brak kaucji</option>
-            <option value="fixed">Kwota stala</option>
-            <option value="percent">Procent wartosci</option>
-          </select>
-          <label>Wartosc kaucji</label>
-          <input name="depositValue" type="number" min="0" step="0.01" placeholder="0" />
           <label>Uwagi</label>
           <textarea name="notes" placeholder="Uwagi do wypożyczenia"></textarea>
           <div class="actions">
@@ -779,14 +760,12 @@
       const days = rentalDays(form.dateFrom.value, form.dateTo.value);
       const totalPerDay = selected.reduce((sum, row) => sum + row.quantity * row.price, 0);
       const baseTotal = totalPerDay * days;
-      if (form.discountType.value === "percent" && sanitizeMoneyValue(form.discountValue.value) > 100) return { error: "Rabat procentowy nie może być większy niż 100%." };
-      if (form.discountType.value === "amount" && sanitizeMoneyValue(form.discountValue.value) > baseTotal) return { error: "Rabat kwotowy nie może być większy niż kwota wypożyczenia." };
       const meta = buildRentalMeta(baseTotal, {
-        discountType: form.discountType.value,
-        discountValue: form.discountValue.value,
-        discountReason: form.discountReason.value,
-        depositType: form.depositType.value,
-        depositValue: form.depositValue.value
+        discountType: "none",
+        discountValue: 0,
+        discountReason: "",
+        depositType: "none",
+        depositValue: 0
       });
       return {
         firstName,
@@ -861,7 +840,7 @@
       const shouldSign = printMode === "signature";
       const condition = document.querySelector(`#condition-${id}`).value;
       const notes = document.querySelector(`#returnNotes-${id}`).value;
-      const damageCost = parseMoneyInput(document.querySelector(`#returnDamageCost-${id}`)?.value);
+      const damageCost = condition === "ok" ? 0 : parseMoneyInput(document.querySelector(`#returnDamageCost-${id}`)?.value);
       const returnedAt = document.querySelector(`#returnedAt-${id}`).value || today();
       const loan = state.rentals.find((item) => item.id === id);
       if (!loan) return;
@@ -961,17 +940,69 @@
         </table>
         <p><strong>Razem za dobę:</strong> ${money(draft.totalPerDay)}<br>
         <strong>Liczba dób:</strong> ${summaryDays}<br>
-        <strong>Kwota przed rabatem:</strong> ${money(draft.meta.baseTotal)}<br>
-        <strong>Rabat:</strong> ${money(draft.meta.discountAmount)}<br>
-        <strong>Kwota po rabacie:</strong> ${money(draft.meta.afterDiscount)}<br>
-        <strong>Kaucja zwrotna:</strong> ${money(draft.meta.depositAmount)}<br>
-        <strong>Razem pobrano przy wydaniu:</strong> ${money(draft.meta.collectedAtIssue)}</p>
+        <strong>Kwota przed rabatem:</strong> <span id="summaryBaseTotal">${money(draft.meta.baseTotal)}</span></p>
+        <label>Rabat</label>
+        <select id="summaryDiscountType" onchange="updateLoanSummaryAdjustments()">
+          <option value="none" ${draft.meta.discountType === "none" ? "selected" : ""}>Brak rabatu</option>
+          <option value="percent" ${draft.meta.discountType === "percent" ? "selected" : ""}>Rabat procentowy</option>
+          <option value="amount" ${draft.meta.discountType === "amount" ? "selected" : ""}>Rabat kwotowy</option>
+        </select>
+        <div id="summaryDiscountValueWrap">
+          <label>Wartość rabatu</label>
+          <input id="summaryDiscountValue" type="number" min="0" step="0.01" value="${escapeHtml(draft.meta.discountValue || "")}" oninput="updateLoanSummaryAdjustments()" />
+          <small id="summaryDiscountUnit"></small>
+          <label>Powód rabatu</label>
+          <input id="summaryDiscountReason" value="${escapeHtml(draft.meta.discountReason || "")}" oninput="updateLoanSummaryAdjustments()" />
+        </div>
+        <p><strong>Kwota rabatu:</strong> <span id="summaryDiscountAmount">${money(draft.meta.discountAmount)}</span><br>
+        <strong>Do zapłaty po rabacie:</strong> <span id="summaryAfterDiscount">${money(draft.meta.afterDiscount)}</span></p>
+        <label>Kaucja zwrotna</label>
+        <select id="summaryDepositType" onchange="updateLoanSummaryAdjustments()">
+          <option value="none" ${draft.meta.depositType === "none" ? "selected" : ""}>Brak kaucji</option>
+          <option value="fixed" ${draft.meta.depositType === "fixed" ? "selected" : ""}>Kaucja ustalona</option>
+          <option value="percent" ${draft.meta.depositType === "percent" ? "selected" : ""}>Kaucja procentowa</option>
+        </select>
+        <div id="summaryDepositValueWrap">
+          <label>Wartość kaucji</label>
+          <input id="summaryDepositValue" type="number" min="0" step="0.01" value="${escapeHtml(draft.meta.depositValue || "")}" oninput="updateLoanSummaryAdjustments()" />
+          <small id="summaryDepositUnit"></small>
+        </div>
+        <p><strong>Kaucja zwrotna:</strong> <span id="summaryDepositAmount">${money(draft.meta.depositAmount)}</span><br>
+        <strong>Razem do pobrania przy wydaniu:</strong> <span id="summaryCollected">${money(draft.meta.collectedAtIssue)}</span></p>
       `;
+      updateLoanSummaryAdjustments();
+    }
+
+    function updateLoanSummaryAdjustments() {
+      const draft = state.loanSummary;
+      if (!draft) return;
+      const discountType = document.querySelector("#summaryDiscountType")?.value || "none";
+      const discountValue = document.querySelector("#summaryDiscountValue")?.value || 0;
+      const discountReason = document.querySelector("#summaryDiscountReason")?.value || "";
+      const depositType = document.querySelector("#summaryDepositType")?.value || "none";
+      const depositValue = document.querySelector("#summaryDepositValue")?.value || 0;
+      const baseTotal = draft.totalPerDay * draft.days;
+      draft.meta = buildRentalMeta(baseTotal, { discountType, discountValue, discountReason, depositType, depositValue });
+      draft.baseTotal = baseTotal;
+      draft.total = draft.meta.afterDiscount;
+      draft.notes = rentalNotesWithMeta(draft.userNotes || "", draft.meta);
+      const discountActive = discountType !== "none";
+      const depositActive = depositType !== "none";
+      document.querySelector("#summaryDiscountValueWrap")?.classList.toggle("hidden", !discountActive);
+      document.querySelector("#summaryDepositValueWrap")?.classList.toggle("hidden", !depositActive);
+      if (document.querySelector("#summaryDiscountUnit")) document.querySelector("#summaryDiscountUnit").textContent = discountType === "percent" ? "%" : discountType === "amount" ? "zł" : "";
+      if (document.querySelector("#summaryDepositUnit")) document.querySelector("#summaryDepositUnit").textContent = depositType === "percent" ? "% od kwoty przed rabatem" : depositType === "fixed" ? "zł" : "";
+      if (document.querySelector("#summaryBaseTotal")) document.querySelector("#summaryBaseTotal").textContent = money(draft.meta.baseTotal);
+      if (document.querySelector("#summaryDiscountAmount")) document.querySelector("#summaryDiscountAmount").textContent = money(draft.meta.discountAmount);
+      if (document.querySelector("#summaryAfterDiscount")) document.querySelector("#summaryAfterDiscount").textContent = money(draft.meta.afterDiscount);
+      if (document.querySelector("#summaryDepositAmount")) document.querySelector("#summaryDepositAmount").textContent = money(draft.meta.depositAmount);
+      if (document.querySelector("#summaryCollected")) document.querySelector("#summaryCollected").textContent = money(draft.meta.collectedAtIssue);
     }
 
     function showLoanProtocolAcceptance() {
       const draft = state.loanSummary;
       if (!draft) return showMessage("Najpierw przygotuj podsumowanie wypożyczenia.", true);
+      updateLoanSummaryAdjustments();
       const previewLoan = protocolLoanFromDraft(draft, "do nadania po zapisie");
       document.querySelector("#loanProtocolPreview").innerHTML = protocolDocumentHtml("loan", previewLoan);
       showScreen("loanProtocolScreen");
@@ -1259,7 +1290,7 @@
         discountType: discount.type,
         discountValue: discount.value,
         discountAmount: discount.amount,
-        discountReason: data.discountReason || "",
+        discountReason: discount.amount > 0 ? data.discountReason || "" : "",
         afterDiscount,
         depositType: deposit.type,
         depositValue: deposit.value,
@@ -1487,6 +1518,15 @@
       target.innerHTML = tableclothReturnSummaryHtml(loan, fee);
     }
 
+    function toggleReturnDamageField(id) {
+      const condition = document.querySelector(`#condition-${id}`)?.value || "ok";
+      const wrap = document.querySelector(`#returnDamageWrap-${id}`);
+      const input = document.querySelector(`#returnDamageCost-${id}`);
+      const isOk = condition === "ok";
+      wrap?.classList.toggle("hidden", isOk);
+      if (isOk && input) input.value = "0";
+    }
+
     function returnDelayInfoHtml(loan, returnedAt) {
       const settlement = settlementTotals({ ...loan, returned_at: returnedAt });
       return `
@@ -1657,12 +1697,14 @@
         <input id="returnedAt-${loan.id}" type="date" value="${today()}" onchange="updateReturnDelayInfo('${loan.id}'); updateTableclothReturnSummary('${loan.id}')" />
         <div id="returnDelayInfo-${loan.id}" class="settlement-box">${returnDelayInfoHtml(loan, today())}</div>
         <label>Stan po zwrocie</label>
-        <select id="condition-${loan.id}">
+        <select id="condition-${loan.id}" onchange="toggleReturnDamageField('${loan.id}'); updateTableclothReturnSummary('${loan.id}')">
           <option value="ok">OK</option>
           <option value="damaged">Uszkodzony</option>
         </select>
-        <label>Wartość braków/uszkodzeń</label>
-        <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" oninput="updateTableclothReturnSummary('${loan.id}')" onblur="normalizeMoneyInput(this); updateTableclothReturnSummary('${loan.id}')" />
+        <div id="returnDamageWrap-${loan.id}" class="hidden">
+          <label>Wartość braków/uszkodzeń</label>
+          <input id="returnDamageCost-${loan.id}" type="text" value="0" inputmode="decimal" onfocus="clearZeroMoneyInput(this)" oninput="updateTableclothReturnSummary('${loan.id}')" onblur="normalizeMoneyInput(this); updateTableclothReturnSummary('${loan.id}')" />
+        </div>
         ${tableclothReturnSectionHtml(loan)}
         <label>Uwagi po zwrocie</label>
         <textarea id="returnNotes-${loan.id}" placeholder="Uwagi po zwrocie"></textarea>
