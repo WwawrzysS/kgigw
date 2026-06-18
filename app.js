@@ -205,6 +205,9 @@ const elements = {
   rentalItemsForm: document.querySelector("#rentalItemsForm"),
   rentalDays: document.querySelector("#rentalDays"),
   rentalTotal: document.querySelector("#rentalTotal"),
+  rentalDiscount: document.querySelector("#rentalDiscount"),
+  rentalDeposit: document.querySelector("#rentalDeposit"),
+  rentalCollected: document.querySelector("#rentalCollected"),
   rentalsList: document.querySelector("#rentalsList"),
   invoiceRental: document.querySelector("#invoiceRental"),
   invoiceSearch: document.querySelector("#invoiceSearch"),
@@ -1776,7 +1779,18 @@ async function handleRental(event) {
   }
 
   const days = rentalDays(data.dateFrom, data.dateTo);
-  const total = rentalTotal(items, days);
+  const baseTotal = rentalTotal(items, days);
+  const meta = buildRentalMeta(baseTotal, data);
+  if (data.discountType === "percent" && sanitizeMoneyValue(data.discountValue) > 100) {
+    alert("Rabat procentowy nie moze byc wiekszy niz 100%.");
+    return;
+  }
+  if (data.discountType === "amount" && sanitizeMoneyValue(data.discountValue) > baseTotal) {
+    alert("Rabat kwotowy nie moze byc wiekszy niz kwota wypozyczenia.");
+    return;
+  }
+  const total = meta.afterDiscount;
+  const notesWithMeta = rentalNotesWithMeta(data.notes || "", meta);
   const paymentStatus = data.paymentStatus || "unpaid";
   if (supabaseClient && currentRole) {
     const { data: rental, error: rentalError } = await supabaseClient
@@ -1790,7 +1804,7 @@ async function handleRental(event) {
         days,
         total,
         status: "Wypożyczone",
-        notes: data.notes || null,
+        notes: notesWithMeta || null,
         payment_status: paymentStatus,
         payment_method: rentalPaymentMethod(paymentStatus),
         paid_at: isRentalPaid(paymentStatus) ? new Date().toISOString().slice(0, 10) : null
@@ -1829,6 +1843,12 @@ async function handleRental(event) {
     form.dateFrom.valueAsDate = new Date();
     form.dateTo.valueAsDate = new Date();
     await logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
+    if (meta.discountAmount > 0) {
+      await logActivity("Wypożyczalnia", "Rabat przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
+    }
+    if (meta.depositAmount > 0) {
+      await logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
+    }
     await refreshSupabaseData();
     showToast("Wypożyczenie zapisane");
     return;
@@ -1840,7 +1860,7 @@ async function handleRental(event) {
     phone: data.phone,
     dateFrom: data.dateFrom,
     dateTo: data.dateTo,
-    notes: data.notes,
+    notes: notesWithMeta,
     days,
     items,
     total,
@@ -1859,6 +1879,8 @@ async function handleRental(event) {
   renderRentalItemInputs();
   updateRentalSummary();
   logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
+  if (meta.discountAmount > 0) logActivity("Wypożyczalnia", "Rabat przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
+  if (meta.depositAmount > 0) logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
   showToast("Wypożyczenie zapisane");
 }
 
@@ -2519,7 +2541,7 @@ function globalSearchResults(search) {
     "rentals",
     `${loan.firstName || ""} ${loan.lastName || ""}`.trim() || "Wypożyczenie",
     `${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} · ${money(loan.total)} · ${loan.status}`,
-    [loan.firstName, loan.lastName, loan.phone, loan.status, loan.total, money(loan.total), rentalItemsText(loan.items), loan.notes, loan.returnNotes],
+    [loan.firstName, loan.lastName, loan.phone, loan.status, loan.total, money(loan.total), rentalItemsText(loan.items), rentalUserNotes(loan.notes), loan.returnNotes],
     "history"
   ));
 
@@ -4005,7 +4027,7 @@ function rentalHistoryRow(loan) {
           ${loan.returnNotes ? `<br>Uwagi zwrotu: ${escapeHtml(loan.returnNotes)}` : ""}
           <br>Faktura: ${invoice ? `wystawiona nr ${escapeHtml(invoice.number)}` : "Brak faktury"}
         </small>
-        ${loan.returnedAt ? rentalSettlementHtml(loan) : ""}
+        ${loan.returnedAt ? rentalSettlementHtml(loan) : rentalIssueSettlementHtml(loan)}
       </details>
     </div>
     <div class="row-actions">
@@ -5338,6 +5360,9 @@ async function returnRental(id) {
     if (!paymentResult.ok) return;
 
     await logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
+    if (returnExtraFee > 0) {
+      await logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
+    }
     await refreshSupabaseData();
     showToast("Przyjęto zwrot");
     return;
@@ -5355,6 +5380,9 @@ async function returnRental(id) {
   saveState();
   render();
   logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
+  if (returnExtraFee > 0) {
+    logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
+  }
   showToast("Przyjęto zwrot");
 }
 
@@ -5904,8 +5932,13 @@ function updateRentalSummary() {
     quantity: Number(data[`item-${item.id}`] || 0),
     price: Number(item.price)
   }));
+  const baseTotal = rentalTotal(items, days);
+  const meta = buildRentalMeta(baseTotal, data);
   elements.rentalDays.textContent = days;
-  elements.rentalTotal.textContent = money(rentalTotal(items, days));
+  elements.rentalTotal.textContent = money(meta.afterDiscount);
+  if (elements.rentalDiscount) elements.rentalDiscount.textContent = money(meta.discountAmount);
+  if (elements.rentalDeposit) elements.rentalDeposit.textContent = money(meta.depositAmount);
+  if (elements.rentalCollected) elements.rentalCollected.textContent = money(meta.collectedAtIssue);
 }
 
 function rentalDays(dateFrom, dateTo) {
@@ -5948,6 +5981,12 @@ function rentalSettlementTotals(loan, returnedAt = loan.returnedAt || "") {
 
 function rentalSettlementHtml(loan) {
   const settlement = rentalSettlementTotals(loan);
+  const meta = rentalMetaForLoan(loan);
+  const depositReturn = Math.max(0, Number(meta.depositAmount || 0) - Number(settlement.damage || 0));
+  const depositRows = meta.depositAmount || settlement.damage ? `
+      <small>Kaucja pobrana: ${money(meta.depositAmount || 0)}</small>
+      <small>Kaucja do zwrotu: ${money(depositReturn)}</small>
+  ` : "";
   return `
     <div class="finance-summary">
       <strong>Rozliczenie</strong>
@@ -5955,6 +5994,7 @@ function rentalSettlementHtml(loan) {
       <small>Dodatkowe doby po terminie: ${settlement.lateDays}</small>
       <small>Dopłata za opóźnienie: ${money(settlement.lateFee)}</small>
       <small>Dopłata za braki/uszkodzenia: ${money(settlement.damage)}</small>
+      ${depositRows}
       <small>Razem do rozliczenia: ${money(settlement.total)}</small>
     </div>
   `;
@@ -6061,6 +6101,138 @@ function updateTableclothReturnSummary(id) {
 
 function rentalTotal(items, days) {
   return items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.price || 0) * days, 0);
+}
+
+const RENTAL_META_START = "[KGIGW_RENTAL_META]";
+const RENTAL_META_END = "[/KGIGW_RENTAL_META]";
+
+function sanitizeMoneyValue(value) {
+  const num = Number(String(value ?? "0").replace(",", "."));
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function calculateDiscount(baseTotal, type, rawValue) {
+  const value = sanitizeMoneyValue(rawValue);
+  if (!type || type === "none" || value <= 0) return { type: "none", value: 0, amount: 0 };
+  if (type === "percent") return { type, value, amount: Math.min(baseTotal, baseTotal * Math.min(value, 100) / 100) };
+  if (type === "amount") return { type, value, amount: Math.min(baseTotal, value) };
+  return { type: "none", value: 0, amount: 0 };
+}
+
+function calculateDeposit(baseTotal, type, rawValue) {
+  const value = sanitizeMoneyValue(rawValue);
+  if (!type || type === "none" || value <= 0) return { type: "none", value: 0, amount: 0 };
+  if (type === "percent") return { type, value, amount: baseTotal * value / 100 };
+  if (type === "fixed") return { type, value, amount: value };
+  return { type: "none", value: 0, amount: 0 };
+}
+
+function buildRentalMeta(baseTotal, data = {}) {
+  const discount = calculateDiscount(baseTotal, data.discountType, data.discountValue);
+  const afterDiscount = Math.max(0, baseTotal - discount.amount);
+  const deposit = calculateDeposit(baseTotal, data.depositType, data.depositValue);
+  return {
+    baseTotal,
+    discountType: discount.type,
+    discountValue: discount.value,
+    discountAmount: discount.amount,
+    discountReason: data.discountReason || "",
+    afterDiscount,
+    depositType: deposit.type,
+    depositValue: deposit.value,
+    depositAmount: deposit.amount,
+    collectedAtIssue: afterDiscount + deposit.amount
+  };
+}
+
+function rentalNotesWithMeta(notes, meta) {
+  const cleanNotes = rentalUserNotes(notes);
+  return `${cleanNotes ? `${cleanNotes.trim()}\n\n` : ""}${RENTAL_META_START}${JSON.stringify(meta)}${RENTAL_META_END}`;
+}
+
+function rentalMetaFromNotes(notes) {
+  const text = String(notes || "");
+  const start = text.indexOf(RENTAL_META_START);
+  const end = text.indexOf(RENTAL_META_END);
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start + RENTAL_META_START.length, end));
+  } catch (error) {
+    console.warn("Nie udało się odczytać metadanych wypożyczenia", error);
+    return null;
+  }
+}
+
+function rentalUserNotes(notes) {
+  const text = String(notes || "");
+  const start = text.indexOf(RENTAL_META_START);
+  const end = text.indexOf(RENTAL_META_END);
+  if (start === -1 || end === -1 || end <= start) return text.trim();
+  return `${text.slice(0, start)}${text.slice(end + RENTAL_META_END.length)}`.trim();
+}
+
+function rentalMetaForLoan(loan) {
+  const parsed = rentalMetaFromNotes(loan.notes);
+  const perDay = rentalPerDayTotal(loan);
+  const days = Number(loan.days || rentalDays(loan.dateFrom, loan.dateTo) || 1);
+  const fallbackTotal = Number(loan.total || perDay * days || 0);
+  if (!parsed) {
+    return {
+      baseTotal: fallbackTotal,
+      discountType: "none",
+      discountValue: 0,
+      discountAmount: 0,
+      discountReason: "",
+      afterDiscount: fallbackTotal,
+      depositType: "none",
+      depositValue: 0,
+      depositAmount: 0,
+      collectedAtIssue: fallbackTotal
+    };
+  }
+  return {
+    ...parsed,
+    baseTotal: Number(parsed.baseTotal || fallbackTotal),
+    discountAmount: Number(parsed.discountAmount || 0),
+    afterDiscount: Number(parsed.afterDiscount || fallbackTotal),
+    depositAmount: Number(parsed.depositAmount || 0),
+    collectedAtIssue: Number(parsed.collectedAtIssue || (Number(parsed.afterDiscount || fallbackTotal) + Number(parsed.depositAmount || 0)))
+  };
+}
+
+function rentalIssueSettlementHtml(loan) {
+  const meta = rentalMetaForLoan(loan);
+  const discountReason = meta.discountReason ? `<small>Powód rabatu: ${escapeHtml(meta.discountReason)}</small>` : "";
+  return `
+    <div class="finance-summary">
+      <strong>Rozliczenie wydania</strong>
+      <small>Kwota przed rabatem: ${money(meta.baseTotal)}</small>
+      <small>Rabat: ${money(meta.discountAmount)}</small>
+      ${discountReason}
+      <small>Kwota po rabacie: ${money(meta.afterDiscount)}</small>
+      <small>Kaucja zwrotna: ${money(meta.depositAmount)}</small>
+      <small>Razem pobrano przy wydaniu: ${money(meta.collectedAtIssue)}</small>
+    </div>
+  `;
+}
+
+function rentalReturnDepositHtml(loan) {
+  const meta = rentalMetaForLoan(loan);
+  const settlement = rentalSettlementTotals(loan);
+  const deposit = Number(meta.depositAmount || 0);
+  const deductions = Number(settlement.damage || 0);
+  const returnedDeposit = Math.max(0, deposit - deductions);
+  const extraDue = Math.max(0, deductions - deposit);
+  if (!deposit && !deductions) return "";
+  return `
+    <section>
+      <h3>Kaucja i potrącenia</h3>
+      <p><strong>Kaucja pobrana przy wydaniu:</strong> ${money(deposit)}<br>
+      <strong>Potrącenia za braki/uszkodzenia/pranie:</strong> ${money(deductions)}<br>
+      <strong>Kaucja do zwrotu:</strong> ${money(returnedDeposit)}<br>
+      <strong>Dopłata klienta po rozliczeniu kaucji:</strong> ${money(extraDue)}</p>
+    </section>
+  `;
 }
 
 function grossFromNet(net, vatRate = 23) {
@@ -6472,7 +6644,8 @@ function rentalPrintHtml(loan) {
     <p><strong>Razem netto:</strong> ${money(net)}</p>
     <p><strong>VAT 23%:</strong> ${money(vat)}</p>
     <p><strong>Razem brutto do zaplaty:</strong> ${money(gross)}</p>
-    <p><strong>Uwagi:</strong> ${escapeHtml(loan.notes || "Brak")}</p>
+    ${rentalIssueSettlementHtml(loan)}
+    <p><strong>Uwagi:</strong> ${escapeHtml(rentalUserNotes(loan.notes) || "Brak")}</p>
     <section style="margin-top: 8mm;">
       <h3>Oświadczenie</h3>
       <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
@@ -6543,6 +6716,7 @@ function returnPrintHtml(loan) {
       <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(settlement.damage)}</p>
       <p><strong>Razem do rozliczenia:</strong> ${money(settlement.total)}</p>
     </section>
+    ${rentalReturnDepositHtml(loan)}
     <p><strong>Uwagi do zwrotu:</strong> ${escapeHtml(loan.returnNotes || "Brak")}</p>
     <div class="print-signatures">
       <div class="signature-line">Podpis zwracajacego</div>
