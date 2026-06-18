@@ -760,12 +760,14 @@
       const days = rentalDays(form.dateFrom.value, form.dateTo.value);
       const totalPerDay = selected.reduce((sum, row) => sum + row.quantity * row.price, 0);
       const baseTotal = totalPerDay * days;
+      const equipmentValue = equipmentReplacementTotalFromRows(selected);
       const meta = buildRentalMeta(baseTotal, {
         discountType: "none",
         discountValue: 0,
         discountReason: "",
-        depositType: "none",
-        depositValue: 0
+        depositType: equipmentValue > 0 ? "percent" : "none",
+        depositValue: equipmentValue > 0 ? 10 : 0,
+        equipmentValue
       });
       return {
         firstName,
@@ -779,6 +781,7 @@
         days,
         totalPerDay,
         baseTotal,
+        equipmentValue,
         total: meta.afterDiscount,
         meta,
         selected
@@ -912,7 +915,8 @@
       if (!draft) return;
       const summaryDays = rentalDays(draft.dateFrom, draft.dateTo);
       const summaryBaseTotal = draft.totalPerDay * summaryDays;
-      draft.meta = buildRentalMeta(summaryBaseTotal, draft.meta || {});
+      draft.equipmentValue = equipmentReplacementTotalFromRows(draft.selected);
+      draft.meta = buildRentalMeta(summaryBaseTotal, { ...(draft.meta || {}), equipmentValue: draft.equipmentValue });
       draft.days = summaryDays;
       draft.baseTotal = summaryBaseTotal;
       draft.total = draft.meta.afterDiscount;
@@ -955,7 +959,9 @@
           <input id="summaryDiscountReason" value="${escapeHtml(draft.meta.discountReason || "")}" oninput="updateLoanSummaryAdjustments()" />
         </div>
         <p><strong>Kwota rabatu:</strong> <span id="summaryDiscountAmount">${money(draft.meta.discountAmount)}</span><br>
-        <strong>Do zapłaty po rabacie:</strong> <span id="summaryAfterDiscount">${money(draft.meta.afterDiscount)}</span></p>
+        <strong>Wartość wypożyczenia po rabacie:</strong> <span id="summaryAfterDiscount">${money(draft.meta.afterDiscount)}</span></p>
+        <p><strong>Wartość odtworzeniowa wypożyczonego sprzętu:</strong> <span id="summaryEquipmentValue">${money(draft.meta.equipmentValue)}</span><br>
+        <strong>Sugerowana kaucja 10%:</strong> <span id="summarySuggestedDeposit">${money(draft.meta.suggestedDepositAmount)}</span></p>
         <label>Kaucja zwrotna</label>
         <select id="summaryDepositType" onchange="updateLoanSummaryAdjustments()">
           <option value="none" ${draft.meta.depositType === "none" ? "selected" : ""}>Brak kaucji</option>
@@ -963,7 +969,7 @@
           <option value="percent" ${draft.meta.depositType === "percent" ? "selected" : ""}>Kaucja procentowa</option>
         </select>
         <div id="summaryDepositValueWrap">
-          <label>Wartość kaucji</label>
+          <label>Kaucja pobrana przy wydaniu</label>
           <input id="summaryDepositValue" type="number" min="0" step="0.01" value="${escapeHtml(draft.meta.depositValue || "")}" oninput="updateLoanSummaryAdjustments()" />
           <small id="summaryDepositUnit"></small>
         </div>
@@ -983,7 +989,8 @@
       const depositType = document.querySelector("#summaryDepositType")?.value || "none";
       const depositValue = document.querySelector("#summaryDepositValue")?.value || 0;
       const baseTotal = draft.totalPerDay * draft.days;
-      draft.meta = buildRentalMeta(baseTotal, { discountType, discountValue, discountReason, depositType, depositValue });
+      draft.equipmentValue = equipmentReplacementTotalFromRows(draft.selected);
+      draft.meta = buildRentalMeta(baseTotal, { discountType, discountValue, discountReason, depositType, depositValue, equipmentValue: draft.equipmentValue });
       draft.baseTotal = baseTotal;
       draft.total = draft.meta.afterDiscount;
       draft.notes = rentalNotesWithMeta(draft.userNotes || "", draft.meta);
@@ -992,10 +999,12 @@
       document.querySelector("#summaryDiscountValueWrap")?.classList.toggle("hidden", !discountActive);
       document.querySelector("#summaryDepositValueWrap")?.classList.toggle("hidden", !depositActive);
       if (document.querySelector("#summaryDiscountUnit")) document.querySelector("#summaryDiscountUnit").textContent = discountType === "percent" ? "%" : discountType === "amount" ? "zł" : "";
-      if (document.querySelector("#summaryDepositUnit")) document.querySelector("#summaryDepositUnit").textContent = depositType === "percent" ? "% od kwoty przed rabatem" : depositType === "fixed" ? "zł" : "";
+      if (document.querySelector("#summaryDepositUnit")) document.querySelector("#summaryDepositUnit").textContent = depositType === "percent" ? "% od wartości odtworzeniowej sprzętu" : depositType === "fixed" ? "zł" : "";
       if (document.querySelector("#summaryBaseTotal")) document.querySelector("#summaryBaseTotal").textContent = money(draft.meta.baseTotal);
       if (document.querySelector("#summaryDiscountAmount")) document.querySelector("#summaryDiscountAmount").textContent = money(draft.meta.discountAmount);
       if (document.querySelector("#summaryAfterDiscount")) document.querySelector("#summaryAfterDiscount").textContent = money(draft.meta.afterDiscount);
+      if (document.querySelector("#summaryEquipmentValue")) document.querySelector("#summaryEquipmentValue").textContent = money(draft.meta.equipmentValue);
+      if (document.querySelector("#summarySuggestedDeposit")) document.querySelector("#summarySuggestedDeposit").textContent = money(draft.meta.suggestedDepositAmount);
       if (document.querySelector("#summaryDepositAmount")) document.querySelector("#summaryDepositAmount").textContent = money(draft.meta.depositAmount);
       if (document.querySelector("#summaryCollected")) document.querySelector("#summaryCollected").textContent = money(draft.meta.collectedAtIssue);
     }
@@ -1193,6 +1202,12 @@
       const lines = (loan.rental_lines || []).map((line) => {
         const quantity = Number(line.quantity || 0);
         const price = Number(line.price_per_day || 0);
+        if (type === "return") {
+          const returned = line.returned === null || line.returned === undefined ? quantity : Number(line.returned || 0);
+          const damaged = Number(line.damaged || 0);
+          const missing = Number(line.missing || 0);
+          return `- ${line.item_name || "Sprzęt"}: wydano ${quantity} szt., zwrócono ${returned} szt., uszkodzone ${damaged} szt., brak ${missing} szt.`;
+        }
         return `- ${line.item_name || "Sprzęt"}: ${quantity} szt., ${money(price)} / doba`;
       }).join("\n") || "- Brak pozycji";
       if (type === "return") {
@@ -1208,7 +1223,7 @@
           ORGANIZATION.name,
           `${ORGANIZATION.street}, ${ORGANIZATION.city}`,
           `NIP: ${ORGANIZATION.nip} · REGON: ${ORGANIZATION.regon}`,
-          "Protokół zwrotu sprzętu",
+          returnedWithIssues(loan) ? "Protokół zwrotu z uszkodzeniami / brakami" : "Protokół zwrotu sprzętu",
           `Wypożyczający: ${person(loan)}`,
           `Data wypożyczenia: ${formatDate(loan.date_from)}`,
           `Planowany zwrot: ${formatDate(loan.date_to)}`,
@@ -1218,6 +1233,7 @@
           `Stan po zwrocie: ${condition}`,
           `Uwagi po zwrocie: ${notes}`,
           `Kwota wypożyczenia z wydania: ${money(settlement.plannedCost)}`,
+          `Wartość odtworzeniowa sprzętu: ${money(settlement.equipmentValue)}`,
           `Dopłata za opóźnienie: ${money(settlement.lateFee)}`,
           `Pranie obrusów: ${money(settlement.tablecloth.washing)}`,
           `Uporczywe plamy: ${money(settlement.tablecloth.stainFee)}`,
@@ -1283,18 +1299,31 @@
       return { type: "none", value: 0, amount: 0 };
     }
 
-    function calculateDeposit(baseTotal, type, rawValue) {
+    function calculateDeposit(equipmentValue, type, rawValue) {
       const value = sanitizeMoneyValue(rawValue);
       if (!type || type === "none" || value <= 0) return { type: "none", value: 0, amount: 0 };
-      if (type === "percent") return { type, value, amount: baseTotal * value / 100 };
+      if (type === "percent") return { type, value, amount: equipmentValue * value / 100 };
       if (type === "fixed") return { type, value, amount: value };
       return { type: "none", value: 0, amount: 0 };
+    }
+
+    function equipmentReplacementTotalFromRows(rows = []) {
+      return rows.reduce((sum, row) => sum + Number(row.quantity || 0) * Number(row.replacementValue || 0), 0);
+    }
+
+    function equipmentReplacementTotalFromLines(lines = []) {
+      return lines.reduce((sum, line) => {
+        const enrichedLine = line.replacement_value === undefined ? enrichLineWithReplacementValue(line) : line;
+        return sum + Number(enrichedLine.quantity || 0) * Number(enrichedLine.replacement_value || 0);
+      }, 0);
     }
 
     function buildRentalMeta(baseTotal, data = {}) {
       const discount = calculateDiscount(baseTotal, data.discountType, data.discountValue);
       const afterDiscount = Math.max(0, baseTotal - discount.amount);
-      const deposit = calculateDeposit(baseTotal, data.depositType, data.depositValue);
+      const equipmentValue = sanitizeMoneyValue(data.equipmentValue);
+      const suggestedDepositAmount = equipmentValue * 0.1;
+      const deposit = calculateDeposit(equipmentValue, data.depositType, data.depositValue);
       return {
         baseTotal,
         discountType: discount.type,
@@ -1302,6 +1331,9 @@
         discountAmount: discount.amount,
         discountReason: discount.amount > 0 ? data.discountReason || "" : "",
         afterDiscount,
+        equipmentValue,
+        suggestedDepositPercent: 10,
+        suggestedDepositAmount,
         depositType: deposit.type,
         depositValue: deposit.value,
         depositAmount: deposit.amount,
@@ -1338,6 +1370,7 @@
     function rentalMetaForLoan(loan) {
       const totals = rentalTotalsWithoutMeta(loan);
       const parsed = rentalMetaFromNotes(loan.notes);
+      const fallbackEquipmentValue = equipmentReplacementTotalFromLines(loan.rental_lines || []);
       if (!parsed) {
         return {
           baseTotal: totals.total,
@@ -1346,17 +1379,24 @@
           discountAmount: 0,
           discountReason: "",
           afterDiscount: totals.total,
+          equipmentValue: fallbackEquipmentValue,
+          suggestedDepositPercent: 10,
+          suggestedDepositAmount: fallbackEquipmentValue * 0.1,
           depositType: "none",
           depositValue: 0,
           depositAmount: 0,
           collectedAtIssue: 0
         };
       }
+      const equipmentValue = Number(parsed.equipmentValue || fallbackEquipmentValue);
       return {
         ...parsed,
         baseTotal: Number(parsed.baseTotal || totals.total),
         discountAmount: Number(parsed.discountAmount || 0),
         afterDiscount: Number(parsed.afterDiscount || totals.total),
+        equipmentValue,
+        suggestedDepositPercent: Number(parsed.suggestedDepositPercent || 10),
+        suggestedDepositAmount: Number(parsed.suggestedDepositAmount || equipmentValue * 0.1),
         depositAmount: Number(parsed.depositAmount || 0),
         collectedAtIssue: Number(parsed.depositAmount || 0)
       };
@@ -1408,6 +1448,7 @@
       return {
         rentalCost: totals.total,
         plannedCost: totals.total,
+        equipmentValue: Number(meta.equipmentValue || equipmentReplacementTotalFromLines(loan.rental_lines || [])),
         lateDays,
         lateFee,
         damage: safeDamage,
@@ -1434,6 +1475,7 @@
       return `<section class="settlement-box">
         <strong>Rozliczenie zwrotu:</strong>
         <div class="settlement-row"><span>Kwota wypożyczenia z wydania:</span><span>${money(settlement.plannedCost)}</span></div>
+        <div class="settlement-row"><span>Wartość odtworzeniowa sprzętu:</span><span>${money(settlement.equipmentValue)}</span></div>
         <div class="settlement-row"><span>Dodatkowe doby po terminie:</span><span>${settlement.lateDays}</span></div>
         <div class="settlement-row"><span>Dopłata za opóźnienie:</span><span>${money(settlement.lateFee)}</span></div>
         <div class="settlement-row"><span>Pranie obrusów:</span><span>${money(settlement.tablecloth.washing)}</span></div>
@@ -1453,6 +1495,8 @@
         <p><strong>Kwota przed rabatem:</strong> ${money(meta.baseTotal)}<br>
         <strong>Rabat:</strong> ${money(meta.discountAmount)}<br>
         <strong>Kwota wypożyczenia po rabacie:</strong> ${money(meta.afterDiscount)}<br>
+        <strong>Wartość odtworzeniowa wypożyczonego sprzętu:</strong> ${money(meta.equipmentValue)}<br>
+        <strong>Sugerowana kaucja ${meta.suggestedDepositPercent || 10}%:</strong> ${money(meta.suggestedDepositAmount)}<br>
         <strong>Kaucja pobrana przy wydaniu:</strong> ${money(meta.depositAmount)}<br>
         <strong>Do pobrania przy wydaniu:</strong> ${money(meta.collectedAtIssue)}</p>
         <p>Kwota wypożyczenia zostanie rozliczona przy zwrocie.</p>
@@ -1471,6 +1515,7 @@
       return `<section>
         <h3>Rozliczenie kaucji</h3>
         <p><strong>Razem należność:</strong> ${money(finalSettlement.finalDue)}<br>
+        <strong>Wartość odtworzeniowa sprzętu:</strong> ${money(finalSettlement.equipmentValue)}<br>
         <strong>Kaucja pobrana przy wydaniu:</strong> ${money(finalSettlement.deposit)}<br>
         ${finalResult}</p>
       </section>`;
@@ -1856,7 +1901,9 @@
 
     function protocolDocumentHtml(type, loan, signatureImage = "") {
       const isReturn = type === "return";
-      const title = isReturn ? "Protokół zwrotu sprzętu" : "Protokół wypożyczenia sprzętu";
+      const title = isReturn
+        ? (returnedWithIssues(loan) ? "Protokół zwrotu z uszkodzeniami / brakami" : "Protokół zwrotu sprzętu")
+        : "Protokół wypożyczenia sprzętu";
       const operatorLabel = isReturn ? "Osoba przyjmująca zwrot" : "Osoba wydająca";
       const borrowerSignature = isReturn ? "Podpis zwracającego" : "Podpis wypożyczającego";
       const operatorSignature = isReturn ? "Podpis osoby przyjmującej" : "Podpis osoby wydającej";
@@ -1893,7 +1940,7 @@
             <thead>
               <tr>
                 <th>Nazwa sprzętu</th>
-                ${isReturn ? "<th>Wydano</th><th>Zwrócono</th>" : "<th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
+                ${isReturn ? "<th>Wydano</th><th>Zwrócono</th><th>Uszkodzone</th><th>Brak</th>" : "<th>Ilość</th><th>Cena za dobę</th><th>Wartość za dobę</th><th>Uwagi</th>"}
               </tr>
             </thead>
             <tbody>${protocolLineRows(loan, isReturn)}</tbody>
@@ -1915,6 +1962,7 @@
             <p><strong>Planowany termin zwrotu:</strong> ${formatDate(loan.date_to)}<br>
             <strong>Rzeczywista data zwrotu:</strong> ${formatDate(loan.returned_at)}<br>
             <strong>Kwota wypożyczenia z wydania:</strong> ${money(settlement.plannedCost)}<br>
+            <strong>Wartość odtworzeniowa sprzętu:</strong> ${money(settlement.equipmentValue)}<br>
             <strong>Dodatkowe doby po terminie:</strong> ${settlement.lateDays}<br>
             <strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}<br>
             <strong>Pranie obrusów:</strong> ${money(settlement.tablecloth.washing)}<br>
@@ -1944,7 +1992,7 @@
             <p>Sprzęt został sprawdzony przy zwrocie. Uwagi dotyczące stanu, braków lub uszkodzeń wpisano poniżej.</p>
             <p><strong>Stan po zwrocie:</strong> ${escapeHtml(condition)}</p>
             <p><strong>Uwagi po zwrocie:</strong><br>${escapeHtml(notesText)}</p>
-            <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(loan.damage_cost || 0)}</p>
+            <p><strong>Koszt braków/uszkodzeń/zabrudzeń:</strong> ${money(loan.damage_cost || 0)}</p>
           </section>`;
     }
 
@@ -1994,13 +2042,14 @@
         const valuePerDay = Number(line.quantity || 0) * price;
         const issued = Number(line.quantity || 0);
         const returned = line.returned === null || line.returned === undefined ? issued : Number(line.returned || 0);
-        const returnedText = returnCondition === "missing" ? "wg uwag" : `${returned} szt.`;
+        const damaged = Number(line.damaged || 0);
+        const missing = Number(line.missing || 0);
         return `<tr>
           <td>${escapeHtml(line.item_name)}</td>
-          ${isReturn ? `<td>${escapeHtml(issued)} szt.</td><td>${escapeHtml(returnedText)}</td>` : `<td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
+          ${isReturn ? `<td>${escapeHtml(issued)} szt.</td><td>${escapeHtml(returned)} szt.</td><td>${escapeHtml(damaged)} szt.</td><td>${escapeHtml(missing)} szt.</td>` : `<td>${escapeHtml(line.quantity)}</td><td>${money(price)}</td><td>${money(valuePerDay)}</td><td>${note || "brak"}</td>`}
         </tr>`;
       });
-      return rows.join("") || `<tr><td colspan="${isReturn ? 3 : 5}">Brak pozycji.</td></tr>`;
+      return rows.join("") || `<tr><td colspan="${isReturn ? 5 : 5}">Brak pozycji.</td></tr>`;
     }
 
     function showScreen(id) {
