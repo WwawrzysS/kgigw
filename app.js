@@ -4153,7 +4153,20 @@ function parseDateOnly(value) {
 
 function renderRentalInventory() {
   const visibleItems = state.rentalInventory.filter((item) => rentalInventoryCategoryFilter === "all" || rentalInventoryCategory(item).key === rentalInventoryCategoryFilter);
-  elements.rentalInventory.innerHTML = visibleItems.length ? rentalInventorySectionsHtml(visibleItems) : "<p class='muted'>Brak pozycji magazynu w tej sekcji.</p>";
+  if (!visibleItems.length) {
+    elements.rentalInventory.innerHTML = "<p class='muted'>Brak pozycji magazynu w tej sekcji.</p>";
+    return;
+  }
+  const sectionsHtml = rentalInventorySectionsHtml(visibleItems);
+  elements.rentalInventory.innerHTML = sectionsHtml || `
+    <section class="inventory-section">
+      <div class="inventory-section-header">
+        <h3>Pozostałe</h3>
+        <p>Pozycje, których nie udało się przypisać do głównych sekcji. Nic nie znika z magazynu.</p>
+      </div>
+      <div class="inventory-section-list">${visibleItems.map((item) => rentalInventoryCard(item)).join("")}</div>
+    </section>
+  `;
 }
 
 const RENTAL_INVENTORY_SECTIONS = [
@@ -6013,23 +6026,27 @@ function availableQuantity(itemId) {
 function borrowedQuantity(itemId) {
   return state.rentalLoans
     .filter((loan) => loan.status !== "Zwrócone")
-    .flatMap((loan) => loan.items)
-    .filter((entry) => entry.id === itemId)
+    .flatMap((loan) => Array.isArray(loan.items) ? loan.items : [])
+    .filter((entry) => entry && entry.id === itemId)
     .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
 }
 
 function returnedQuantity(itemId) {
   return state.rentalLoans
     .filter((loan) => loan.status === "Zwrócone")
-    .flatMap((loan) => loan.returnItems || loan.items.map((item) => ({ id: item.id, returned: item.quantity })))
-    .filter((entry) => entry.id === itemId)
+    .flatMap((loan) => Array.isArray(loan.returnItems)
+      ? loan.returnItems
+      : Array.isArray(loan.items)
+        ? loan.items.map((item) => ({ id: item.id, returned: item.quantity }))
+        : [])
+    .filter((entry) => entry && entry.id === itemId)
     .reduce((sum, entry) => sum + Number(entry.returned || 0), 0);
 }
 
 function damagedQuantity(itemId) {
   return state.rentalLoans
-    .flatMap((loan) => loan.returnItems || [])
-    .filter((entry) => entry.id === itemId)
+    .flatMap((loan) => Array.isArray(loan.returnItems) ? loan.returnItems : [])
+    .filter((entry) => entry && entry.id === itemId)
     .reduce((sum, entry) => sum + Number(entry.damaged || 0), 0);
 }
 
