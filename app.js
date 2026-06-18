@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-29";
+const APP_VERSION = "2026.06.04-30";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -4152,21 +4152,22 @@ function parseDateOnly(value) {
 }
 
 function renderRentalInventory() {
-  const visibleItems = state.rentalInventory.filter((item) => rentalInventoryCategoryFilter === "all" || rentalInventoryCategory(item).key === rentalInventoryCategoryFilter);
+  const inventoryItems = Array.isArray(state.rentalInventory) ? state.rentalInventory : [];
+  const activeCategory = rentalInventoryCategoryFilter || "all";
+  const visibleItems = activeCategory === "all"
+    ? inventoryItems
+    : inventoryItems.filter((item) => safeRentalInventoryCategory(item).key === activeCategory);
   if (!visibleItems.length) {
     elements.rentalInventory.innerHTML = "<p class='muted'>Brak pozycji magazynu w tej sekcji.</p>";
     return;
   }
-  const sectionsHtml = rentalInventorySectionsHtml(visibleItems);
-  elements.rentalInventory.innerHTML = sectionsHtml || `
-    <section class="inventory-section">
-      <div class="inventory-section-header">
-        <h3>Pozostałe</h3>
-        <p>Pozycje, których nie udało się przypisać do głównych sekcji. Nic nie znika z magazynu.</p>
-      </div>
-      <div class="inventory-section-list">${visibleItems.map((item) => rentalInventoryCard(item)).join("")}</div>
-    </section>
-  `;
+  let sectionsHtml = "";
+  try {
+    sectionsHtml = rentalInventorySectionsHtml(visibleItems);
+  } catch (error) {
+    console.error("Nie udało się pogrupować magazynu. Pokazuję pozycje w sekcji Pozostałe.", error);
+  }
+  elements.rentalInventory.innerHTML = sectionsHtml?.trim() ? sectionsHtml : rentalInventoryFallbackSectionHtml(visibleItems);
 }
 
 const RENTAL_INVENTORY_SECTIONS = [
@@ -4216,10 +4217,19 @@ function rentalInventoryCategory(item) {
   return RENTAL_INVENTORY_SECTIONS[5];
 }
 
+function safeRentalInventoryCategory(item) {
+  try {
+    return rentalInventoryCategory(item) || RENTAL_INVENTORY_SECTIONS[5];
+  } catch (error) {
+    console.error("Nie udało się sklasyfikować pozycji magazynu.", { item, error });
+    return RENTAL_INVENTORY_SECTIONS[5];
+  }
+}
+
 function rentalInventorySectionsHtml(items) {
   return RENTAL_INVENTORY_SECTIONS.map((section) => {
     if (rentalInventoryCategoryFilter !== "all" && section.key !== rentalInventoryCategoryFilter) return "";
-    const sectionItems = items.filter((item) => rentalInventoryCategory(item).key === section.key);
+    const sectionItems = items.filter((item) => safeRentalInventoryCategory(item).key === section.key);
     if (!sectionItems.length) return "";
     return `
       <section class="inventory-section">
@@ -4228,37 +4238,85 @@ function rentalInventorySectionsHtml(items) {
           <p>${escapeHtml(section.description)}</p>
         </div>
         <div class="inventory-section-list">
-          ${sectionItems.map((item) => rentalInventoryCard(item)).join("")}
+          ${sectionItems.map((item) => safeRentalInventoryCard(item)).join("")}
         </div>
       </section>
     `;
   }).join("");
 }
 
+function rentalInventoryFallbackSectionHtml(items) {
+  return `
+    <section class="inventory-section">
+      <div class="inventory-section-header">
+        <h3>Pozostałe</h3>
+        <p>Pozycje, których nie udało się przypisać do głównych sekcji. Nic nie znika z magazynu.</p>
+      </div>
+      <div class="inventory-section-list">${items.map((item) => safeRentalInventoryCard(item)).join("")}</div>
+    </section>
+  `;
+}
+
+function safeInventoryMetric(label, fallback, compute) {
+  try {
+    const value = compute();
+    return Number.isFinite(Number(value)) ? value : fallback;
+  } catch (error) {
+    console.error(`Nie udało się policzyć pola magazynu: ${label}.`, error);
+    return fallback;
+  }
+}
+
+function safeRentalInventoryCard(item) {
+  try {
+    return rentalInventoryCard(item);
+  } catch (error) {
+    console.error("Nie udało się wyrenderować pozycji magazynu. Pokazuję kartę awaryjną.", { item, error });
+    return `
+      <article class="inventory-card">
+        <div class="inventory-card-main">
+          <strong>${escapeHtml(item?.name || "Pozycja magazynu")}</strong>
+          <div class="inventory-stat-grid">
+            <span><small>Stan całkowity</small><b>${escapeHtml(item?.quantity || 0)} szt.</b></span>
+            <span><small>Dostępne</small><b>0 szt.</b></span>
+            <span><small>Wypożyczone</small><b>0 szt.</b></span>
+            <span><small>Uszkodzone</small><b>0 szt.</b></span>
+            <span><small>Cena za dobę</small><b>${money(item?.price || 0)}</b></span>
+            <span><small>Wartość odtworzeniowa</small><b>${item?.replacementValue ? `${money(item.replacementValue)} / szt.` : "—"}</b></span>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+}
+
 function rentalInventoryCard(item) {
-  const available = availableQuantity(item.id);
-  const borrowed = borrowedQuantity(item.id);
-  const damaged = damagedQuantity(item.id);
-  const replacementText = Number(item.replacementValue || 0) > 0 ? `${money(item.replacementValue)} / szt.` : "—";
+  const available = safeInventoryMetric("dostępne", 0, () => availableQuantity(item.id));
+  const borrowed = safeInventoryMetric("wypożyczone", 0, () => borrowedQuantity(item.id));
+  const damaged = safeInventoryMetric("uszkodzone", 0, () => damagedQuantity(item.id));
+  const quantity = safeInventoryMetric("stan całkowity", 0, () => Number(item.quantity || 0));
+  const price = safeInventoryMetric("cena za dobę", 0, () => Number(item.price || 0));
+  const replacementValue = item.replacementValue === null || item.replacementValue === undefined ? null : safeInventoryMetric("wartość odtworzeniowa", 0, () => Number(item.replacementValue || 0));
+  const replacementText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "—";
   return `
     <article class="inventory-card">
       <div class="inventory-card-main">
         <strong>${escapeHtml(item.name)}</strong>
         <div class="inventory-stat-grid">
-          <span><small>Stan całkowity</small><b>${escapeHtml(item.quantity)} szt.</b></span>
+          <span><small>Stan całkowity</small><b>${escapeHtml(quantity)} szt.</b></span>
           <span><small>Dostępne</small><b>${escapeHtml(available)} szt.</b></span>
           <span><small>Wypożyczone</small><b>${escapeHtml(borrowed)} szt.</b></span>
           <span><small>Uszkodzone</small><b>${escapeHtml(damaged)} szt.</b></span>
-          <span><small>Cena za dobę</small><b>${money(item.price)}</b></span>
+          <span><small>Cena za dobę</small><b>${money(price)}</b></span>
           <span><small>Wartość odtworzeniowa</small><b>${replacementText}</b></span>
         </div>
       </div>
       <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
         <label>Ilość w magazynie
-          <input type="number" min="0" step="1" value="${item.quantity}" aria-label="Ilość w magazynie ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
+          <input type="number" min="0" step="1" value="${quantity}" aria-label="Ilość w magazynie ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
         </label>
         <label>Cena za dobę
-          <input type="number" min="0" step="0.01" value="${item.price}" aria-label="Cena za dobę ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
+          <input type="number" min="0" step="0.01" value="${price}" aria-label="Cena za dobę ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
         </label>
         <label>Wartość odtworzeniowa
           <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="Wartość odtworzeniowa ${escapeHtml(item.name)}" placeholder="Wartość odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
