@@ -139,6 +139,69 @@
       color: var(--green-dark);
     }
     .filters button.active { background: var(--green); color: #fff; }
+    .header-meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .inventory-section {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+    .inventory-section-header {
+      padding: 12px;
+      background: #f8fbf8;
+      border-bottom: 1px solid var(--border);
+    }
+    .inventory-section-header h3 {
+      margin: 0 0 4px;
+      color: var(--green-dark);
+      font-size: 17px;
+    }
+    .inventory-section-header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .inventory-section-items {
+      padding: 0 12px 8px;
+    }
+    .inventory-item {
+      padding: 12px 0;
+      border-top: 1px solid var(--border);
+    }
+    .inventory-item:first-child { border-top: 0; }
+    .inventory-item strong {
+      display: block;
+      color: var(--text);
+      margin-bottom: 8px;
+      line-height: 1.25;
+    }
+    .inventory-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      font-size: 13px;
+    }
+    .inventory-stat {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px;
+      background: #f8fbf8;
+    }
+    .inventory-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 2px;
+    }
+    .inventory-stat b {
+      font-size: 14px;
+      color: var(--text);
+    }
     .item-row {
       display: grid;
       grid-template-columns: 1fr 92px;
@@ -406,7 +469,7 @@
   <main class="app">
     <header>
       <h1>KGiGW Wypożyczalnia</h1>
-      <small id="userInfo">Nie zalogowano</small>
+      <small id="userInfo" class="header-meta">v2026.06.04-29 · Nie zalogowano</small>
     </header>
 
     <section id="loginView" class="card">
@@ -433,7 +496,7 @@
         <div class="home-grid">
           <button class="tile" data-screen="loanScreen">+ Wypożycz sprzęt</button>
           <button class="tile" data-screen="returnScreen">↩ Zwrot sprzętu</button>
-          <button class="tile" data-screen="inventoryScreen">📦 Dostępny sprzęt</button>
+          <button class="tile" data-screen="inventoryScreen">📦 Magazyn</button>
           <button class="tile" data-screen="overdueScreen">⚠ Zaległe zwroty</button>
           <button class="tile" data-screen="searchScreen">🔍 Szukaj</button>
           <button class="tile" data-screen="historyScreen">📜 Historia</button>
@@ -498,8 +561,16 @@
       </section>
 
       <section id="inventoryScreen" class="card screen hidden">
-        <h2>Dostępny sprzęt</h2>
+        <h2>Magazyn</h2>
         <div class="toolbar"><button class="secondary" onclick="showScreen('homeScreen')">Wróć</button><button class="secondary" onclick="refreshData()">Odśwież</button></div>
+        <div class="filters" id="inventoryCategoryFilters">
+          <button class="active" data-category="all">Wszystko</button>
+          <button data-category="packages">Pakiety</button>
+          <button data-category="tableware">Zastawa</button>
+          <button data-category="cutlery">Sztućce</button>
+          <button data-category="serving">Serwowanie</button>
+          <button data-category="tables">Stoły i obrusy</button>
+        </div>
         <div class="filters" id="inventoryFilters">
           <button class="active" data-filter="all">Wszystkie</button>
           <button data-filter="available">Dostępne</button>
@@ -580,7 +651,8 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
+    const MOBILE_APP_VERSION = "2026.06.04-29";
+    const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", inventoryCategoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
     const parseMoneyInput = (value) => {
@@ -592,7 +664,7 @@
       const number = Number(String(value ?? "0").replace(",", "."));
       return Number.isFinite(number) ? Math.max(0, Math.round(number)) : NaN;
     };
-    const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const norm = (value) => String(value || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ł/g, "l");
     const canWrite = () => ["admin", "staff"].includes(state.profile?.role);
     const isActiveRental = (loan) => !loan.returned_at && loan.status !== "Zwrócone";
     const rentalDays = (from, to) => Math.max(1, Math.ceil((new Date(`${to}T12:00:00`) - new Date(`${from}T12:00:00`)) / 86400000));
@@ -615,6 +687,11 @@
     document.querySelectorAll("#inventoryFilters button").forEach((button) => button.addEventListener("click", () => {
       state.inventoryFilter = button.dataset.filter;
       document.querySelectorAll("#inventoryFilters button").forEach((item) => item.classList.toggle("active", item === button));
+      renderInventory();
+    }));
+    document.querySelectorAll("#inventoryCategoryFilters button").forEach((button) => button.addEventListener("click", () => {
+      state.inventoryCategoryFilter = button.dataset.category;
+      document.querySelectorAll("#inventoryCategoryFilters button").forEach((item) => item.classList.toggle("active", item === button));
       renderInventory();
     }));
     document.querySelectorAll("#historyFilters button").forEach((button) => button.addEventListener("click", () => {
@@ -693,7 +770,7 @@
       state.profile = data;
       document.querySelector("#loginView").classList.add("hidden");
       document.querySelector("#mainView").classList.remove("hidden");
-      document.querySelector("#userInfo").textContent = `${data.display_name || "Użytkownik"} (${data.role})`;
+      document.querySelector("#userInfo").textContent = `v${MOBILE_APP_VERSION} · Zalogowany: ${data.display_name || "Użytkownik"} (${data.role})`;
       document.querySelector("#readonlyNote").classList.toggle("hidden", canWrite());
       await refreshData();
       return data;
@@ -1067,7 +1144,8 @@
         if (state.inventoryFilter === "damaged") return damaged > 0;
         return true;
       });
-      document.querySelector("#inventoryList").innerHTML = rows.length ? rows.map((item) => inventoryCard(item)).join("") : "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
+      const visibleRows = rows.filter((item) => state.inventoryCategoryFilter === "all" || inventoryCategory(item).key === state.inventoryCategoryFilter);
+      document.querySelector("#inventoryList").innerHTML = visibleRows.length ? inventorySectionsHtml(visibleRows) : "<p class='muted'>Brak sprzętu pasującego do filtrów</p>";
     }
 
     function renderSearch() {
@@ -1721,10 +1799,80 @@
       return String(value || "brak").slice(0, 8);
     }
 
+    const INVENTORY_SECTIONS = [
+      {
+        key: "packages",
+        title: "Pakiety do wypożyczenia",
+        description: "Pakiety służą do szybkiego tworzenia wypożyczeń. Przy brakach i uszkodzeniach rozliczaj pojedyncze elementy z sekcji poniżej."
+      },
+      {
+        key: "tableware",
+        title: "Zastawa — elementy osobne",
+        description: "Elementy osobne służą do pojedynczego wypożyczenia albo rozliczenia braków i uszkodzeń."
+      },
+      {
+        key: "cutlery",
+        title: "Sztućce — elementy osobne",
+        description: "Sztućce osobno służą głównie do rozliczania braków, uszkodzeń albo pojedynczego wypożyczenia."
+      },
+      {
+        key: "serving",
+        title: "Serwowanie",
+        description: "Elementy serwujące są dodatkiem do zastawy i mogą być wypożyczane razem z pełnym zestawem albo osobno."
+      },
+      {
+        key: "tables",
+        title: "Stoły i obrusy / pranie",
+        description: "Stoły i obrusy są doliczane osobno. Obrus oznacza opłatę za pranie i przygotowanie."
+      },
+      {
+        key: "other",
+        title: "Pozostałe",
+        description: "Pozycje spoza głównych grup magazynu."
+      }
+    ];
+
+    function inventoryCategory(item) {
+      const name = norm(item.name);
+      if (name.startsWith("pakiet")) return INVENTORY_SECTIONS[0];
+      if (["talerz plaski", "talerz gleboki", "talerzyk deserowy", "filizanka", "spodek", "szklanka", "bulionowka"].some((part) => name.includes(part))) return INVENTORY_SECTIONS[1];
+      if (["widelec", "noz", "lyzka stolowa", "lyzeczka", "widelczyk do ciasta"].some((part) => name.includes(part))) return INVENTORY_SECTIONS[2];
+      if (["waza", "polmisek", "miska 1400 ml", "miska 1000 ml", "miska plaska buffet", "sosjerka"].some((part) => name.includes(part))) return INVENTORY_SECTIONS[3];
+      if (name.startsWith("sprzet") || name.startsWith("obsluga")) return INVENTORY_SECTIONS[4];
+      return INVENTORY_SECTIONS[5];
+    }
+
+    function inventorySectionsHtml(items) {
+      return INVENTORY_SECTIONS.map((section) => {
+        if (state.inventoryCategoryFilter !== "all" && section.key !== state.inventoryCategoryFilter) return "";
+        const sectionItems = items.filter((item) => inventoryCategory(item).key === section.key);
+        if (!sectionItems.length) return "";
+        return `<section class="inventory-section">
+          <div class="inventory-section-header">
+            <h3>${escapeHtml(section.title)}</h3>
+            <p>${escapeHtml(section.description)}</p>
+          </div>
+          <div class="inventory-section-items">${sectionItems.map((item) => inventoryCard(item)).join("")}</div>
+        </section>`;
+      }).join("");
+    }
+
     function inventoryCard(item) {
-      return `<article class="card">
+      const total = Number(item.quantity || 0);
+      const borrowed = borrowedQty(item.id);
+      const available = availableQty(item.id);
+      const damaged = damagedQty(item.id);
+      const replacement = item.replacement_value === null || item.replacement_value === undefined ? null : Number(item.replacement_value || 0);
+      return `<article class="inventory-item">
         <strong>${escapeHtml(item.name)}</strong>
-        <p><small>Całość: ${item.quantity} · Dostępne: ${availableQty(item.id)} · Wypożyczone: ${borrowedQty(item.id)} · Uszkodzone: ${damagedQty(item.id)} · ${money(item.price_per_day)} / doba</small></p>
+        <div class="inventory-stats">
+          <div class="inventory-stat"><span>Stan całkowity</span><b>${escapeHtml(total)} szt.</b></div>
+          <div class="inventory-stat"><span>Dostępne</span><b>${escapeHtml(available)} szt.</b></div>
+          <div class="inventory-stat"><span>Wypożyczone</span><b>${escapeHtml(borrowed)} szt.</b></div>
+          <div class="inventory-stat"><span>Uszkodzone</span><b>${escapeHtml(damaged)} szt.</b></div>
+          <div class="inventory-stat"><span>Cena za dobę</span><b>${money(item.price_per_day || 0)}</b></div>
+          <div class="inventory-stat"><span>Wartość odtworzeniowa</span><b>${replacement > 0 ? `${money(replacement)} / szt.` : "—"}</b></div>
+        </div>
       </article>`;
     }
 
