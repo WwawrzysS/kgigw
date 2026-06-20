@@ -469,7 +469,7 @@
   <main class="app">
     <header>
       <h1>KGiGW Wypożyczalnia</h1>
-      <small id="userInfo" class="header-meta">v2026.06.04-29 · Nie zalogowano</small>
+      <small id="userInfo" class="header-meta">v2026.06.04-30 · Nie zalogowano</small>
     </header>
 
     <section id="loginView" class="card">
@@ -651,7 +651,7 @@
     };
 
     const supabaseClient = window.supabase.createClient(window.KGIGW_SUPABASE.url, window.KGIGW_SUPABASE.anonKey);
-    const MOBILE_APP_VERSION = "2026.06.04-29";
+    const MOBILE_APP_VERSION = "2026.06.04-30";
     const state = { inventory: [], rentals: [], profile: null, inventoryFilter: "all", inventoryCategoryFilter: "all", historyFilter: "all", loanSummary: null, returnControlId: null, signatureProtocol: null, signatureDirty: false, drawingSignature: false };
     const today = () => new Date().toISOString().slice(0, 10);
     const money = (value) => `${Number(value || 0).toFixed(2).replace(".", ",")} zł`;
@@ -1037,8 +1037,7 @@
         </div>
         <p><strong>Kwota rabatu:</strong> <span id="summaryDiscountAmount">${money(draft.meta.discountAmount)}</span><br>
         <strong>Wartość wypożyczenia po rabacie:</strong> <span id="summaryAfterDiscount">${money(draft.meta.afterDiscount)}</span></p>
-        <p><strong>Wartość odtworzeniowa wypożyczonego sprzętu:</strong> <span id="summaryEquipmentValue">${money(draft.meta.equipmentValue)}</span><br>
-        <strong>Sugerowana kaucja 10%:</strong> <span id="summarySuggestedDeposit">${money(draft.meta.suggestedDepositAmount)}</span></p>
+        <p><strong>Wartość odtworzeniowa wypożyczonego sprzętu:</strong> <span id="summaryEquipmentValue">${money(draft.meta.equipmentValue)}</span></p>
         <label>Kaucja zwrotna</label>
         <select id="summaryDepositType" onchange="updateLoanSummaryAdjustments()">
           <option value="none" ${draft.meta.depositType === "none" ? "selected" : ""}>Brak kaucji</option>
@@ -1081,7 +1080,6 @@
       if (document.querySelector("#summaryDiscountAmount")) document.querySelector("#summaryDiscountAmount").textContent = money(draft.meta.discountAmount);
       if (document.querySelector("#summaryAfterDiscount")) document.querySelector("#summaryAfterDiscount").textContent = money(draft.meta.afterDiscount);
       if (document.querySelector("#summaryEquipmentValue")) document.querySelector("#summaryEquipmentValue").textContent = money(draft.meta.equipmentValue);
-      if (document.querySelector("#summarySuggestedDeposit")) document.querySelector("#summarySuggestedDeposit").textContent = money(draft.meta.suggestedDepositAmount);
       if (document.querySelector("#summaryDepositAmount")) document.querySelector("#summaryDepositAmount").textContent = money(draft.meta.depositAmount);
       if (document.querySelector("#summaryCollected")) document.querySelector("#summaryCollected").textContent = money(draft.meta.collectedAtIssue);
     }
@@ -1574,7 +1572,6 @@
         <strong>Rabat:</strong> ${money(meta.discountAmount)}<br>
         <strong>Kwota wypożyczenia po rabacie:</strong> ${money(meta.afterDiscount)}<br>
         <strong>Wartość odtworzeniowa wypożyczonego sprzętu:</strong> ${money(meta.equipmentValue)}<br>
-        <strong>Sugerowana kaucja ${meta.suggestedDepositPercent || 10}%:</strong> ${money(meta.suggestedDepositAmount)}<br>
         <strong>Kaucja pobrana przy wydaniu:</strong> ${money(meta.depositAmount)}<br>
         <strong>Do pobrania przy wydaniu:</strong> ${money(meta.collectedAtIssue)}</p>
         <p>Kwota wypożyczenia zostanie rozliczona przy zwrocie.</p>
