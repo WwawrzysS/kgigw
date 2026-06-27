@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-33";
+const APP_VERSION = "2026.06.04-34";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -199,6 +199,12 @@ const elements = {
   docEditPanel: document.querySelector("#docEditPanel"),
   docEditForm: document.querySelector("#docEditForm"),
   cancelDocLargeEdit: document.querySelector("#cancelDocLargeEdit"),
+  documentationEditPanel: document.querySelector("#documentationEditPanel"),
+  documentationEditForm: document.querySelector("#documentationEditForm"),
+  cancelDocumentationLargeEdit: document.querySelector("#cancelDocumentationLargeEdit"),
+  templateEditPanel: document.querySelector("#templateEditPanel"),
+  templateEditForm: document.querySelector("#templateEditForm"),
+  cancelTemplateLargeEdit: document.querySelector("#cancelTemplateLargeEdit"),
   moneySummary: document.querySelector("#moneySummary"),
   overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
   moneyList: document.querySelector("#moneyList"),
@@ -403,6 +409,12 @@ elements.clearDocumentationForm?.addEventListener("click", () => resetDocumentat
   elements.documentationSort
 ].forEach((control) => control?.addEventListener("change", renderDocs));
 elements.clearDocumentationFilters?.addEventListener("click", clearDocumentationFilters);
+elements.documentationEditForm?.addEventListener("submit", async (event) => {
+  const form = event.target;
+  await handleDocumentationDoc(event);
+  if (!form.id.value) hideDocumentationLargeEdit();
+});
+elements.cancelDocumentationLargeEdit?.addEventListener("click", () => hideDocumentationLargeEdit());
 elements.templateForm?.addEventListener("submit", (event) => handleSectionDoc(event, "Wzory"));
 elements.clearTemplateForm?.addEventListener("click", () => resetSectionDocForm(elements.templateForm, "Wzory"));
 [
@@ -415,6 +427,12 @@ elements.clearTemplateForm?.addEventListener("click", () => resetSectionDocForm(
   elements.templateSort
 ].forEach((control) => control?.addEventListener("change", renderDocs));
 elements.clearTemplateFilters?.addEventListener("click", () => clearSectionDocFilters("Wzory"));
+elements.templateEditForm?.addEventListener("submit", async (event) => {
+  const form = event.target;
+  await handleSectionDoc(event, "Wzory");
+  if (!form.id.value) hideTemplateLargeEdit();
+});
+elements.cancelTemplateLargeEdit?.addEventListener("click", () => hideTemplateLargeEdit());
 elements.noteForm?.addEventListener("submit", (event) => handleSectionDoc(event, "Notatki"));
 elements.clearNoteForm?.addEventListener("click", () => resetSectionDocForm(elements.noteForm, "Notatki"));
 elements.noteEditForm?.addEventListener("submit", (event) => handleLargeDocEdit(event, "Notatki"));
@@ -4537,22 +4555,17 @@ function editDoc(id) {
 function editDocumentationDoc(id) {
   if (!canCorrect()) return;
   const doc = state.docs.find((item) => item.id === id);
-  const form = elements.documentationForm;
-  if (!doc || !form) return;
+  if (!doc) return;
   switchDocTab("documentation");
-  form.id.value = doc.id;
-  form.title.value = doc.title || "";
-  form.kind.value = DOCUMENTATION_KGIGW_TYPES.includes(doc.category) ? doc.category : "Statut";
-  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
-  form.notes.value = doc.notes || "";
-  form.file.value = "";
-  if (elements.documentationFormTitle) elements.documentationFormTitle.textContent = "Edytuj dokumentację KGiGW";
-  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
-  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  showDocumentationLargeEdit(doc);
 }
 
 function editTemplateDoc(id) {
-  editSectionDoc(id, "Wzory");
+  if (!canCorrect()) return;
+  const doc = state.docs.find((item) => item.id === id);
+  if (!doc) return;
+  switchDocTab("templates");
+  showTemplateLargeEdit(doc);
 }
 
 function editNoteDoc(id) {
@@ -4602,6 +4615,54 @@ function showLargeDocEdit(doc, sectionName) {
 function hideLargeDocEdit(sectionName) {
   const panel = sectionName === "Notatki" ? elements.noteEditPanel : elements.docEditPanel;
   const form = sectionName === "Notatki" ? elements.noteEditForm : elements.docEditForm;
+  if (form) form.reset();
+  if (panel) panel.classList.add("hidden");
+}
+
+function showDocumentationLargeEdit(doc) {
+  const panel = elements.documentationEditPanel;
+  const form = elements.documentationEditForm;
+  if (!panel || !form) return;
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  form.kind.value = DOCUMENTATION_KGIGW_TYPES.includes(doc.category) ? doc.category : "Statut";
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.notes.value = doc.notes || "";
+  form.file.value = "";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  const currentFile = panel.querySelector("[data-current-file]");
+  if (currentFile) currentFile.innerHTML = currentFileInfoHtml(doc);
+  panel.classList.remove("hidden");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideDocumentationLargeEdit() {
+  const panel = elements.documentationEditPanel;
+  const form = elements.documentationEditForm;
+  if (form) form.reset();
+  if (panel) panel.classList.add("hidden");
+}
+
+function showTemplateLargeEdit(doc) {
+  const panel = elements.templateEditPanel;
+  const form = elements.templateEditForm;
+  if (!panel || !form) return;
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  form.category.value = doc.category || "Formularz";
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.notes.value = doc.notes || "";
+  form.file.value = "";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
+  const currentFile = panel.querySelector("[data-current-file]");
+  if (currentFile) currentFile.innerHTML = currentFileInfoHtml(doc);
+  panel.classList.remove("hidden");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideTemplateLargeEdit() {
+  const panel = elements.templateEditPanel;
+  const form = elements.templateEditForm;
   if (form) form.reset();
   if (panel) panel.classList.add("hidden");
 }
