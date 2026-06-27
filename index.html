@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-32" />
+    <link rel="stylesheet" href="styles.css?v=20260604-33" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -730,6 +730,7 @@
               <option>Paragon</option>
               <option>Dotacja</option>
               <option>Korespondencja</option>
+              <option>Umowa</option>
             </select>
             <select name="section">
               <option>Dokumenty</option>
@@ -764,6 +765,7 @@
               <h2>Dokumenty i poczta</h2>
               <button id="showMailboxInfo" class="small-button">Połączenie poczty</button>
             </div>
+            <p class="doc-tab-intro">Tutaj dodawaj bieżące dokumenty koła: pisma, faktury, paragony, dotacje, korespondencję, umowy i inne załączniki.</p>
             <div id="mailboxInfo" class="notice hidden">
               Docelowo można tu podłączyć Gmail, Outlook albo pocztę koła. Bezpieczna wersja używa logowania u dostawcy poczty albo jednorazowego hasła aplikacji.
             </div>
@@ -805,6 +807,7 @@
             <div class="panel-head">
               <h2>Poczta koła</h2>
             </div>
+            <p class="doc-tab-intro">Szybkie linki do poczty i komunikacji koła. To nie jest archiwum dokumentów — otrzymane pisma i korespondencję zapisuj w zakładce Dokumenty.</p>
             <div class="mail-info-panel">
               <section class="mail-main-card">
                 <span>E-mail koła</span>
@@ -862,6 +865,7 @@
             <div class="panel-head">
               <h2>Lista dokumentacji KGiGW</h2>
             </div>
+            <p class="doc-tab-intro">Tutaj przechowuj dokumenty organizacyjne: statut, uchwały, protokoły, sprawozdania, listy obecności i dokumentację koła.</p>
             <div class="storage-info">
               <div>
                 <strong>Miejsce na pliki</strong>
@@ -915,6 +919,7 @@
             <div class="panel-head">
               <h2>Lista wzorów</h2>
             </div>
+            <p class="doc-tab-intro">Tutaj dodawaj puste formularze, szablony, wzory pism, wzory umów i dokumenty do ponownego wykorzystania.</p>
             <div class="storage-info">
               <div>
                 <strong>Miejsce na pliki</strong>
@@ -960,6 +965,7 @@
             <div class="panel-head">
               <h2>Lista dokumentów i notatek</h2>
             </div>
+            <p class="doc-tab-intro">Tutaj zapisuj robocze notatki, ustalenia, przypomnienia i krótkie informacje bez formalnego charakteru.</p>
             <div class="storage-info">
               <div>
                 <strong>Miejsce na pliki</strong>
@@ -1356,6 +1362,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-32"></script>
+    <script src="app.js?v=20260604-33"></script>
   </body>
 </html>
