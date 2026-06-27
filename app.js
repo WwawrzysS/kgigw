@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-34";
+const APP_VERSION = "2026.06.04-35";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -102,6 +102,7 @@ let activeRentalDashboardTimer = null;
 let selectedFundingSourceId = "";
 let editingInvoiceRequestId = "";
 let pendingInvoiceRequestId = "";
+let lastReturnedRentalId = "";
 let selectedKitchenEventId = "";
 
 const titles = {
@@ -250,6 +251,7 @@ const elements = {
   clearInvoiceFilters: document.querySelector("#clearInvoiceFilters"),
   invoicesList: document.querySelector("#invoicesList"),
   rentalReturnsList: document.querySelector("#rentalReturnsList"),
+  rentalReturnConfirmation: document.querySelector("#rentalReturnConfirmation"),
   rentalSubtabs: document.querySelectorAll("[data-rental-tab]"),
   rentalPanels: document.querySelectorAll("[data-rental-panel]"),
   docTabs: document.querySelectorAll("[data-doc-tab]"),
@@ -1147,6 +1149,7 @@ function setupRentalShell() {
     <div class="panel-head">
       <h2>Zwroty</h2>
     </div>
+    <div id="rentalReturnConfirmation" class="hidden"></div>
     <div id="rentalReturnsList" class="table"></div>
   `;
   layout.insertBefore(returnsPanel, historyPanel);
@@ -1314,6 +1317,10 @@ function toggleSubnav(id) {
 }
 
 function switchRentalTab(tabName) {
+  if (tabName !== "returns" && lastReturnedRentalId) {
+    lastReturnedRentalId = "";
+    renderReturnConfirmation();
+  }
   elements.rentalSubtabs.forEach((item) => item.classList.toggle("active", item.dataset.rentalTab === tabName));
   elements.rentalPanels.forEach((panel) => {
     const active = panel.dataset.rentalPanel === tabName;
@@ -4124,8 +4131,32 @@ function rentalReturnedWithIssues(loan) {
   return true;
 }
 
+function renderReturnConfirmation() {
+  const container = elements.rentalReturnConfirmation;
+  if (!container) return;
+  const loan = lastReturnedRentalId ? state.rentalLoans.find((entry) => entry.id === lastReturnedRentalId) : null;
+  if (!loan || loan.status !== "Zwrócone") {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+  container.classList.remove("hidden");
+  container.innerHTML = `
+    <div class="row">
+      <div>
+        <strong>Zwrot zapisany: ${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</strong>
+        <small>Możesz teraz wydrukować protokół zwrotu.</small>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" onclick="printReturn('${loan.id}')">Drukuj protokół zwrotu</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderRentalReturns() {
   const activeLoans = state.rentalLoans.filter((loan) => loan.status !== "Zwrócone");
+  renderReturnConfirmation();
   elements.rentalReturnsList.innerHTML = rows(filterItems(activeLoans), (loan) => `
     <div>
       <details class="return-details">
@@ -5718,8 +5749,9 @@ async function returnRental(id) {
     if (returnExtraFee > 0) {
       await logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
     }
+    lastReturnedRentalId = id;
     await refreshSupabaseData();
-    showToast("Przyjęto zwrot");
+    showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
     return;
   }
   rememberUndo();
@@ -5733,12 +5765,13 @@ async function returnRental(id) {
   if (isRentalPaid(paymentStatus) && !loan.paidAt) loan.paidAt = new Date().toISOString().slice(0, 10);
   addRentalPaymentLocal(loan, paymentStatus);
   saveState();
+  lastReturnedRentalId = id;
   render();
   logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
   if (returnExtraFee > 0) {
     logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
   }
-  showToast("Przyjęto zwrot");
+  showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
 }
 
 function printRental(id) {
