@@ -3193,3 +3193,69 @@ textarea {
     grid-template-columns: 1fr;
   }
 }
+
+.large-edit-panel {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 16px;
+  margin: 0 0 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.large-edit-panel h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+
+.large-edit-form {
+  display: grid;
+  gap: 12px;
+}
+
+.large-edit-form label {
+  display: grid;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.large-edit-form input,
+.large-edit-form textarea {
+  width: 100%;
+}
+
+.large-edit-textarea {
+  min-height: 360px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.current-file-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.doc-note-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+
+@media (max-width: 720px) {
+  .large-edit-panel {
+    padding: 12px;
+  }
+
+  .large-edit-textarea {
+    min-height: 300px;
+  }
+}

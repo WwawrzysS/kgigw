@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-31" />
+    <link rel="stylesheet" href="styles.css?v=20260604-32" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -65,7 +65,7 @@
       </nav>
       <div class="sidebar-actions">
         <div class="user-badge">
-          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-31</span>
+          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-32</span>
           <span>Zalogowano jako</span>
           <strong id="currentRole">-</strong>
         </div>
@@ -720,7 +720,7 @@
         </div>
         <div class="workspace">
           <form id="docForm" class="form-panel doc-tab-panel active-doc-panel" data-doc-panel="documents">
-            <h2 id="docFormTitle">Dodaj dokument lub wiadomość</h2>
+            <h2 id="docFormTitle">Dodaj notatkę / dokument</h2>
             <input name="id" type="hidden" />
             <input name="title" required placeholder="Tytuł pisma lub wiadomości" />
             <input name="sender" placeholder="Nadawca, np. Urząd Gminy" />
@@ -756,7 +756,7 @@
               </select>
             </label>
             <textarea name="notes" placeholder="Krótka treść lub notatka"></textarea>
-            <button type="submit">Zapisz dokument</button>
+            <button type="submit">Zapisz</button>
             <button id="cancelDocEdit" type="button" class="secondary-button hidden">Anuluj edycję</button>
           </form>
           <section class="panel doc-tab-panel active-doc-panel" data-doc-panel="documents">
@@ -775,6 +775,30 @@
               <div class="storage-bar"><span id="storageBar" data-storage-bar></span></div>
               <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
+            <section id="docEditPanel" class="large-edit-panel hidden" aria-live="polite">
+              <h3>Edytujesz notatkę / dokument</h3>
+              <form id="docEditForm" class="large-edit-form">
+                <input name="id" type="hidden" />
+                <label>Tytuł
+                  <input name="title" required />
+                </label>
+                <label>Data
+                  <input name="date" type="date" required />
+                </label>
+                <label>Treść / opis
+                  <textarea name="notes" class="large-edit-textarea"></textarea>
+                </label>
+                <div class="current-file-info" data-current-file></div>
+                <label>Podmień plik / dodaj załącznik
+                  <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
+                </label>
+                <small>Zostaw puste, jeśli obecny plik ma zostać bez zmian.</small>
+                <div class="form-actions">
+                  <button class="small-button" type="submit">Zapisz zmiany</button>
+                  <button id="cancelDocLargeEdit" class="small-button secondary-button" type="button">Anuluj edycję</button>
+                </div>
+              </form>
+            </section>
             <div id="docsList" class="table"></div>
           </section>
           <section class="panel doc-tab-panel" data-doc-panel="mail">
@@ -920,7 +944,7 @@
             <div id="docsTemplatesList" class="table"></div>
           </section>
           <form id="noteForm" class="form-panel doc-tab-panel section-doc-form" data-doc-panel="notes" hidden>
-            <h2 id="noteFormTitle">Dodaj notatkę</h2>
+            <h2 id="noteFormTitle">Dodaj notatkę / dokument</h2>
             <input name="id" type="hidden" />
             <input name="title" required placeholder="Tytuł notatki" />
             <input name="category" type="hidden" value="Notatka" />
@@ -928,13 +952,13 @@
             <textarea name="notes" placeholder="Treść / notatka"></textarea>
             <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
             <div class="form-actions">
-              <button class="small-button" type="submit">Zapisz notatkę</button>
+              <button class="small-button" type="submit">Zapisz</button>
               <button id="clearNoteForm" class="small-button secondary-button" type="button">Wyczyść</button>
             </div>
           </form>
           <section class="panel doc-tab-panel section-doc-list-panel" data-doc-panel="notes" hidden>
             <div class="panel-head">
-              <h2>Lista notatek</h2>
+              <h2>Lista dokumentów i notatek</h2>
             </div>
             <div class="storage-info">
               <div>
@@ -945,7 +969,7 @@
               <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
             <div class="section-doc-controls section-doc-controls-compact">
-              <input id="noteSearch" type="search" placeholder="Szukaj w notatkach..." />
+              <input id="noteSearch" type="search" placeholder="Szukaj w dokumentach i notatkach..." />
               <select id="noteSort">
                 <option value="date_desc">Data: najnowsze</option>
                 <option value="date_asc">Data: najstarsze</option>
@@ -954,6 +978,30 @@
               </select>
               <button id="clearNoteFilters" class="small-button secondary-button" type="button">Wyczyść filtry</button>
             </div>
+            <section id="noteEditPanel" class="large-edit-panel hidden" aria-live="polite">
+              <h3>Edytujesz notatkę / dokument</h3>
+              <form id="noteEditForm" class="large-edit-form">
+                <input name="id" type="hidden" />
+                <label>Tytuł
+                  <input name="title" required />
+                </label>
+                <label>Data
+                  <input name="date" type="date" required />
+                </label>
+                <label>Treść / opis
+                  <textarea name="notes" class="large-edit-textarea"></textarea>
+                </label>
+                <div class="current-file-info" data-current-file></div>
+                <label>Podmień plik / dodaj załącznik
+                  <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
+                </label>
+                <small>Zostaw puste, jeśli obecny plik ma zostać bez zmian.</small>
+                <div class="form-actions">
+                  <button class="small-button" type="submit">Zapisz zmiany</button>
+                  <button id="cancelNoteLargeEdit" class="small-button secondary-button" type="button">Anuluj edycję</button>
+                </div>
+              </form>
+            </section>
             <div id="docsNotesList" class="table"></div>
           </section>
         </div>
@@ -1150,7 +1198,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-31</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-32</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1308,6 +1356,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-31"></script>
+    <script src="app.js?v=20260604-32"></script>
   </body>
 </html>

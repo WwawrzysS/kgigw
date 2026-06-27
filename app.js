@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-31";
+const APP_VERSION = "2026.06.04-32";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -196,6 +196,9 @@ const elements = {
   docFundingSource: document.querySelector("#docFundingSource"),
   docFormTitle: document.querySelector("#docFormTitle"),
   cancelDocEdit: document.querySelector("#cancelDocEdit"),
+  docEditPanel: document.querySelector("#docEditPanel"),
+  docEditForm: document.querySelector("#docEditForm"),
+  cancelDocLargeEdit: document.querySelector("#cancelDocLargeEdit"),
   moneySummary: document.querySelector("#moneySummary"),
   overdueInvoiceNotice: document.querySelector("#overdueInvoiceNotice"),
   moneyList: document.querySelector("#moneyList"),
@@ -266,6 +269,9 @@ const elements = {
   noteForm: document.querySelector("#noteForm"),
   noteFormTitle: document.querySelector("#noteFormTitle"),
   clearNoteForm: document.querySelector("#clearNoteForm"),
+  noteEditPanel: document.querySelector("#noteEditPanel"),
+  noteEditForm: document.querySelector("#noteEditForm"),
+  cancelNoteLargeEdit: document.querySelector("#cancelNoteLargeEdit"),
   noteSearch: document.querySelector("#noteSearch"),
   noteSort: document.querySelector("#noteSort"),
   clearNoteFilters: document.querySelector("#clearNoteFilters"),
@@ -383,6 +389,8 @@ document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#cancelDocEdit").addEventListener("click", cancelDocEdit);
+elements.docEditForm?.addEventListener("submit", handleLargeDocEdit);
+elements.cancelDocLargeEdit?.addEventListener("click", () => hideLargeDocEdit("documents"));
 elements.documentationForm?.addEventListener("submit", handleDocumentationDoc);
 elements.clearDocumentationForm?.addEventListener("click", () => resetDocumentationForm(elements.documentationForm));
 [
@@ -409,6 +417,8 @@ elements.clearTemplateForm?.addEventListener("click", () => resetSectionDocForm(
 elements.clearTemplateFilters?.addEventListener("click", () => clearSectionDocFilters("Wzory"));
 elements.noteForm?.addEventListener("submit", (event) => handleSectionDoc(event, "Notatki"));
 elements.clearNoteForm?.addEventListener("click", () => resetSectionDocForm(elements.noteForm, "Notatki"));
+elements.noteEditForm?.addEventListener("submit", (event) => handleLargeDocEdit(event, "Notatki"));
+elements.cancelNoteLargeEdit?.addEventListener("click", () => hideLargeDocEdit("Notatki"));
 [
   elements.noteSearch,
   elements.noteSort
@@ -4410,7 +4420,7 @@ function documentationRowHtml(item) {
       <strong>${escapeHtml(item.category || "Dokumentacja")} - ${escapeHtml(item.title)}</strong>
       <small>
         ${formatDate(item.date)}<br>
-        ${escapeHtml(item.notes || "")}
+        ${docPreviewHtml(item)}
         ${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))}` : ""}
       </small>
     </div>
@@ -4467,7 +4477,7 @@ function sectionDocRowHtml(item, sectionName) {
       <strong>${escapeHtml(item.title)}</strong>
       <small>
         ${formatDate(item.date)}${sectionName === "Wzory" ? ` · <span class="badge neutral">${escapeHtml(item.category || "Wzór")}</span>` : ""}<br>
-        ${escapeHtml(item.notes || "")}
+        ${docPreviewHtml(item)}
         ${fileName ? `<br>Plik: ${escapeHtml(fileName)} (${formatBytes(docFileSize(item))})` : ""}
       </small>
     </div>
@@ -4489,7 +4499,7 @@ function docRowHtml(item) {
   return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${docPreviewHtml(item)}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
@@ -4497,6 +4507,11 @@ function docRowHtml(item) {
       ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
   `;
+}
+
+function docPreviewHtml(item) {
+  const notes = String(item?.notes || "").trim();
+  return notes ? `<span class="doc-note-preview">${escapeHtml(notes)}</span>` : "";
 }
 
 function normalizeDocSection(value) {
@@ -4513,26 +4528,10 @@ function docTabForSection(section) {
 function editDoc(id) {
   if (!canCorrect()) return;
   const doc = state.docs.find((item) => item.id === id);
-  const form = document.querySelector("#docForm");
-  if (!doc || !form) return;
-  form.id.value = doc.id;
-  form.title.value = doc.title || "";
-  form.sender.value = doc.sender || "";
-  form.category.value = doc.category || "Pismo";
-  form.section.value = normalizeDocSection(doc.section);
-  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
-  form.eventId.value = doc.eventId || "";
-  renderFundingSourceOptions(doc.fundingSourceId || "");
-  form.fundingSourceId.value = doc.fundingSourceId || "";
-  form.incomeAmount.value = "";
-  form.expenseAmount.value = "";
-  form.documentMoneyAction.value = "save_only";
-  form.notes.value = doc.notes || "";
-  elements.docFormTitle.textContent = "Edytuj dokument";
-  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
-  elements.cancelDocEdit.classList.remove("hidden");
+  if (!doc) return;
   switchDocTab("documents");
-  form.scrollIntoView({ behavior: "smooth", block: "start" });
+  resetDocForm(document.querySelector("#docForm"));
+  showLargeDocEdit(doc, "documents");
 }
 
 function editDocumentationDoc(id) {
@@ -4557,7 +4556,12 @@ function editTemplateDoc(id) {
 }
 
 function editNoteDoc(id) {
-  editSectionDoc(id, "Notatki");
+  if (!canCorrect()) return;
+  const doc = state.docs.find((item) => item.id === id);
+  if (!doc) return;
+  switchDocTab("notes");
+  resetSectionDocForm(elements.noteForm, "Notatki");
+  showLargeDocEdit(doc, "Notatki");
 }
 
 function editSectionDoc(id, sectionName) {
@@ -4576,8 +4580,108 @@ function editSectionDoc(id, sectionName) {
   form.file.value = "";
   const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
   if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Edytuj wzór" : "Edytuj notatkę";
-  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz zmiany" : "Zapisz zmiany";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   form.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function showLargeDocEdit(doc, sectionName) {
+  const panel = sectionName === "Notatki" ? elements.noteEditPanel : elements.docEditPanel;
+  const form = sectionName === "Notatki" ? elements.noteEditForm : elements.docEditForm;
+  if (!panel || !form) return;
+  form.id.value = doc.id;
+  form.title.value = doc.title || "";
+  form.date.value = doc.date || new Date().toISOString().slice(0, 10);
+  form.notes.value = doc.notes || "";
+  form.file.value = "";
+  const currentFile = panel.querySelector("[data-current-file]");
+  if (currentFile) currentFile.innerHTML = currentFileInfoHtml(doc);
+  panel.classList.remove("hidden");
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function hideLargeDocEdit(sectionName) {
+  const panel = sectionName === "Notatki" ? elements.noteEditPanel : elements.docEditPanel;
+  const form = sectionName === "Notatki" ? elements.noteEditForm : elements.docEditForm;
+  if (form) form.reset();
+  if (panel) panel.classList.add("hidden");
+}
+
+function currentFileInfoHtml(doc) {
+  if (!docHasFile(doc)) return '<small>Obecny plik: brak załącznika.</small>';
+  return `
+    <small>Obecny plik: <strong>${escapeHtml(docFileName(doc))}</strong> (${formatBytes(docFileSize(doc))})</small>
+    <button class="small-button" type="button" onclick="openDocumentAttachment('${doc.id}')">Otwórz obecny plik</button>
+  `;
+}
+
+async function handleLargeDocEdit(event, sectionName = "documents") {
+  event.preventDefault();
+  if (!canCorrect()) {
+    alert("Edycja dokumentów jest dostępna tylko dla osób z uprawnieniami.");
+    return;
+  }
+  const form = event.target;
+  const data = formData(form);
+  const doc = state.docs.find((item) => item.id === data.id);
+  if (!doc) return;
+  const file = form.file.files[0];
+  if (!validateDocumentFile(file)) return;
+
+  let filePath = "";
+  let fileName = "";
+  let fileSize = null;
+  let mimeType = "";
+  if (supabaseClient && currentRole) {
+    const payload = {
+      title: data.title,
+      document_date: data.date,
+      notes: data.notes || null
+    };
+    if (file) {
+      fileName = file.name;
+      fileSize = file.size;
+      mimeType = documentMimeType(file);
+      filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from(DOCUMENT_BUCKET)
+        .upload(filePath, file, { contentType: mimeType, upsert: false });
+      if (uploadError) {
+        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
+        return;
+      }
+      payload.file_path = filePath;
+      payload.file_name = fileName;
+      payload.file_size = fileSize;
+      payload.mime_type = mimeType;
+    }
+    const { error } = await supabaseClient.from("documents").update(payload).eq("id", doc.id);
+    if (error) {
+      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      return;
+    }
+    await logActivity("Dokumenty", sectionName === "Notatki" ? "Edycja notatki" : "Edycja dokumentu", {
+      summary: data.title || doc.title || "Dokument"
+    });
+    hideLargeDocEdit(sectionName);
+    await refreshSupabaseData();
+    showToast("Zapisano zmiany");
+    return;
+  }
+
+  const attachment = file ? await readPdfAttachment(file) : null;
+  if (file && !attachment) return;
+  rememberUndo();
+  doc.title = data.title;
+  doc.date = data.date;
+  doc.notes = data.notes || "";
+  if (attachment) doc.attachment = attachment;
+  saveState();
+  hideLargeDocEdit(sectionName);
+  renderDocs();
+  await logActivity("Dokumenty", sectionName === "Notatki" ? "Edycja notatki" : "Edycja dokumentu", {
+    summary: data.title || doc.title || "Dokument"
+  });
+  showToast("Zapisano zmiany");
 }
 
 function resetDocumentationForm(form) {
@@ -4603,8 +4707,8 @@ function resetSectionDocForm(form, sectionName) {
   form.date.valueAsDate = new Date();
   if (sectionName === "Notatki" && form.category) form.category.value = "Notatka";
   const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
-  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Dodaj wzór" : "Dodaj notatkę";
-  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz wzór" : "Zapisz notatkę";
+  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Dodaj wzór" : "Dodaj notatkę / dokument";
+  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz wzór" : "Zapisz";
 }
 
 function clearSectionDocFilters(sectionName) {
@@ -4669,8 +4773,8 @@ function resetDocForm(form) {
   form.date.valueAsDate = new Date();
   form.fundingSourceId.value = "";
   form.documentMoneyAction.value = "save_only";
-  elements.docFormTitle.textContent = "Dodaj dokument lub wiadomość";
-  form.querySelector('button[type="submit"]').textContent = "Zapisz dokument";
+  elements.docFormTitle.textContent = "Dodaj notatkę / dokument";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz";
   elements.cancelDocEdit.classList.add("hidden");
   renderEventOptions();
   renderFundingSourceOptions();
