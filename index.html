@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-30" />
+    <link rel="stylesheet" href="styles.css?v=20260604-31" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -65,7 +65,7 @@
       </nav>
       <div class="sidebar-actions">
         <div class="user-badge">
-          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-30</span>
+          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-31</span>
           <span>Zalogowano jako</span>
           <strong id="currentRole">-</strong>
         </div>
@@ -737,7 +737,7 @@
               <option>Notatki</option>
             </select>
             <input name="date" type="date" required />
-            <input name="file" type="file" accept="application/pdf" />
+            <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
             <select name="eventId" id="docEvent">
               <option value="">Bez wydarzenia</option>
             </select>
@@ -769,11 +769,11 @@
             </div>
             <div id="storageInfo" class="storage-info">
               <div>
-                <strong>Miejsce na PDF</strong>
+                <strong>Miejsce na pliki</strong>
                 <small id="storageText" data-storage-text>0 MB / 1024 MB</small>
               </div>
               <div class="storage-bar"><span id="storageBar" data-storage-bar></span></div>
-              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+              <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
             <div id="docsList" class="table"></div>
           </section>
@@ -828,7 +828,7 @@
             </select>
             <input name="date" type="date" required />
             <textarea name="notes" placeholder="Krótka treść / notatka"></textarea>
-            <input name="file" type="file" accept="application/pdf" />
+            <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
             <div class="form-actions">
               <button class="small-button" type="submit">Zapisz dokumentację</button>
               <button id="clearDocumentationForm" class="small-button secondary-button" type="button">Wyczyść</button>
@@ -840,11 +840,11 @@
             </div>
             <div class="storage-info">
               <div>
-                <strong>Miejsce na PDF</strong>
+                <strong>Miejsce na pliki</strong>
                 <small data-storage-text>0 MB / 1024 MB</small>
               </div>
               <div class="storage-bar"><span data-storage-bar></span></div>
-              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+              <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
             <div class="documentation-controls">
               <input id="documentationSearch" type="search" placeholder="Szukaj w dokumentacji..." />
@@ -881,7 +881,7 @@
             </select>
             <input name="date" type="date" required />
             <textarea name="notes" placeholder="Krótki opis / notatka"></textarea>
-            <input name="file" type="file" accept="application/pdf" />
+            <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
             <div class="form-actions">
               <button class="small-button" type="submit">Zapisz wzór</button>
               <button id="clearTemplateForm" class="small-button secondary-button" type="button">Wyczyść</button>
@@ -893,11 +893,11 @@
             </div>
             <div class="storage-info">
               <div>
-                <strong>Miejsce na PDF</strong>
+                <strong>Miejsce na pliki</strong>
                 <small data-storage-text>0 MB / 1024 MB</small>
               </div>
               <div class="storage-bar"><span data-storage-bar></span></div>
-              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+              <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
             <div class="section-doc-controls">
               <input id="templateSearch" type="search" placeholder="Szukaj we wzorach..." />
@@ -926,7 +926,7 @@
             <input name="category" type="hidden" value="Notatka" />
             <input name="date" type="date" required />
             <textarea name="notes" placeholder="Treść / notatka"></textarea>
-            <input name="file" type="file" accept="application/pdf" />
+            <input name="file" type="file" accept=".pdf,.doc,.docx,.odt,.txt,.rtf,.xls,.xlsx,.csv,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,text/plain,text/csv" />
             <div class="form-actions">
               <button class="small-button" type="submit">Zapisz notatkę</button>
               <button id="clearNoteForm" class="small-button secondary-button" type="button">Wyczyść</button>
@@ -938,11 +938,11 @@
             </div>
             <div class="storage-info">
               <div>
-                <strong>Miejsce na PDF</strong>
+                <strong>Miejsce na pliki</strong>
                 <small data-storage-text>0 MB / 1024 MB</small>
               </div>
               <div class="storage-bar"><span data-storage-bar></span></div>
-              <small>Wspólne miejsce dla wszystkich dokumentów.</small>
+              <small>Wspólne miejsce na dokumenty, skany, wzory i załączniki.</small>
             </div>
             <div class="section-doc-controls section-doc-controls-compact">
               <input id="noteSearch" type="search" placeholder="Szukaj w notatkach..." />
@@ -1150,7 +1150,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-30</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-31</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1196,7 +1196,7 @@
                 </article>
                 <article class="admin-export-card">
                   <strong>Dokumenty</strong>
-                  <small>Rejestr dokumentów i PDF.</small>
+                  <small>Rejestr dokumentów i plików.</small>
                   <button class="small-button admin-export-button" type="button" data-admin-export="documents">Eksport Excel</button>
                 </article>
                 <article class="admin-export-card">
@@ -1220,8 +1220,8 @@
             <div class="table">
               <div class="row">
                 <div>
-                  <strong>Pliki PDF</strong>
-                  <small>Lista plików PDF zostanie dodana w kolejnym kroku.</small>
+                  <strong>Pliki dokumentów</strong>
+                  <small>Lista plików dokumentów zostanie dodana w kolejnym kroku.</small>
                 </div>
               </div>
             </div>
@@ -1308,6 +1308,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-30"></script>
+    <script src="app.js?v=20260604-31"></script>
   </body>
 </html>

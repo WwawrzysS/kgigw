@@ -1,12 +1,29 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-30";
+const APP_VERSION = "2026.06.04-31";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
 const FEE_YEAR = new Date().getFullYear();
 const DOCUMENT_BUCKET = "documents";
 const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
+const DOCUMENT_ALLOWED_EXTENSIONS = new Set(["pdf", "doc", "docx", "odt", "txt", "rtf", "xls", "xlsx", "csv", "jpg", "jpeg", "png"]);
+const DOCUMENT_PREVIEW_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png"]);
+const DOCUMENT_ALLOWED_FILE_MESSAGE = "Dozwolone są pliki: PDF, DOC, DOCX, ODT, TXT, RTF, XLS, XLSX, CSV, JPG, PNG.";
+const DOCUMENT_MIME_BY_EXTENSION = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  odt: "application/vnd.oasis.opendocument.text",
+  txt: "text/plain",
+  rtf: "application/rtf",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  csv: "text/csv",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png"
+};
 const ACCOUNT_EMAILS = {
   admin: "wawrzysdom@gmail.com",
   administrator: "wawrzysdom@gmail.com",
@@ -931,7 +948,7 @@ async function refreshSupabaseData() {
     notes: doc.notes || "",
     filePath: doc.file_path || "",
     fileName: doc.file_name || "",
-    fileSize: Number(doc.file_size || 0),
+    fileSize: doc.file_size === null || doc.file_size === undefined ? null : Number(doc.file_size),
     mimeType: doc.mime_type || "",
     eventId: doc.event_id || "",
     fundingSourceId: doc.funding_source_id || "",
@@ -1909,8 +1926,7 @@ async function handleDoc(event) {
   const shouldAddExpense = !docId && data.documentMoneyAction === "add_expense";
   const documentExpenseAmount = Number(data.expenseAmount || 0);
   const file = event.target.file.files[0];
-  if (file && file.type !== "application/pdf") {
-    alert("Można dodać tylko plik PDF.");
+  if (!validateDocumentFile(file)) {
     return;
   }
   if (shouldAddExpense && documentExpenseAmount <= 0) {
@@ -1925,13 +1941,13 @@ async function handleDoc(event) {
     if (file) {
       fileName = file.name;
       fileSize = file.size;
-      mimeType = file.type;
+      mimeType = documentMimeType(file);
       filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
       const { error: uploadError } = await supabaseClient.storage
         .from(DOCUMENT_BUCKET)
-        .upload(filePath, file, { contentType: file.type, upsert: false });
+        .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -1963,7 +1979,7 @@ async function handleDoc(event) {
           mime_type: mimeType || null
         }).select("id").single();
     if (error) {
-      alert(`PDF mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
+      alert(`Plik mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
       return;
     }
     if (shouldAddExpense) {
@@ -2016,6 +2032,7 @@ async function handleDoc(event) {
     return;
   }
   const attachment = file ? await readPdfAttachment(file) : null;
+  if (file && !attachment) return;
   delete data.file;
   delete data.id;
   if (docId) {
@@ -2082,8 +2099,7 @@ async function handleDocumentationDoc(event) {
   const data = formData(form);
   const docId = data.id || "";
   const file = form.file.files[0];
-  if (file && file.type !== "application/pdf") {
-    alert("Można dodać tylko plik PDF.");
+  if (!validateDocumentFile(file)) {
     return;
   }
   const kind = DOCUMENTATION_KGIGW_TYPES.includes(data.kind) ? data.kind : "Statut";
@@ -2096,13 +2112,13 @@ async function handleDocumentationDoc(event) {
     if (file) {
       fileName = file.name;
       fileSize = file.size;
-      mimeType = file.type;
+      mimeType = documentMimeType(file);
       filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
       const { error: uploadError } = await supabaseClient.storage
         .from(DOCUMENT_BUCKET)
-        .upload(filePath, file, { contentType: file.type, upsert: false });
+        .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -2137,6 +2153,7 @@ async function handleDocumentationDoc(event) {
   }
 
   const attachment = file ? await readPdfAttachment(file) : null;
+  if (file && !attachment) return;
   if (docId) {
     const doc = state.docs.find((item) => item.id === docId);
     if (doc) Object.assign(doc, {
@@ -2179,8 +2196,7 @@ async function handleSectionDoc(event, sectionName) {
   const data = formData(form);
   const docId = data.id || "";
   const file = form.file.files[0];
-  if (file && file.type !== "application/pdf") {
-    alert("Można dodać tylko plik PDF.");
+  if (!validateDocumentFile(file)) {
     return;
   }
   const category = data.category || (sectionName === "Notatki" ? "Notatka" : "Inne");
@@ -2195,13 +2211,13 @@ async function handleSectionDoc(event, sectionName) {
     if (file) {
       fileName = file.name;
       fileSize = file.size;
-      mimeType = file.type;
+      mimeType = documentMimeType(file);
       filePath = `${new Date().getFullYear()}/${makeId()}-${safeFileName(file.name)}`;
       const { error: uploadError } = await supabaseClient.storage
         .from(DOCUMENT_BUCKET)
-        .upload(filePath, file, { contentType: file.type, upsert: false });
+        .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać PDF do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -2236,6 +2252,7 @@ async function handleSectionDoc(event, sectionName) {
   }
 
   const attachment = file ? await readPdfAttachment(file) : null;
+  if (file && !attachment) return;
   if (docId) {
     const doc = state.docs.find((item) => item.id === docId);
     if (doc) Object.assign(doc, {
@@ -3531,7 +3548,7 @@ function fundingDocRow(doc) {
         </small>
       </div>
       <div class="row-actions">
-        ${docHasFile(doc) ? `<button class="small-button" onclick="openDocumentAttachment('${doc.id}')">Pobierz PDF</button>` : ""}
+        ${docHasFile(doc) ? `<button class="small-button" onclick="openDocumentAttachment('${doc.id}')">Otwórz plik</button>` : ""}
       </div>
     </div>
   `;
@@ -4444,14 +4461,14 @@ function sectionDocSortComparator(sort) {
 
 function sectionDocRowHtml(item, sectionName) {
   const fileName = docFileName(item);
-  const openText = sectionName === "Wzory" ? "Otwórz PDF" : "Otwórz plik";
+  const openText = "Otwórz plik";
   return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
       <small>
         ${formatDate(item.date)}${sectionName === "Wzory" ? ` · <span class="badge neutral">${escapeHtml(item.category || "Wzór")}</span>` : ""}<br>
         ${escapeHtml(item.notes || "")}
-        ${fileName ? `<br>PDF: ${escapeHtml(fileName)} (${formatBytes(docFileSize(item))})` : ""}
+        ${fileName ? `<br>Plik: ${escapeHtml(fileName)} (${formatBytes(docFileSize(item))})` : ""}
       </small>
     </div>
     <div class="row-actions">
@@ -4472,11 +4489,11 @@ function docRowHtml(item) {
   return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>PDF: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${escapeHtml(item.notes || "")}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
-      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz PDF</button>` : ""}
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz plik</button>` : ""}
       ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
     </div>
   `;
@@ -5915,23 +5932,46 @@ async function updateInvoiceRequestStatus(id, status) {
 async function openDocumentAttachment(id) {
   const doc = state.docs.find((entry) => entry.id === id);
   if (!docHasFile(doc)) return;
+  if (hasKnownEmptyDocumentFile(doc)) {
+    alert("Ten plik jest pusty lub uszkodzony. Wgraj go ponownie.");
+    return;
+  }
+  const fileName = docFileName(doc) || "dokument";
+  const previewable = isPreviewableDocument(doc);
+  const previewWindow = previewable ? window.open("", "_blank") : null;
+  if (previewable && !previewWindow) {
+    alert("Przeglądarka zablokowała otwarcie pliku. Zezwól na wyskakujące okna dla tej strony.");
+    return;
+  }
   let url = doc.attachment?.dataUrl || "";
   if (!url && supabaseClient && doc.filePath) {
     const { data, error } = await supabaseClient.storage
       .from(DOCUMENT_BUCKET)
       .createSignedUrl(doc.filePath, 60);
     if (error) {
-      alert(`Nie udało się otworzyć PDF: ${error.message}`);
+      if (previewWindow) previewWindow.close();
+      alert(`Nie udało się otworzyć pliku: ${error.message}`);
       return;
     }
     url = data.signedUrl;
   }
-  const win = window.open();
-  if (!win) {
-    alert("Przeglądarka zablokowała otwarcie PDF. Zezwól na wyskakujące okna dla tej strony.");
+  if (!url) {
+    if (previewWindow) previewWindow.close();
+    alert("Nie udało się otworzyć pliku.");
     return;
   }
-  win.document.write(`<iframe src="${url}" title="${escapeHtml(docFileName(doc))}" style="border:0;width:100%;height:100vh"></iframe>`);
+  if (previewable) {
+    previewWindow.location.href = url;
+    return;
+  }
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 async function removeItem(collection, id) {
@@ -5968,7 +6008,7 @@ async function removeItem(collection, id) {
     return;
   }
   if (["docs", "invoices"].includes(collection) && !isAdmin()) {
-    alert("Dokumenty PDF i faktury może usuwać tylko Administrator.");
+    alert("Dokumenty i faktury może usuwać tylko Administrator.");
     return;
   }
   if (collection === "money") {
@@ -6783,6 +6823,41 @@ function safeFileName(name) {
     .toLowerCase() || "dokument.pdf";
 }
 
+function documentFileExtension(name) {
+  const match = String(name || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  return match ? match[1] : "";
+}
+
+function documentMimeType(file) {
+  const extension = documentFileExtension(file?.name);
+  return file?.type || DOCUMENT_MIME_BY_EXTENSION[extension] || "application/octet-stream";
+}
+
+function validateDocumentFile(file) {
+  if (!file) return true;
+  if (Number(file.size || 0) === 0) {
+    alert("Plik jest pusty lub uszkodzony. Wgraj go ponownie.");
+    return false;
+  }
+  const extension = documentFileExtension(file.name);
+  if (!DOCUMENT_ALLOWED_EXTENSIONS.has(extension)) {
+    alert(DOCUMENT_ALLOWED_FILE_MESSAGE);
+    return false;
+  }
+  return true;
+}
+
+function isPreviewableDocument(doc) {
+  const extension = documentFileExtension(docFileName(doc));
+  const mimeType = String(doc?.mimeType || doc?.attachment?.type || "").toLowerCase();
+  return DOCUMENT_PREVIEW_EXTENSIONS.has(extension) || mimeType === "application/pdf" || mimeType.startsWith("image/");
+}
+
+function hasKnownEmptyDocumentFile(doc) {
+  const hasKnownSize = doc && (doc.fileSize !== undefined && doc.fileSize !== null || doc.attachment?.size !== undefined && doc.attachment?.size !== null);
+  return Boolean(hasKnownSize && Number(docFileSize(doc)) === 0);
+}
+
 function normalizeText(value) {
   return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -6854,20 +6929,19 @@ function docLogSummary(doc) {
 
 function readPdfAttachment(file) {
   return new Promise((resolve, reject) => {
-    if (file.type !== "application/pdf") {
-      alert("Można dodać tylko plik PDF.");
+    if (!validateDocumentFile(file)) {
       resolve(null);
       return;
     }
     if (file.size > 3 * 1024 * 1024) {
-      const ok = confirm("Ten PDF ma ponad 3 MB. Zapis w przeglądarce może działać wolniej. Dodać mimo to?");
+      const ok = confirm("Ten plik ma ponad 3 MB. Zapis w przeglądarce może działać wolniej. Dodać mimo to?");
       if (!ok) {
         resolve(null);
         return;
       }
     }
     const reader = new FileReader();
-    reader.onload = () => resolve({ name: file.name, type: file.type, size: file.size, dataUrl: reader.result });
+    reader.onload = () => resolve({ name: file.name, type: documentMimeType(file), size: file.size, dataUrl: reader.result });
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
@@ -7216,7 +7290,7 @@ function fundingSettlementDocsTable(docs) {
           <th>Typ</th>
           <th>Nadawca</th>
           <th>Kwota</th>
-          <th>PDF</th>
+          <th>Plik</th>
         </tr>
       </thead>
       <tbody>
