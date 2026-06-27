@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-35";
+const APP_VERSION = "2026.06.04-36";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -4168,6 +4168,7 @@ function renderRentalReturns() {
           <small>${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} - ${escapeHtml(loan.phone)}</small>
         </summary>
         <div class="return-check">
+          <p class="doc-tab-intro">Wpisz faktyczne ilości zwrócone, uszkodzone i brakujące dla każdego przedmiotu. Jeśli wszystko wróciło w porządku, zostaw uszkodzenia i braki jako 0.</p>
           <div class="return-check-head">
             <span>Przedmiot</span>
             <span>Wydano</span>
@@ -4180,8 +4181,8 @@ function renderRentalReturns() {
               <strong>${escapeHtml(item.name)}</strong>
               <span>${item.quantity}</span>
               <input id="returnQty-${loan.id}-${index}" type="number" min="0" step="1" value="${item.quantity}" />
-              <input id="returnDamaged-${loan.id}-${index}" type="number" min="0" step="1" value="0" />
-              <input id="returnMissing-${loan.id}-${index}" type="number" min="0" step="1" value="0" />
+              <input id="returnDamaged-${loan.id}-${index}" type="number" min="0" step="1" value="0" oninput="autoFlagReturnDamaged('${loan.id}', 'returnDamaged-${loan.id}-${index}')" />
+              <input id="returnMissing-${loan.id}-${index}" type="number" min="0" step="1" value="0" oninput="autoFlagReturnDamaged('${loan.id}', 'returnMissing-${loan.id}-${index}')" />
             </div>
           `).join("")}
         </div>
@@ -4193,14 +4194,16 @@ function renderRentalReturns() {
             <option value="invoice_later" ${loan.paymentStatus === "invoice_later" ? "selected" : ""}>Faktura / płatność później</option>
           </select>
           <select id="returnCondition-${loan.id}" onchange="toggleMainReturnDamageField('${loan.id}'); updateTableclothReturnSummary('${loan.id}')">
-            <option value="ok">Stan po zwrocie: OK</option>
-            <option value="damaged">Stan po zwrocie: Uszkodzony</option>
+            <option value="ok">Ogólna ocena zwrotu: OK</option>
+            <option value="damaged">Ogólna ocena zwrotu: Z uwagami / uszkodzony</option>
           </select>
           <div id="returnDamageWrap-${loan.id}" class="hidden">
             <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="Dopłata za braki/uszkodzenia" oninput="updateTableclothReturnSummary('${loan.id}')" />
+            <small>Dopłatę wpisz tylko wtedy, gdy chcesz pobrać dodatkową kwotę za braki, uszkodzenia, pranie lub inne koszty.</small>
           </div>
           ${tableclothReturnFormHtml(loan)}
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi do zwrotu, np. uszkodzone, brakuje sztuk, zabrudzone obrusy"></textarea>
+          <small>W uwagach opisz, co było uszkodzone, czego brakowało albo za co naliczono dopłatę.</small>
         </div>
       </details>
     </div>
@@ -6584,6 +6587,16 @@ function toggleMainReturnDamageField(id) {
   const isOk = condition === "ok";
   wrap?.classList.toggle("hidden", isOk);
   if (isOk && input) input.value = "0";
+}
+
+function autoFlagReturnDamaged(loanId, inputId) {
+  const value = Number(document.querySelector(`#${inputId}`)?.value || 0);
+  if (value <= 0) return;
+  const select = document.querySelector(`#returnCondition-${loanId}`);
+  if (!select || select.value === "damaged") return;
+  select.value = "damaged";
+  toggleMainReturnDamageField(loanId);
+  updateTableclothReturnSummary(loanId);
 }
 
 function rentalTotal(items, days) {
