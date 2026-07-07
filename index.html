@@ -4,22 +4,44 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-39" />
+    <script>
+      try {
+        if (sessionStorage.getItem("kgigw-active-role")) document.documentElement.classList.add("has-saved-session");
+      } catch (error) {}
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260604-40" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
       <form id="loginForm" class="login-box">
         <span class="brand-mark"><img src="KGiGW.jpg" alt="Logo KGiGW" /></span>
-        <h1>KGiGW</h1>
-        <p>Podaj login i hasło, aby wejść do panelu.</p>
-        <input name="role" type="text" list="loginOptions" required placeholder="Login lub e-mail" autocomplete="username" />
-        <datalist id="loginOptions">
-          <option value="Administrator"></option>
-          <option value="Agata"></option>
-          <option value="Tomek"></option>
-        </datalist>
-        <input name="password" type="password" required placeholder="Hasło" autocomplete="current-password" />
-        <button type="submit">Zaloguj</button>
+        <h1 id="loginTitle">KGiGW</h1>
+        <p id="loginIntro">Podaj login i hasło, aby wejść do panelu.</p>
+        <div id="loginFields" class="login-fields">
+          <input name="role" type="text" list="loginOptions" required placeholder="Login lub e-mail" autocomplete="username" />
+          <datalist id="loginOptions">
+            <option value="Administrator"></option>
+            <option value="Agata"></option>
+            <option value="Tomek"></option>
+          </datalist>
+          <input name="password" type="password" required placeholder="Hasło" autocomplete="current-password" />
+          <button id="loginSubmit" type="submit">Zaloguj</button>
+        </div>
+        <div id="startupCard" class="startup-card hidden" aria-live="polite" aria-atomic="true">
+          <div class="startup-card-head">
+            <strong id="startupCardTitle">Uruchamianie KGiGW</strong>
+            <span id="startupCardPercent">0%</span>
+          </div>
+          <div class="startup-card-bar" aria-hidden="true"><span id="startupCardBar"></span></div>
+          <p id="startupCardStage">Inicjalizacja</p>
+          <small id="startupCardModule">Moduł: start aplikacji</small>
+          <small id="startupCardElapsed">Oczekiwanie: 0 s</small>
+          <small id="startupCardHint" class="startup-card-hint hidden">Nadal pobieram dane — nie odświeżaj strony.</small>
+          <div id="startupCardActions" class="startup-card-actions hidden">
+            <button id="startupRetryButton" type="button">Ponów pobieranie</button>
+            <button id="startupLogoutButton" type="button" class="secondary">Wyloguj</button>
+          </div>
+        </div>
         <small id="loginError" class="login-error"></small>
       </form>
     </section>
@@ -70,7 +92,7 @@
       </nav>
       <div class="sidebar-actions">
         <div class="user-badge">
-          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-39</span>
+          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-40</span>
           <span>Zalogowano jako</span>
           <strong id="currentRole">-</strong>
         </div>
@@ -81,6 +103,22 @@
 
     <main class="app app-shell">
       <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+      <section id="appLoadingOverlay" class="app-loading-overlay hidden" aria-live="polite" aria-atomic="true">
+        <div class="app-loading-card">
+          <div class="startup-card-head">
+            <strong id="appLoadingTitle">Ładowanie danych programu</strong>
+            <span id="appLoadingPercent">0%</span>
+          </div>
+          <div class="startup-card-bar" aria-hidden="true"><span id="appLoadingBar"></span></div>
+          <p id="appLoadingStage">Pobieranie danych</p>
+          <small id="appLoadingModule">Moduł: start aplikacji</small>
+          <small id="appLoadingElapsed">Oczekiwanie: 0 s</small>
+          <small id="appLoadingHint" class="startup-card-hint hidden">Nadal pobieram dane — nie odświeżaj strony.</small>
+          <div id="appLoadingActions" class="startup-card-actions hidden">
+            <button id="appLoadingRetryButton" type="button">Ponów pobieranie</button>
+          </div>
+        </div>
+      </section>
       <header class="topbar">
         <button id="mobileMenuButton" class="mobile-menu-button" type="button" aria-label="Otwórz menu">☰</button>
         <div>
@@ -1276,7 +1314,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-39</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-40</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1434,6 +1472,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-39"></script>
+    <script src="app.js?v=20260604-40"></script>
   </body>
 </html>

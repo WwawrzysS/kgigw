@@ -67,6 +67,21 @@ button {
   gap: 14px;
 }
 
+.login-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.login-box.startup-mode .login-fields {
+  display: none;
+}
+
+.login-box.is-busy input,
+.login-box.is-busy button {
+  opacity: 0.72;
+  cursor: wait;
+}
+
 .login-box h1 {
   font-size: 34px;
 }
@@ -90,8 +105,104 @@ button {
   color: var(--red);
 }
 
-body:not(.locked) .login-screen {
+body:not(.locked):not(.startup-gate) .login-screen {
   display: none;
+}
+
+body.startup-gate .app-shell {
+  display: none;
+}
+
+body.startup-gate .login-screen {
+  display: grid;
+}
+
+html.has-saved-session .app-shell {
+  display: none;
+}
+
+html.has-saved-session .login-screen {
+  display: grid;
+}
+
+html.has-saved-session .login-fields,
+html.has-saved-session #loginIntro {
+  display: none;
+}
+
+html.has-saved-session #startupCard.hidden {
+  display: grid;
+}
+
+.startup-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9f7f2;
+}
+
+.startup-card.error {
+  border-color: rgba(176, 65, 65, 0.32);
+  background: #fff6f6;
+}
+
+.startup-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.startup-card-head span {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--green-dark);
+}
+
+.startup-card-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7e1d6;
+}
+
+.startup-card-bar span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+  transition: width 180ms ease;
+}
+
+.startup-card p,
+.startup-card small {
+  margin: 0;
+}
+
+.startup-card small {
+  color: var(--muted);
+}
+
+.startup-card-hint {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(195, 139, 43, 0.12);
+  color: #6c4b12;
+}
+
+.startup-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.startup-card-actions button.secondary {
+  background: #fff;
+  color: var(--green-dark);
+  border: 1px solid var(--line);
 }
 
 .sidebar {
@@ -286,6 +397,46 @@ body:not(.locked) .login-screen {
 .app {
   min-width: 0;
   padding: 28px;
+  position: relative;
+}
+
+.app-loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(26, 31, 27, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.app-loading-overlay.hidden {
+  display: none;
+}
+
+.app-loading-card {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.app-loading-card.error {
+  border-color: rgba(176, 65, 65, 0.32);
+  background: #fff6f6;
+}
+
+body.app-loading-active .app-shell {
+  pointer-events: none;
+}
+
+body.app-loading-active #appLoadingOverlay {
+  pointer-events: auto;
 }
 
 .toast-container {

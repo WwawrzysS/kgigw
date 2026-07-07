@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-39";
+const APP_VERSION = "2026.06.04-40";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -99,19 +99,40 @@ let dataLoadError = "";
 let storageLoadStatus = "idle";
 let storageLoadError = "";
 const START_LOG_PREFIX = "[KGiGW START]";
+const LOAD_LOG_PREFIX = "[KGiGW LOAD]";
 const DATA_RETRY_DELAYS = [0, 1000, 2000, 4000];
 const START_PROGRESS_MODULE_KEYS = ["members", "fees", "rentalInventory", "rentals", "events", "kitchenEvents", "fundingSources", "money", "docs", "invoices", "invoiceRequests", "settings"];
 const START_PROGRESS_TOTAL = START_PROGRESS_MODULE_KEYS.length + 5;
+const START_PROGRESS_MODULE_LABELS = {
+  members: "Cz\u0142onkowie",
+  fees: "Sk\u0142adki",
+  rentalInventory: "Magazyn wypo\u017cyczalni",
+  rentals: "Wypo\u017cyczenia",
+  events: "Wydarzenia",
+  kitchenEvents: "Kulinarne wspomnienia",
+  fundingSources: "\u0179r\u00f3d\u0142a finansowania",
+  money: "Finanse",
+  docs: "Dokumenty",
+  invoices: "Faktury",
+  invoiceRequests: "Zg\u0142oszenia",
+  settings: "Ustawienia"
+};
 let startupProgressHideTimer = null;
+let startupElapsedTimer = null;
+let startupStageStartedAt = 0;
+let startupGateActive = Boolean(currentRole);
 const startupProgressState = {
   active: false,
   label: "\u0141adowanie",
   detail: "Inicjalizacja",
+  module: "Start aplikacji",
+  elapsedSeconds: 0,
   completed: 0,
   total: START_PROGRESS_TOTAL,
   percent: 0,
   error: false
 };
+const startupModuleStats = {};
 const DATA_MODULE_LABELS = {
   members: "czlonkow",
   fees: "skladek",
@@ -162,7 +183,22 @@ setupSupabaseClient();
 const elements = {
   loginScreen: document.querySelector("#loginScreen"),
   loginForm: document.querySelector("#loginForm"),
+  loginTitle: document.querySelector("#loginTitle"),
+  loginIntro: document.querySelector("#loginIntro"),
+  loginFields: document.querySelector("#loginFields"),
+  loginSubmit: document.querySelector("#loginSubmit"),
   loginError: document.querySelector("#loginError"),
+  startupCard: document.querySelector("#startupCard"),
+  startupCardTitle: document.querySelector("#startupCardTitle"),
+  startupCardPercent: document.querySelector("#startupCardPercent"),
+  startupCardBar: document.querySelector("#startupCardBar"),
+  startupCardStage: document.querySelector("#startupCardStage"),
+  startupCardModule: document.querySelector("#startupCardModule"),
+  startupCardElapsed: document.querySelector("#startupCardElapsed"),
+  startupCardHint: document.querySelector("#startupCardHint"),
+  startupCardActions: document.querySelector("#startupCardActions"),
+  startupRetryButton: document.querySelector("#startupRetryButton"),
+  startupLogoutButton: document.querySelector("#startupLogoutButton"),
   sidebar: document.querySelector(".sidebar"),
   currentRole: document.querySelector("#currentRole"),
   sidebarAppVersion: document.querySelector("#sidebarAppVersion"),
@@ -170,6 +206,17 @@ const elements = {
   startupProgressLabel: document.querySelector("#startupProgressLabel"),
   startupProgressPercent: document.querySelector("#startupProgressPercent"),
   startupProgressDetail: document.querySelector("#startupProgressDetail"),
+  appLoadingOverlay: document.querySelector("#appLoadingOverlay"),
+  appLoadingCard: document.querySelector("#appLoadingOverlay .app-loading-card"),
+  appLoadingTitle: document.querySelector("#appLoadingTitle"),
+  appLoadingPercent: document.querySelector("#appLoadingPercent"),
+  appLoadingBar: document.querySelector("#appLoadingBar"),
+  appLoadingStage: document.querySelector("#appLoadingStage"),
+  appLoadingModule: document.querySelector("#appLoadingModule"),
+  appLoadingElapsed: document.querySelector("#appLoadingElapsed"),
+  appLoadingHint: document.querySelector("#appLoadingHint"),
+  appLoadingActions: document.querySelector("#appLoadingActions"),
+  appLoadingRetryButton: document.querySelector("#appLoadingRetryButton"),
   mobileMenuButton: document.querySelector("#mobileMenuButton"),
   toastContainer: document.querySelector("#toastContainer"),
   viewTitle: document.querySelector("#viewTitle"),
@@ -340,11 +387,17 @@ const elements = {
 };
 
 document.body.classList.toggle("locked", !currentRole);
+document.body.classList.toggle("startup-gate", Boolean(currentRole));
 document.querySelectorAll("#exportData, .import-button").forEach((item) => item.classList.add("admin-only"));
 elements.currentRole.textContent = currentUserName ? `${currentUserName} (${roleName(currentRole)})` : roleName(currentRole);
 if (elements.sidebarAppVersion) elements.sidebarAppVersion.textContent = `v${APP_VERSION}`;
 if (elements.appVersion) elements.appVersion.textContent = APP_VERSION;
+if (currentRole) showStartupScreenMode("Uruchamianie KGiGW");
+else showLoginScreenMode();
 elements.loginForm.addEventListener("submit", handleLogin);
+elements.startupRetryButton?.addEventListener("click", () => startSupabaseDataLoad({ reason: "startup-retry", force: true, gate: true }));
+elements.startupLogoutButton?.addEventListener("click", logout);
+elements.appLoadingRetryButton?.addEventListener("click", () => startSupabaseDataLoad({ reason: "runtime-retry", force: true, gate: false }));
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#mobileMenuButton").addEventListener("click", toggleMobileMenu);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
@@ -525,9 +578,11 @@ document.querySelector("#showMailboxInfo").addEventListener("click", () => {
 document.querySelector("#openMailboxWindow")?.addEventListener("click", openMailboxConfig);
 document.addEventListener("click", handleCopyLinkClick);
 document.addEventListener("click", closeMobileMenuFromPage);
+document.addEventListener("submit", blockSubmitDuringDataLoad, true);
 
 elements.navItems.forEach((button) => {
   button.addEventListener("click", () => {
+    if (blockNavigationDuringDataLoad(button.dataset.view || "menu")) return;
     if (button.dataset.subnav) {
       toggleSubnav(button.dataset.subnav);
       return;
@@ -539,6 +594,7 @@ elements.navItems.forEach((button) => {
 
 elements.navSubitems.forEach((button) => {
   button.addEventListener("click", () => {
+    if (blockNavigationDuringDataLoad(button.dataset.view || "submenu")) return;
     switchView(button.dataset.view);
     if (button.dataset.rentalTab) switchRentalTab(button.dataset.rentalTab);
     if (button.dataset.docTab) switchDocTab(button.dataset.docTab);
@@ -591,7 +647,7 @@ document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Dat
 
 applyRole();
 if (currentRole) {
-  startSupabaseDataLoad({ reason: "startup" });
+  startSupabaseDataLoad({ reason: "startup", gate: true });
 } else {
   render();
 }
@@ -608,6 +664,7 @@ async function handleLogin(event) {
     return;
   }
 
+  setLoginBusy(true);
   elements.loginError.textContent = "Sprawdzam konto...";
   const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
     email,
@@ -617,6 +674,7 @@ async function handleLogin(event) {
   if (error || !authData?.user) {
     console.error("Nie udało się zalogować przez Supabase Auth.", { login, email, error });
     elements.loginError.textContent = "Nie udało się zalogować. Sprawdź login i hasło.";
+    setLoginBusy(false);
     return;
   }
 
@@ -624,6 +682,7 @@ async function handleLogin(event) {
   if (!profile) {
     await supabaseClient.auth.signOut();
     elements.loginError.textContent = "Brak dostępu do tej strony. Skontaktuj się z administratorem.";
+    setLoginBusy(false);
     return;
   }
 
@@ -634,9 +693,9 @@ async function handleLogin(event) {
   elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
   elements.loginError.textContent = "";
   event.target.reset();
-  document.body.classList.remove("locked");
   applyRole();
-  await startSupabaseDataLoad({ reason: "login", force: true });
+  showStartupScreenMode("Uruchamianie KGiGW");
+  await startSupabaseDataLoad({ reason: "login", force: true, gate: true });
 }
 
 function normalizeAccountLogin(value) {
@@ -698,9 +757,9 @@ function clearLocalAuth() {
   sessionStorage.removeItem(AUTH_KEY);
   sessionStorage.removeItem("kgigw-user-name");
   elements.currentRole.textContent = "-";
-  document.body.classList.add("locked");
   closeMobileMenu();
   applyRole();
+  showLoginScreenMode();
 }
 
 function roleName(role) {
@@ -766,6 +825,55 @@ function startError(message, details = undefined) {
   }
 }
 
+function loadLog(message, details = undefined) {
+  if (details === undefined) {
+    console.info(`${LOAD_LOG_PREFIX} ${message}`);
+  } else {
+    console.info(`${LOAD_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function loadWarn(message, details = undefined) {
+  if (details === undefined) {
+    console.warn(`${LOAD_LOG_PREFIX} ${message}`);
+  } else {
+    console.warn(`${LOAD_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function setLoginBusy(isBusy) {
+  elements.loginForm?.classList.toggle("is-busy", Boolean(isBusy));
+  elements.loginForm?.querySelectorAll("input, button[type='submit']").forEach((item) => {
+    item.disabled = Boolean(isBusy);
+  });
+  if (elements.loginSubmit) elements.loginSubmit.textContent = isBusy ? "Trwa logowanie\u2026" : "Zaloguj";
+}
+
+function showLoginScreenMode() {
+  startupGateActive = false;
+  document.documentElement.classList.remove("has-saved-session");
+  document.body.classList.remove("startup-gate");
+  document.body.classList.add("locked");
+  elements.loginForm?.classList.remove("startup-mode");
+  if (elements.loginTitle) elements.loginTitle.textContent = "KGiGW";
+  if (elements.loginIntro) elements.loginIntro.textContent = "Podaj login i has\u0142o, aby wej\u015b\u0107 do panelu.";
+  elements.startupCard?.classList.add("hidden");
+  elements.startupCardActions?.classList.add("hidden");
+  setLoginBusy(false);
+  hideStartupProgress();
+}
+
+function showStartupScreenMode(title = "Uruchamianie KGiGW") {
+  startupGateActive = true;
+  document.body.classList.add("startup-gate");
+  elements.loginForm?.classList.add("startup-mode");
+  if (elements.loginTitle) elements.loginTitle.textContent = title;
+  if (elements.loginIntro) elements.loginIntro.textContent = "Pobieram dane programu. Nie od\u015bwie\u017caj strony.";
+  elements.startupCard?.classList.remove("hidden");
+  elements.startupCardActions?.classList.add("hidden");
+  setLoginBusy(false);
+}
+
 function renderStartupProgress() {
   if (!elements.startupProgress) return;
   elements.startupProgress.classList.toggle("hidden", !startupProgressState.active);
@@ -773,6 +881,72 @@ function renderStartupProgress() {
   if (elements.startupProgressLabel) elements.startupProgressLabel.textContent = startupProgressState.label;
   if (elements.startupProgressPercent) elements.startupProgressPercent.textContent = startupProgressState.error ? "" : `${startupProgressState.percent}%`;
   if (elements.startupProgressDetail) elements.startupProgressDetail.textContent = startupProgressState.detail || "";
+  if (elements.startupCard) {
+    const cardVisible = startupGateActive && startupProgressState.active;
+    elements.startupCard.classList.toggle("hidden", !cardVisible);
+    elements.startupCard.classList.toggle("error", Boolean(startupProgressState.error));
+  }
+  if (elements.startupCardTitle) {
+    elements.startupCardTitle.textContent = startupProgressState.error
+      ? "Nie uda\u0142o si\u0119 uruchomi\u0107 programu"
+      : startupProgressState.label === "Gotowe"
+        ? "Gotowe \u2014 100%"
+        : `${startupProgressState.label} programu \u2014 ${startupProgressState.percent}%`;
+  }
+  if (elements.startupCardPercent) elements.startupCardPercent.textContent = startupProgressState.error ? "" : `${startupProgressState.percent}%`;
+  if (elements.startupCardBar) elements.startupCardBar.style.width = `${startupProgressState.percent}%`;
+  if (elements.startupCardStage) elements.startupCardStage.textContent = startupProgressState.detail || "";
+  if (elements.startupCardModule) elements.startupCardModule.textContent = startupProgressState.module ? `Modu\u0142: ${startupProgressState.module}` : "";
+  if (elements.startupCardElapsed) elements.startupCardElapsed.textContent = `Oczekiwanie: ${startupProgressState.elapsedSeconds || 0} s`;
+  elements.startupCardHint?.classList.toggle("hidden", !startupGateActive || startupProgressState.error || (startupProgressState.elapsedSeconds || 0) < 10);
+  elements.startupCardActions?.classList.toggle("hidden", !startupProgressState.error);
+  renderAppLoadingOverlay();
+}
+
+function isRuntimeLoadingOverlayVisible() {
+  if (startupGateActive || !currentRole) return false;
+  if (isDataLoading && startupProgressState.active) return true;
+  if (startupProgressState.error && dataLoadStatus === "error" && supabaseDataReady) return true;
+  return false;
+}
+
+function renderAppLoadingOverlay() {
+  const visible = isRuntimeLoadingOverlayVisible();
+  document.body.classList.toggle("app-loading-active", visible);
+  elements.appLoadingOverlay?.classList.toggle("hidden", !visible);
+  elements.appLoadingCard?.classList.toggle("error", Boolean(startupProgressState.error));
+  if (!visible) return;
+  const moduleName = startupProgressState.module || titles[activeView] || "program";
+  const percent = startupProgressState.error ? "" : `${startupProgressState.percent}%`;
+  const title = startupProgressState.error
+    ? "Nie udało się pobrać danych"
+    : startupProgressState.label === "Gotowe"
+      ? "Gotowe — 100%"
+      : `Ładowanie modułu ${moduleName} — ${startupProgressState.percent}%`;
+  if (elements.appLoadingTitle) elements.appLoadingTitle.textContent = title;
+  if (elements.appLoadingPercent) elements.appLoadingPercent.textContent = percent;
+  if (elements.appLoadingBar) elements.appLoadingBar.style.width = `${startupProgressState.percent}%`;
+  if (elements.appLoadingStage) elements.appLoadingStage.textContent = startupProgressState.error
+    ? "Nie pokazuję pustych danych jako gotowych."
+    : (startupProgressState.detail || "Pobieranie danych");
+  if (elements.appLoadingModule) elements.appLoadingModule.textContent = startupProgressState.module ? `Moduł: ${startupProgressState.module}` : "";
+  if (elements.appLoadingElapsed) elements.appLoadingElapsed.textContent = `Oczekiwanie: ${startupProgressState.elapsedSeconds || 0} s`;
+  elements.appLoadingHint?.classList.toggle("hidden", startupProgressState.error || (startupProgressState.elapsedSeconds || 0) < 10);
+  elements.appLoadingActions?.classList.toggle("hidden", !startupProgressState.error);
+}
+
+function startStartupElapsedTimer() {
+  if (startupElapsedTimer) return;
+  startupElapsedTimer = window.setInterval(() => {
+    if (!startupProgressState.active || !startupStageStartedAt) return;
+    startupProgressState.elapsedSeconds = Math.max(0, Math.floor((Date.now() - startupStageStartedAt) / 1000));
+    renderStartupProgress();
+  }, 1000);
+}
+
+function stopStartupElapsedTimer() {
+  if (startupElapsedTimer) window.clearInterval(startupElapsedTimer);
+  startupElapsedTimer = null;
 }
 
 function setStartupProgress(label, detail = "", completed = startupProgressState.completed, options = {}) {
@@ -780,10 +954,15 @@ function setStartupProgress(label, detail = "", completed = startupProgressState
     window.clearTimeout(startupProgressHideTimer);
     startupProgressHideTimer = null;
   }
+  if (options.resetTimer || detail !== startupProgressState.detail || label !== startupProgressState.label) {
+    startupStageStartedAt = Date.now();
+    startupProgressState.elapsedSeconds = 0;
+  }
   startupProgressState.active = true;
   startupProgressState.error = Boolean(options.error);
   startupProgressState.label = label;
   startupProgressState.detail = detail;
+  if (options.module !== undefined) startupProgressState.module = options.module;
   startupProgressState.completed = Math.max(0, Math.min(completed, startupProgressState.total));
   startupProgressState.percent = Math.max(0, Math.min(99, Math.round((startupProgressState.completed / startupProgressState.total) * 100)));
   if (options.percent !== undefined) {
@@ -796,12 +975,14 @@ function setStartupProgress(label, detail = "", completed = startupProgressState
     total: startupProgressState.total,
     percent: startupProgressState.percent
   });
+  startStartupElapsedTimer();
   renderStartupProgress();
 }
 
 function resetStartupProgress(detail = "Inicjalizacja") {
   startupProgressState.total = START_PROGRESS_TOTAL;
-  setStartupProgress("\u0141adowanie", detail, 0, { percent: 0 });
+  Object.keys(startupModuleStats).forEach((key) => delete startupModuleStats[key]);
+  setStartupProgress("\u0141adowanie", detail, 0, { percent: 0, module: "Start aplikacji", resetTimer: true });
 }
 
 function completeStartupStep(detail) {
@@ -810,20 +991,27 @@ function completeStartupStep(detail) {
 }
 
 function setStartupRetryProgress(attempt, totalAttempts) {
-  setStartupProgress("Ponawianie", `pr\u00f3ba ${attempt}/${totalAttempts}`, startupProgressState.completed);
+  setStartupProgress("Ponawianie", `pr\u00f3ba ${attempt}/${totalAttempts}`, startupProgressState.completed, { module: startupProgressState.module, resetTimer: true });
 }
 
-function finishStartupProgress() {
+function finishStartupProgress(options = {}) {
   setStartupProgress("Gotowe", "100%", startupProgressState.total, { percent: 100 });
   startupProgressHideTimer = window.setTimeout(() => {
     startupProgressState.active = false;
     startupProgressState.error = false;
+    stopStartupElapsedTimer();
+    if (options.unlockApp) {
+      startupGateActive = false;
+      document.documentElement.classList.remove("has-saved-session");
+      document.body.classList.remove("startup-gate");
+      elements.loginForm?.classList.remove("startup-mode");
+    }
     renderStartupProgress();
-  }, 1200);
+  }, options.unlockApp ? 500 : 1200);
 }
 
-function failStartupProgress() {
-  setStartupProgress("B\u0142\u0105d \u0142adowania", "Spr\u00f3buj ponownie", startupProgressState.completed, { error: true });
+function failStartupProgress(failedModule = "") {
+  setStartupProgress("B\u0142\u0105d \u0142adowania", failedModule ? `B\u0142\u0105d modu\u0142u: ${failedModule}` : "Spr\u00f3buj ponownie", startupProgressState.completed, { error: true, module: failedModule || startupProgressState.module });
 }
 
 function hideStartupProgress() {
@@ -831,6 +1019,7 @@ function hideStartupProgress() {
   startupProgressHideTimer = null;
   startupProgressState.active = false;
   startupProgressState.error = false;
+  stopStartupElapsedTimer();
   renderStartupProgress();
 }
 
@@ -860,18 +1049,31 @@ function updateDataModuleStatuses(results) {
 }
 
 async function startSupabaseDataLoad(options = {}) {
+  const useStartupGate = options.gate ?? !supabaseDataReady;
   if (!supabaseClient || !currentRole) {
     dataLoadStatus = "ready";
     storageLoadStatus = "ready";
     hideStartupProgress();
+    if (useStartupGate) showLoginScreenMode();
     render();
     return false;
   }
   if (isDataLoading && dataLoadPromise) {
     startWarn("Pobieranie danych juz trwa - pomijam rownolegly start.", { reason: options.reason || "unknown" });
+    loadWarn("Zablokowano rownolegle pobieranie.", { reason: options.reason || "unknown", activeView });
+    renderAppLoadingOverlay();
     return dataLoadPromise;
   }
-  dataLoadPromise = loadSupabaseDataWithRetry(options).finally(() => {
+  if (useStartupGate) {
+    showStartupScreenMode(options.title || "Uruchamianie KGiGW");
+  } else {
+    loadLog("Uruchamiam pobieranie danych w trakcie pracy.", {
+      reason: options.reason || "unknown",
+      activeView,
+      fullLoad: true
+    });
+  }
+  dataLoadPromise = loadSupabaseDataWithRetry({ ...options, gate: useStartupGate }).finally(() => {
     isDataLoading = false;
     dataLoadPromise = null;
   });
@@ -880,6 +1082,7 @@ async function startSupabaseDataLoad(options = {}) {
 
 async function loadSupabaseDataWithRetry(options = {}) {
   const reason = options.reason || "manual";
+  const useStartupGate = Boolean(options.gate);
   isDataLoading = true;
   dataLoadStatus = "loading";
   storageLoadStatus = "loading";
@@ -909,7 +1112,8 @@ async function loadSupabaseDataWithRetry(options = {}) {
         startLog("Dane pobrane poprawnie.", { attempt: attemptIndex + 1 });
         completeStartupStep("Przygotowanie widok\u00f3w");
         render();
-        finishStartupProgress();
+        logStartupModuleSummary();
+        finishStartupProgress({ unlockApp: useStartupGate });
         void refreshAuditLogs();
         return true;
       }
@@ -920,6 +1124,7 @@ async function loadSupabaseDataWithRetry(options = {}) {
         dataLoadStatus = "idle";
         storageLoadStatus = "idle";
         hideStartupProgress();
+        if (useStartupGate) showLoginScreenMode();
         render();
         return false;
       }
@@ -929,13 +1134,21 @@ async function loadSupabaseDataWithRetry(options = {}) {
         storageLoadStatus = storageLoadStatus === "ready" ? "ready" : "error";
         storageLoadError = dataLoadError;
         setAllDataModulesStatus("error", dataLoadError);
-        failStartupProgress();
+        failStartupProgress(error?.failedModule || startupProgressState.module);
         render();
         return false;
       }
     }
   }
   return false;
+}
+
+async function refreshDataAfterChange(reason = "post-write-refresh") {
+  const success = await startSupabaseDataLoad({ reason, force: true, gate: false });
+  if (!success) {
+    showToast("Nie udało się odświeżyć danych. Użyj opcji Ponów pobieranie.", "error");
+  }
+  return success;
 }
 
 async function refreshSupabaseData(options = {}) {
@@ -1094,14 +1307,15 @@ async function refreshSupabaseData(options = {}) {
     invoiceRequests: invoiceRequestsResult,
     settings: settingsResult
   };
+  syncStartupModuleStats(moduleResults);
   updateDataModuleStatuses(moduleResults);
   storageLoadStatus = docsResult.error ? "error" : "ready";
   storageLoadError = docsResult.error ? (docsResult.error?.message || "Nie uda\u0142o si\u0119 sprawdzi\u0107 miejsca na pliki.") : "";
-  const loadedVisibleModules = Object.entries(moduleResults)
-    .filter(([key]) => key !== "settings")
-    .filter(([, result]) => !result?.error).length;
-  if (!loadedVisibleModules) {
-    throw new Error("Nie uda\u0142o si\u0119 pobra\u0107 danych z \u017cadnego modu\u0142u.");
+  const failedModule = firstFailedModule(moduleResults);
+  if (failedModule) {
+    const error = new Error(`Nie uda\u0142o si\u0119 pobra\u0107 modu\u0142u: ${failedModule}`);
+    error.failedModule = failedModule;
+    throw error;
   }
 
   logSupabaseLoadError("członków", membersResult.error);
@@ -1371,12 +1585,76 @@ async function loadSupabaseResult(label, query) {
   }
 }
 
+function recordStartupModuleStart(key, label) {
+  const moduleName = START_PROGRESS_MODULE_LABELS[key] || label;
+  startupModuleStats[key] = {
+    key,
+    label: moduleName,
+    startedAt: Date.now(),
+    endedAt: 0,
+    durationMs: 0,
+    status: "PENDING",
+    count: null
+  };
+  setStartupProgress("\u0141adowanie", "Pobieranie danych", startupProgressState.completed, { module: moduleName, resetTimer: true });
+  startLog(`[${moduleName}] START`);
+}
+
+function updateStartupCurrentModule(fallbackModule = "") {
+  const pending = Object.values(startupModuleStats)
+    .filter((item) => item.status === "PENDING")
+    .sort((a, b) => a.startedAt - b.startedAt)[0];
+  startupProgressState.module = pending?.label || fallbackModule || startupProgressState.module;
+}
+
+function recordStartupModuleEnd(key, result) {
+  const stat = startupModuleStats[key];
+  if (!stat) return;
+  stat.endedAt = Date.now();
+  stat.durationMs = stat.endedAt - stat.startedAt;
+  stat.status = result?.error ? "ERROR" : "OK";
+  stat.count = Array.isArray(result?.data) ? result.data.length : result?.data ? 1 : 0;
+  startLog(`[${stat.label}] ${stat.status} - ${stat.count} rekord\u00f3w - ${stat.durationMs} ms`);
+  updateStartupCurrentModule(stat.label);
+}
+
+function logStartupModuleSummary() {
+  const summary = Object.values(startupModuleStats)
+    .filter((item) => item.endedAt)
+    .sort((a, b) => b.durationMs - a.durationMs)
+    .map((item) => ({
+      module: item.label,
+      status: item.status,
+      records: item.count,
+      durationMs: item.durationMs
+    }));
+  startLog("Podsumowanie pobierania modu\u0142\u00f3w od najwolniejszego.", summary);
+}
+
+function syncStartupModuleStats(results) {
+  Object.entries(results).forEach(([key, result]) => {
+    const stat = startupModuleStats[key];
+    if (!stat) return;
+    stat.status = result?.error ? "ERROR" : "OK";
+    stat.count = Array.isArray(result?.data) ? result.data.length : result?.data ? 1 : 0;
+  });
+}
+
+function firstFailedModule(results) {
+  const failed = Object.entries(results).find(([, result]) => result?.error);
+  if (!failed) return "";
+  return START_PROGRESS_MODULE_LABELS[failed[0]] || failed[0];
+}
+
 async function loadTrackedSupabaseResult(key, label, query) {
+  recordStartupModuleStart(key, label);
+  let result;
   try {
-    return await loadSupabaseResult(label, query);
+    result = await loadSupabaseResult(label, query);
+    return result;
   } finally {
-    const moduleLabel = DATA_MODULE_LABELS[key] || label;
-    completeStartupStep(`Modu\u0142: ${moduleLabel}`);
+    recordStartupModuleEnd(key, result);
+    completeStartupStep(`Modu\u0142: ${START_PROGRESS_MODULE_LABELS[key] || label}`);
   }
 }
 
@@ -1533,6 +1811,18 @@ function closeMobileMenuFromPage(event) {
   closeMobileMenu();
 }
 
+function blockSubmitDuringDataLoad(event) {
+  if (!isRuntimeLoadingOverlayVisible()) return;
+  if (elements.appLoadingOverlay?.contains(event.target)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  loadWarn("Zablokowano zapis formularza podczas pobierania.", {
+    activeView,
+    module: startupProgressState.module
+  });
+  renderAppLoadingOverlay();
+}
+
 function openMailboxConfig() {
   const win = window.open("", "kgigw-mail-config", "width=760,height=620");
   if (!win) {
@@ -1578,7 +1868,55 @@ function makeId() {
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function stateCountForView(view) {
+  switch (view) {
+    case "members":
+      return state.members?.length || 0;
+    case "fees":
+      return state.fees?.length || 0;
+    case "money":
+      return state.money?.length || 0;
+    case "funding":
+      return state.fundingSources?.length || 0;
+    case "events":
+      return state.events?.length || 0;
+    case "kitchen":
+      return state.kitchenEvents?.length || 0;
+    case "rentals":
+      return (state.rentalInventory?.length || 0) + (state.rentalLoans?.length || 0);
+    case "docs":
+      return state.docs?.length || 0;
+    case "invoices":
+      return (state.invoices?.length || 0) + (state.invoiceRequests?.length || 0);
+    case "info":
+      return state.members?.length || 0;
+    default:
+      return 0;
+  }
+}
+
+function blockNavigationDuringDataLoad(target) {
+  if (!isDataLoading || startupGateActive) return false;
+  loadWarn("Zablokowano przejscie podczas pobierania.", {
+    target,
+    activeView,
+    dataLoadStatus,
+    module: startupProgressState.module
+  });
+  renderAppLoadingOverlay();
+  return true;
+}
+
 function switchView(view) {
+  if (blockNavigationDuringDataLoad(view)) return;
+  loadLog("Nawigacja do zakladki.", {
+    view,
+    title: titles[view] || view,
+    usedState: true,
+    triggeredFetch: false,
+    dataReady: supabaseDataReady,
+    records: stateCountForView(view)
+  });
   activeView = view;
   elements.viewTitle.textContent = titles[view];
   elements.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
@@ -1600,6 +1938,14 @@ function toggleSubnav(id) {
 }
 
 function switchRentalTab(tabName) {
+  if (blockNavigationDuringDataLoad(`rentals:${tabName}`)) return;
+  loadLog("Nawigacja w Wypozyczalni.", {
+    tab: tabName,
+    usedState: true,
+    triggeredFetch: false,
+    inventoryRecords: state.rentalInventory?.length || 0,
+    rentalRecords: state.rentalLoans?.length || 0
+  });
   if (tabName !== "returns" && lastReturnedRentalId) {
     lastReturnedRentalId = "";
     renderReturnConfirmation();
@@ -1629,6 +1975,13 @@ function switchAdminTab(tabName) {
 }
 
 function switchDocTab(tabName) {
+  if (blockNavigationDuringDataLoad(`docs:${tabName}`)) return;
+  loadLog("Nawigacja w Dokumentach.", {
+    tab: tabName,
+    usedState: true,
+    triggeredFetch: false,
+    records: state.docs?.length || 0
+  });
   elements.docPanels.forEach((panel) => {
     const active = panel.dataset.docPanel === tabName;
     panel.classList.toggle("active-doc-panel", active);
@@ -1641,6 +1994,13 @@ function switchDocTab(tabName) {
 }
 
 function switchInfoTab(tabName) {
+  if (blockNavigationDuringDataLoad(`info:${tabName}`)) return;
+  loadLog("Nawigacja w Informacjach.", {
+    tab: tabName,
+    usedState: true,
+    triggeredFetch: false,
+    records: state.members?.length || 0
+  });
   elements.infoPanels.forEach((panel) => {
     const active = panel.dataset.infoPanel === tabName;
     panel.classList.toggle("active-info-panel", active);
@@ -1679,7 +2039,7 @@ async function handleMember(event) {
     }
     resetMemberForm(event.target);
     await logMemberChanges(existingMember, data, memberId);
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(memberMessage);
     return;
   }
@@ -1758,7 +2118,7 @@ async function handleFee(event) {
     event.target.period.value = FEE_YEAR;
     event.target.dueAmount.value = ANNUAL_FEE;
     await logActivity("Składki", "Dodanie składki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Składka zapisana i dodana do Finansów jako wpływ.");
     return;
   }
@@ -1826,7 +2186,7 @@ async function handleMoney(event) {
     } else {
       await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(moneyMessage);
     return;
   }
@@ -1895,7 +2255,7 @@ async function handleFundingSource(event) {
     }
     resetFundingForm(event.target);
     await logActivity("Źródła finansowania", sourceId ? "Edycja źródła finansowania" : "Dodanie źródła finansowania", { summary: data.name });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(sourceId ? "Zapisano źródło finansowania" : "Dodano źródło finansowania");
     return;
   }
@@ -1950,7 +2310,7 @@ async function handleEvent(event) {
     event.target.reset();
     event.target.date.valueAsDate = new Date();
     await logActivity("Wydarzenia", "Dodanie wydarzenia", { summary: data.name });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   state.events.push({ id: makeId(), ...data });
@@ -1991,7 +2351,7 @@ async function handleKitchenEvent(event) {
       await logActivity("Kulinarne wspomnienia", "Dodanie imprezy kulinarnej", { summary: data.name });
     }
     hideKitchenEventForm();
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(eventId ? "Zapisano imprezę" : "Dodano imprezę");
     return;
   }
@@ -2061,7 +2421,7 @@ async function handleKitchenItem(event) {
       await logActivity("Kulinarne wspomnienia", "Dodanie potrawy", { summary: `${parent.name} - ${data.itemName}` });
     }
     hideKitchenItemForm();
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     selectedKitchenEventId = eventId;
     renderKitchenDetails();
     showToast(itemId ? "Zapisano potrawę" : "Dodano potrawę");
@@ -2195,7 +2555,7 @@ async function handleRental(event) {
     if (meta.depositAmount > 0) {
       await logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Wypożyczenie zapisane");
     return;
   }
@@ -2319,7 +2679,7 @@ async function handleDoc(event) {
       if (expenseError) {
         alert(`Dokument zapisano, ale nie udało się dodać wydatku do Finansów: ${expenseError.message}`);
         await logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
-        await refreshSupabaseData();
+        await refreshDataAfterChange();
         return;
       }
       const { error: linkError } = await supabaseClient
@@ -2329,7 +2689,7 @@ async function handleDoc(event) {
       if (linkError) {
         alert(`Wydatek dodano do Finansów, ale nie udało się powiązać go z dokumentem: ${linkError.message}`);
         await logActivity("Dokumenty", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
-        await refreshSupabaseData();
+        await refreshDataAfterChange();
         return;
       }
       await logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
@@ -2345,7 +2705,7 @@ async function handleDoc(event) {
     if (!fundingChanged && !sectionChanged) {
       await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
     return;
   }
@@ -2465,7 +2825,7 @@ async function handleDocumentationDoc(event) {
       summary: `${data.title} - ${kind}`
     });
     resetDocumentationForm(form);
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
     return;
   }
@@ -2564,7 +2924,7 @@ async function handleSectionDoc(event, sectionName) {
       summary: `${data.title} - ${category}`
     });
     resetSectionDocForm(form, sectionName);
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(docId ? `Zapisano zmiany ${singularTitle}` : `Zapisano ${singular}`);
     return;
   }
@@ -2677,7 +3037,7 @@ async function handleInvoice(event) {
     event.target.date.valueAsDate = new Date();
     event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
     await logActivity("Faktury", "Wystawienie faktury", { summary: `${invoice.number} - ${invoice.buyerName} - ${money(invoice.gross)}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Zapisano fakturę");
     return;
   }
@@ -4047,7 +4407,7 @@ async function archiveFundingSource(id) {
       return;
     }
     await logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Źródło finansowania zostało zarchiwizowane");
     return;
   }
@@ -4086,7 +4446,7 @@ async function deleteFundingSource(id) {
     }
     await logActivity("Źródła finansowania", "Usunięcie źródła finansowania", { summary: source.name });
     if (selectedFundingSourceId === id) selectedFundingSourceId = "";
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Źródło finansowania zostało usunięte");
     return;
   }
@@ -4367,7 +4727,7 @@ async function deleteKitchenEvent(id) {
     }
     await logActivity("Kulinarne wspomnienia", "Usunięcie imprezy kulinarnej", { summary: event.name });
     if (selectedKitchenEventId === id) selectedKitchenEventId = "";
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Usunięto imprezę");
     return;
   }
@@ -4393,7 +4753,7 @@ async function deleteKitchenItem(eventId, itemId) {
       return;
     }
     await logActivity("Kulinarne wspomnienia", "Usunięcie potrawy", { summary: `${event.name} - ${item.itemName}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     selectedKitchenEventId = eventId;
     renderKitchenDetails();
     showToast("Usunięto potrawę");
@@ -5151,7 +5511,7 @@ async function handleLargeDocEdit(event, sectionName = "documents") {
       summary: data.title || doc.title || "Dokument"
     });
     hideLargeDocEdit(sectionName);
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Zapisano zmiany");
     return;
   }
@@ -5233,7 +5593,7 @@ async function deleteDocumentationDoc(id) {
     await logActivity("Dokumenty", "Usunięcie dokumentacji KGiGW", {
       summary: `${doc.title || id} - ${doc.category || "Dokumentacja KGiGW"}`
     });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Usunięto dokumentację KGiGW");
     return;
   }
@@ -5973,7 +6333,7 @@ async function addEventNote(id) {
       alert(`Nie udało się dopisać notatki do wydarzenia: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   rememberUndo();
@@ -6002,7 +6362,7 @@ async function resetMemberFees(name) {
       return;
     }
     await logActivity("Składki", "Reset wpłat", { summary: `${name} - ${FEE_YEAR}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   rememberUndo();
@@ -6041,7 +6401,7 @@ async function updateInventory(id, field, value) {
       alert(`Nie udało się zmienić magazynu w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   rememberUndo();
@@ -6078,7 +6438,7 @@ async function handleInventoryAdd(event) {
     }
     event.target.reset();
     await logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Dodano przedmiot do magazynu");
     return;
   }
@@ -6166,7 +6526,7 @@ async function returnRental(id) {
       await logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
     }
     lastReturnedRentalId = id;
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
     return;
   }
@@ -6310,7 +6670,7 @@ async function editInvoiceRequest(id) {
       return;
     }
     await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Zapisano zmiany w zgłoszeniu");
     return;
   }
@@ -6374,7 +6734,7 @@ async function saveInvoiceRequestEdit(event, id) {
     }
     editingInvoiceRequestId = "";
     await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Zapisano zmiany w zgłoszeniu");
     return;
   }
@@ -6496,7 +6856,7 @@ async function markInvoicePaid(id) {
     const result = await addInvoicePaymentToSupabase(paidInvoice);
     if (!result.ok) return;
     await logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
     return;
   }
@@ -6531,7 +6891,7 @@ async function updateInvoiceRequestStatus(id, status) {
       return;
     }
     await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     showToast(`Zmieniono status zgłoszenia: ${label}`);
     return;
   }
@@ -6607,7 +6967,7 @@ async function removeItem(collection, id) {
         return;
       }
       await logActivity("Członkowie", "Archiwizacja członka", { summary: member?.name || id });
-      await refreshSupabaseData();
+      await refreshDataAfterChange();
       showToast("Członek został zarchiwizowany");
       return;
     }
@@ -6643,7 +7003,7 @@ async function removeItem(collection, id) {
         return;
       }
       await logActivity("Finanse", "Anulowanie wpisu finansowego", { summary: entry ? moneyLogSummary(entry) : id });
-      await refreshSupabaseData();
+      await refreshDataAfterChange();
       showToast("Wpis w Finansach został anulowany");
       return;
     }
@@ -6671,7 +7031,7 @@ async function removeItem(collection, id) {
       return;
     }
     await logActivity("Składki", "Usunięcie wpłaty", { summary: feeToDelete ? `${feeToDelete.member} - ${money(feeToDelete.amount)}` : id });
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   if (supabaseClient && currentRole && collection === "rentalLoans") {
@@ -6680,7 +7040,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć wypożyczenia w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   if (supabaseClient && currentRole && collection === "rentalInventory") {
@@ -6689,7 +7049,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć przedmiotu z magazynu w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   if (supabaseClient && currentRole && collection === "events") {
@@ -6698,7 +7058,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć wydarzenia w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   if (supabaseClient && currentRole && collection === "docs") {
@@ -6711,7 +7071,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć dokumentu w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   if (supabaseClient && currentRole && collection === "invoices") {
@@ -6720,7 +7080,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć faktury w Supabase: ${error.message}`);
       return;
     }
-    await refreshSupabaseData();
+    await refreshDataAfterChange();
     return;
   }
   rememberUndo();
