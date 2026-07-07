@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Panel KGiGW</title>
-    <link rel="stylesheet" href="styles.css?v=20260604-33" />
+    <link rel="stylesheet" href="styles.css?v=20260604-39" />
   </head>
   <body>
     <section id="loginScreen" class="login-screen">
@@ -27,9 +27,14 @@
     <aside class="sidebar app-shell">
       <div class="brand">
         <span class="brand-mark"><img src="KGiGW.jpg" alt="Logo KGiGW" /></span>
-        <div>
+        <div class="brand-title">
           <strong>KGiGW</strong>
           <small>we Włosani</small>
+        </div>
+        <div id="startupProgress" class="startup-progress hidden" aria-live="polite" aria-atomic="true">
+          <span id="startupProgressLabel">Ładowanie</span>
+          <strong id="startupProgressPercent">0%</strong>
+          <small id="startupProgressDetail">Inicjalizacja</small>
         </div>
       </div>
       <nav class="nav" aria-label="Główne działy">
@@ -65,7 +70,7 @@
       </nav>
       <div class="sidebar-actions">
         <div class="user-badge">
-          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-38</span>
+          <span id="sidebarAppVersion" class="app-version-inline">v2026.06.04-39</span>
           <span>Zalogowano jako</span>
           <strong id="currentRole">-</strong>
         </div>
@@ -1271,7 +1276,7 @@
               <div class="row">
                 <div>
                   <strong>Narzędzia techniczne programu</strong>
-                  <small>Wersja: <span id="appVersion">2026.06.04-38</span></small>
+                  <small>Wersja: <span id="appVersion">2026.06.04-39</span></small>
                 </div>
                 <button id="refreshProgram" class="small-button">Odśwież program</button>
               </div>
@@ -1429,6 +1434,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-config.js"></script>
-    <script src="app.js?v=20260604-38"></script>
+    <script src="app.js?v=20260604-39"></script>
   </body>
 </html>

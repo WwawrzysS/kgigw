@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-38";
+const APP_VERSION = "2026.06.04-39";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -100,6 +100,18 @@ let storageLoadStatus = "idle";
 let storageLoadError = "";
 const START_LOG_PREFIX = "[KGiGW START]";
 const DATA_RETRY_DELAYS = [0, 1000, 2000, 4000];
+const START_PROGRESS_MODULE_KEYS = ["members", "fees", "rentalInventory", "rentals", "events", "kitchenEvents", "fundingSources", "money", "docs", "invoices", "invoiceRequests", "settings"];
+const START_PROGRESS_TOTAL = START_PROGRESS_MODULE_KEYS.length + 5;
+let startupProgressHideTimer = null;
+const startupProgressState = {
+  active: false,
+  label: "\u0141adowanie",
+  detail: "Inicjalizacja",
+  completed: 0,
+  total: START_PROGRESS_TOTAL,
+  percent: 0,
+  error: false
+};
 const DATA_MODULE_LABELS = {
   members: "czlonkow",
   fees: "skladek",
@@ -154,6 +166,10 @@ const elements = {
   sidebar: document.querySelector(".sidebar"),
   currentRole: document.querySelector("#currentRole"),
   sidebarAppVersion: document.querySelector("#sidebarAppVersion"),
+  startupProgress: document.querySelector("#startupProgress"),
+  startupProgressLabel: document.querySelector("#startupProgressLabel"),
+  startupProgressPercent: document.querySelector("#startupProgressPercent"),
+  startupProgressDetail: document.querySelector("#startupProgressDetail"),
   mobileMenuButton: document.querySelector("#mobileMenuButton"),
   toastContainer: document.querySelector("#toastContainer"),
   viewTitle: document.querySelector("#viewTitle"),
@@ -750,6 +766,74 @@ function startError(message, details = undefined) {
   }
 }
 
+function renderStartupProgress() {
+  if (!elements.startupProgress) return;
+  elements.startupProgress.classList.toggle("hidden", !startupProgressState.active);
+  elements.startupProgress.classList.toggle("error", Boolean(startupProgressState.error));
+  if (elements.startupProgressLabel) elements.startupProgressLabel.textContent = startupProgressState.label;
+  if (elements.startupProgressPercent) elements.startupProgressPercent.textContent = startupProgressState.error ? "" : `${startupProgressState.percent}%`;
+  if (elements.startupProgressDetail) elements.startupProgressDetail.textContent = startupProgressState.detail || "";
+}
+
+function setStartupProgress(label, detail = "", completed = startupProgressState.completed, options = {}) {
+  if (startupProgressHideTimer) {
+    window.clearTimeout(startupProgressHideTimer);
+    startupProgressHideTimer = null;
+  }
+  startupProgressState.active = true;
+  startupProgressState.error = Boolean(options.error);
+  startupProgressState.label = label;
+  startupProgressState.detail = detail;
+  startupProgressState.completed = Math.max(0, Math.min(completed, startupProgressState.total));
+  startupProgressState.percent = Math.max(0, Math.min(99, Math.round((startupProgressState.completed / startupProgressState.total) * 100)));
+  if (options.percent !== undefined) {
+    startupProgressState.percent = Math.max(0, Math.min(100, Number(options.percent) || 0));
+  }
+  startLog("Postep ladowania.", {
+    label,
+    detail,
+    completed: startupProgressState.completed,
+    total: startupProgressState.total,
+    percent: startupProgressState.percent
+  });
+  renderStartupProgress();
+}
+
+function resetStartupProgress(detail = "Inicjalizacja") {
+  startupProgressState.total = START_PROGRESS_TOTAL;
+  setStartupProgress("\u0141adowanie", detail, 0, { percent: 0 });
+}
+
+function completeStartupStep(detail) {
+  const nextCompleted = Math.min(startupProgressState.total - 1, startupProgressState.completed + 1);
+  setStartupProgress("\u0141adowanie", detail, nextCompleted);
+}
+
+function setStartupRetryProgress(attempt, totalAttempts) {
+  setStartupProgress("Ponawianie", `pr\u00f3ba ${attempt}/${totalAttempts}`, startupProgressState.completed);
+}
+
+function finishStartupProgress() {
+  setStartupProgress("Gotowe", "100%", startupProgressState.total, { percent: 100 });
+  startupProgressHideTimer = window.setTimeout(() => {
+    startupProgressState.active = false;
+    startupProgressState.error = false;
+    renderStartupProgress();
+  }, 1200);
+}
+
+function failStartupProgress() {
+  setStartupProgress("B\u0142\u0105d \u0142adowania", "Spr\u00f3buj ponownie", startupProgressState.completed, { error: true });
+}
+
+function hideStartupProgress() {
+  if (startupProgressHideTimer) window.clearTimeout(startupProgressHideTimer);
+  startupProgressHideTimer = null;
+  startupProgressState.active = false;
+  startupProgressState.error = false;
+  renderStartupProgress();
+}
+
 function delay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -779,6 +863,7 @@ async function startSupabaseDataLoad(options = {}) {
   if (!supabaseClient || !currentRole) {
     dataLoadStatus = "ready";
     storageLoadStatus = "ready";
+    hideStartupProgress();
     render();
     return false;
   }
@@ -801,12 +886,15 @@ async function loadSupabaseDataWithRetry(options = {}) {
   dataLoadError = "";
   storageLoadError = "";
   setAllDataModulesStatus("loading");
+  resetStartupProgress("Inicjalizacja");
+  completeStartupStep("Start aplikacji");
   startLog("Start pobierania danych.", { reason });
   render();
 
   for (let attemptIndex = 0; attemptIndex < DATA_RETRY_DELAYS.length; attemptIndex += 1) {
     const delayMs = DATA_RETRY_DELAYS[attemptIndex];
     if (delayMs) {
+      setStartupRetryProgress(attemptIndex + 1, DATA_RETRY_DELAYS.length);
       startLog("Ponawiam pobieranie po opoznieniu.", { delayMs, attempt: attemptIndex + 1 });
       await delay(delayMs);
     }
@@ -819,7 +907,9 @@ async function loadSupabaseDataWithRetry(options = {}) {
         storageLoadError = dataModuleErrors.docs || "";
         supabaseDataReady = true;
         startLog("Dane pobrane poprawnie.", { attempt: attemptIndex + 1 });
+        completeStartupStep("Przygotowanie widok\u00f3w");
         render();
+        finishStartupProgress();
         void refreshAuditLogs();
         return true;
       }
@@ -829,6 +919,7 @@ async function loadSupabaseDataWithRetry(options = {}) {
       if (!currentRole) {
         dataLoadStatus = "idle";
         storageLoadStatus = "idle";
+        hideStartupProgress();
         render();
         return false;
       }
@@ -838,6 +929,7 @@ async function loadSupabaseDataWithRetry(options = {}) {
         storageLoadStatus = storageLoadStatus === "ready" ? "ready" : "error";
         storageLoadError = dataLoadError;
         setAllDataModulesStatus("error", dataLoadError);
+        failStartupProgress();
         render();
         return false;
       }
@@ -859,6 +951,7 @@ async function refreshSupabaseData(options = {}) {
     throw new Error("Brak aktywnej sesji Supabase Auth.");
   }
   startLog("Sesja Supabase aktywna.", { userId: sessionData.session.user?.id || "" });
+  completeStartupStep("Sesja Supabase");
 
   const profile = await loadAuthenticatedProfile(sessionData.session.user);
   if (!profile) {
@@ -872,53 +965,54 @@ async function refreshSupabaseData(options = {}) {
   elements.currentRole.textContent = `${currentUserName} (${roleName(currentRole)})`;
   document.body.classList.remove("locked");
   applyRole();
+  completeStartupStep("Profil u\u017cytkownika");
 
   const settledResults = await Promise.allSettled([
-    loadSupabaseResult("members", supabaseClient
+    loadTrackedSupabaseResult("members", "members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, membership_type, board_role, created_at")
       .order("name", { ascending: true })),
-    loadSupabaseResult("fees", supabaseClient
+    loadTrackedSupabaseResult("fees", "fees", supabaseClient
       .from("fees")
       .select("id, member_id, year, amount, note, paid_at, created_at")
       .order("paid_at", { ascending: false })),
-    loadSupabaseResult("rental_inventory", supabaseClient
+    loadTrackedSupabaseResult("rentalInventory", "rental_inventory", supabaseClient
       .from("rental_inventory")
       .select("id, name, quantity, price_per_day, replacement_value")
       .order("name", { ascending: true })),
-    loadSupabaseResult("rentals", supabaseClient
+    loadTrackedSupabaseResult("rentals", "rentals", supabaseClient
       .from("rentals")
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, payment_status, payment_method, paid_at, payment_transaction_id, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
       .order("date_from", { ascending: false })),
-    loadSupabaseResult("events", supabaseClient
+    loadTrackedSupabaseResult("events", "events", supabaseClient
       .from("events")
       .select("id, name, event_date, place, notes")
       .order("event_date", { ascending: true })),
-    loadSupabaseResult("kitchen_events", supabaseClient
+    loadTrackedSupabaseResult("kitchenEvents", "kitchen_events", supabaseClient
       .from("kitchen_events")
       .select("id, event_name, event_date, place, notes, created_at, updated_at, kitchen_event_items(id, event_id, item_name, quantity, ingredients, enough_status, notes, created_at, updated_at)")
       .order("event_date", { ascending: false })),
-    loadSupabaseResult("funding_sources", supabaseClient
+    loadTrackedSupabaseResult("fundingSources", "funding_sources", supabaseClient
       .from("funding_sources")
       .select("id, name, type, description, planned_amount, date_from, date_to, status, created_at, updated_at")
       .order("created_at", { ascending: false })),
-    loadSupabaseResult("transactions", supabaseClient
+    loadTrackedSupabaseResult("money", "transactions", supabaseClient
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id, funding_source_id, status, cancelled_at, cancelled_reason, source_type, source_id")
       .order("transaction_date", { ascending: false })),
-    loadSupabaseResult("documents", supabaseClient
+    loadTrackedSupabaseResult("docs", "documents", supabaseClient
       .from("documents")
       .select("id, title, sender, category, document_section, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
       .order("document_date", { ascending: false })),
-    loadSupabaseResult("invoices", supabaseClient
+    loadTrackedSupabaseResult("invoices", "invoices", supabaseClient
       .from("invoices")
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes, payment_status, payment_method, paid_at, payment_transaction_id, payment_due_date, bank_account")
       .order("invoice_date", { ascending: false })),
-    loadSupabaseResult("invoice_requests", supabaseClient
+    loadTrackedSupabaseResult("invoiceRequests", "invoice_requests", supabaseClient
       .from("invoice_requests")
       .select("id, created_at, buyer_name, buyer_nip, buyer_address, buyer_email, buyer_phone, item_description, amount_brutto, payment_method, notes, status, source, event_name, created_by")
       .order("created_at", { ascending: false })),
-    loadSupabaseResult("organization_settings", supabaseClient
+    loadTrackedSupabaseResult("settings", "organization_settings", supabaseClient
       .from("organization_settings")
       .select("id, stand_invoice_enabled, stand_invoice_event_name, stand_invoice_contact_phone, stand_invoice_sms_template, stand_invoice_disabled_message, updated_at")
       .limit(1)
@@ -1274,6 +1368,15 @@ async function loadSupabaseResult(label, query) {
       error
     });
     return { data: null, error };
+  }
+}
+
+async function loadTrackedSupabaseResult(key, label, query) {
+  try {
+    return await loadSupabaseResult(label, query);
+  } finally {
+    const moduleLabel = DATA_MODULE_LABELS[key] || label;
+    completeStartupStep(`Modu\u0142: ${moduleLabel}`);
   }
 }
 
