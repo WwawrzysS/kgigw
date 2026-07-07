@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-36";
+const APP_VERSION = "2026.06.04-37";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -9,7 +9,7 @@ const DOCUMENT_BUCKET = "documents";
 const STORAGE_LIMIT_BYTES = 1024 * 1024 * 1024;
 const DOCUMENT_ALLOWED_EXTENSIONS = new Set(["pdf", "doc", "docx", "odt", "txt", "rtf", "xls", "xlsx", "csv", "jpg", "jpeg", "png"]);
 const DOCUMENT_PREVIEW_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png"]);
-const DOCUMENT_ALLOWED_FILE_MESSAGE = "Dozwolone są pliki: PDF, DOC, DOCX, ODT, TXT, RTF, XLS, XLSX, CSV, JPG, PNG.";
+const DOCUMENT_ALLOWED_FILE_MESSAGE = "Dozwolone sĂ„â€¦ pliki: PDF, DOC, DOCX, ODT, TXT, RTF, XLS, XLSX, CSV, JPG, PNG.";
 const DOCUMENT_MIME_BY_EXTENSION = {
   pdf: "application/pdf",
   doc: "application/msword",
@@ -31,9 +31,9 @@ const ACCOUNT_EMAILS = {
   tomek: "tomasztynski@gmail.com"
 };
 const ORGANIZATION = {
-  name: "Koło Gospodyń i Gospodarzy Wiejskich we Włosani",
+  name: "KoÄąâ€šo GospodyÄąâ€ž i Gospodarzy Wiejskich we WÄąâ€šosani",
   street: "ul. Kamienna 2",
-  city: "32-031 Włosań",
+  city: "32-031 WÄąâ€šosaÄąâ€ž",
   nip: "9442293245",
   regon: "540913923",
   logo: "KGiGW.jpg"
@@ -44,11 +44,11 @@ const STAND_INVOICE_DEFAULTS = {
   eventName: "Stoisko",
   contactPhone: "513518769",
   smsTemplate: "Dane do faktury zostaly przyjete. Faktura zostanie przeslana na e-mail: [EMAIL]. KGiGW we Wlosani. Dziekujemy / tel: [PHONE]",
-  disabledMessage: "Strona zgłoszeń faktur jest obecnie wyłączona. Skontaktuj się z Administratorem KGiGW."
+  disabledMessage: "Strona zgÄąâ€šoszeÄąâ€ž faktur jest obecnie wyÄąâ€šĂ„â€¦czona. Skontaktuj siĂ„â„˘ z Administratorem KGiGW."
 };
 const DOC_SECTION_DEFAULT = "Dokumenty";
 const DOC_SECTIONS = ["Dokumenty", "Dokumentacja KGiGW", "Wzory", "Notatki"];
-const DOCUMENTATION_KGIGW_TYPES = ["Statut", "Uchwały", "Protokoły", "Sprawozdania", "Lista obecności", "Inne"];
+const DOCUMENTATION_KGIGW_TYPES = ["Statut", "UchwaÄąâ€šy", "ProtokoÄąâ€šy", "Sprawozdania", "Lista obecnoÄąâ€şci", "Inne"];
 const DOC_SECTION_TABS = {
   documents: "Dokumenty",
   documentation: "Dokumentacja KGiGW",
@@ -65,11 +65,11 @@ const starterData = {
   kitchenEvents: [],
   rentalInventory: [
     { id: makeId(), name: "Komplet zastawy", quantity: 48, price: 10, replacementValue: null },
-    { id: makeId(), name: "Talerz płytki", quantity: 48, price: 2, replacementValue: null },
-    { id: makeId(), name: "Talerz głęboki", quantity: 48, price: 2, replacementValue: null },
+    { id: makeId(), name: "Talerz pÄąâ€šytki", quantity: 48, price: 2, replacementValue: null },
+    { id: makeId(), name: "Talerz gÄąâ€šĂ„â„˘boki", quantity: 48, price: 2, replacementValue: null },
     { id: makeId(), name: "Kubek", quantity: 48, price: 1, replacementValue: null },
     { id: makeId(), name: "Szklanka", quantity: 48, price: 1, replacementValue: null },
-    { id: makeId(), name: "Nóż", quantity: 48, price: 0.5, replacementValue: null },
+    { id: makeId(), name: "NÄ‚Ĺ‚ÄąÄ˝", quantity: 48, price: 0.5, replacementValue: null },
     { id: makeId(), name: "Widelec", quantity: 48, price: 0.5, replacementValue: null },
     { id: makeId(), name: "Obrus", quantity: 7, price: 5, replacementValue: null }
   ],
@@ -92,6 +92,30 @@ let currentUserName = sessionStorage.getItem("kgigw-user-name") || "";
 let undoSnapshot = null;
 let supabaseClient = null;
 let supabaseDataReady = false;
+let isDataLoading = false;
+let dataLoadPromise = null;
+let dataLoadStatus = "idle";
+let dataLoadError = "";
+let storageLoadStatus = "idle";
+let storageLoadError = "";
+const START_LOG_PREFIX = "[KGiGW START]";
+const DATA_RETRY_DELAYS = [0, 1000, 2000, 4000];
+const DATA_MODULE_LABELS = {
+  members: "czlonkow",
+  fees: "skladek",
+  money: "finansow",
+  fundingSources: "zrodel finansowania",
+  events: "wydarzen",
+  kitchenEvents: "kulinarnych wspomnien",
+  rentalInventory: "magazynu",
+  rentals: "wypozyczen",
+  docs: "dokumentow",
+  invoices: "faktur",
+  invoiceRequests: "zgloszen faktur",
+  settings: "ustawien"
+};
+const dataModuleStatus = {};
+const dataModuleErrors = {};
 let showFeeContactPanel = false;
 let unpaidInvoiceDashboardIndex = 0;
 let unpaidInvoiceDashboardTimer = null;
@@ -107,13 +131,13 @@ let selectedKitchenEventId = "";
 
 const titles = {
   dashboard: "Pulpit",
-  members: "Członkowie",
-  fees: "Składki",
+  members: "CzÄąâ€šonkowie",
+  fees: "SkÄąâ€šadki",
   money: "Finanse",
-  funding: "Źródła finansowania",
+  funding: "ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania",
   events: "Wydarzenia",
   kitchen: "Kulinarne wspomnienia",
-  rentals: "Wypożyczalnia",
+  rentals: "WypoÄąÄ˝yczalnia",
   invoices: "Faktury",
   docs: "Dokumenty i poczta",
   info: "Informacje",
@@ -550,9 +574,10 @@ document.querySelector('#rentalForm input[name="dateFrom"]').valueAsDate = new D
 document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Date();
 
 applyRole();
-render();
 if (currentRole) {
-  refreshSupabaseData();
+  startSupabaseDataLoad({ reason: "startup" });
+} else {
+  render();
 }
 
 async function handleLogin(event) {
@@ -563,7 +588,7 @@ async function handleLogin(event) {
   const email = resolveLoginEmail(login);
 
   if (!supabaseClient || !email || !password) {
-    elements.loginError.textContent = "Nie udało się zalogować. Sprawdź login i hasło.";
+    elements.loginError.textContent = "Nie udaÄąâ€šo siĂ„â„˘ zalogowaĂ„â€ˇ. SprawdÄąĹź login i hasÄąâ€šo.";
     return;
   }
 
@@ -574,15 +599,15 @@ async function handleLogin(event) {
   });
 
   if (error || !authData?.user) {
-    console.error("Nie udało się zalogować przez Supabase Auth.", { login, email, error });
-    elements.loginError.textContent = "Nie udało się zalogować. Sprawdź login i hasło.";
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ zalogowaĂ„â€ˇ przez Supabase Auth.", { login, email, error });
+    elements.loginError.textContent = "Nie udaÄąâ€šo siĂ„â„˘ zalogowaĂ„â€ˇ. SprawdÄąĹź login i hasÄąâ€šo.";
     return;
   }
 
   const profile = await loadAuthenticatedProfile(authData.user);
   if (!profile) {
     await supabaseClient.auth.signOut();
-    elements.loginError.textContent = "Brak dostępu do tej strony. Skontaktuj się z administratorem.";
+    elements.loginError.textContent = "Brak dostĂ„â„˘pu do tej strony. Skontaktuj siĂ„â„˘ z administratorem.";
     return;
   }
 
@@ -595,7 +620,7 @@ async function handleLogin(event) {
   event.target.reset();
   document.body.classList.remove("locked");
   applyRole();
-  await refreshSupabaseData();
+  await startSupabaseDataLoad({ reason: "login", force: true });
 }
 
 function normalizeAccountLogin(value) {
@@ -623,7 +648,7 @@ async function loadAuthenticatedProfile(user) {
     .maybeSingle();
 
   if (error) {
-    console.error("Nie udało się pobrać profilu użytkownika po ID.", { userId, userEmail, error });
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ profilu uÄąÄ˝ytkownika po ID.", { userId, userEmail, error });
     return null;
   }
   if (data) return data;
@@ -635,11 +660,11 @@ async function loadAuthenticatedProfile(user) {
     .maybeSingle();
 
   if (emailError) {
-    console.error("Nie udało się pobrać profilu użytkownika po e-mailu.", { userId, userEmail, error: emailError });
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ profilu uÄąÄ˝ytkownika po e-mailu.", { userId, userEmail, error: emailError });
     return null;
   }
   if (!emailProfile) {
-    console.error("Brak profilu użytkownika w public.profiles.", { userId, userEmail });
+    console.error("Brak profilu uÄąÄ˝ytkownika w public.profiles.", { userId, userEmail });
   }
   return emailProfile || null;
 }
@@ -666,7 +691,7 @@ function roleName(role) {
   if (role === "admin") return "Administrator";
   if (role === "staff") return "Pracownik";
   if (role === "readonly") return "Tylko odczyt";
-  if (role === "user") return "Użytkownik";
+  if (role === "user") return "UÄąÄ˝ytkownik";
   if (role === "agata") return "Agata";
   if (role === "tomek") return "Tomek";
   return "-";
@@ -701,22 +726,144 @@ function setupSupabaseClient() {
   supabaseClient = window.supabase.createClient(config.url, config.anonKey);
 }
 
-async function refreshSupabaseData() {
+function startLog(message, details = undefined) {
+  if (details === undefined) {
+    console.info(`${START_LOG_PREFIX} ${message}`);
+  } else {
+    console.info(`${START_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function startWarn(message, details = undefined) {
+  if (details === undefined) {
+    console.warn(`${START_LOG_PREFIX} ${message}`);
+  } else {
+    console.warn(`${START_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function startError(message, details = undefined) {
+  if (details === undefined) {
+    console.error(`${START_LOG_PREFIX} ${message}`);
+  } else {
+    console.error(`${START_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function setAllDataModulesStatus(status, error = "") {
+  Object.keys(DATA_MODULE_LABELS).forEach((key) => {
+    dataModuleStatus[key] = status;
+    dataModuleErrors[key] = error;
+  });
+}
+
+function markDataModuleResult(key, result) {
+  if (result?.error) {
+    dataModuleStatus[key] = "error";
+    dataModuleErrors[key] = result.error?.message || String(result.error || "blad pobierania");
+    return;
+  }
+  dataModuleStatus[key] = "ready";
+  dataModuleErrors[key] = "";
+}
+
+function updateDataModuleStatuses(results) {
+  Object.entries(results).forEach(([key, result]) => markDataModuleResult(key, result));
+}
+
+async function startSupabaseDataLoad(options = {}) {
+  if (!supabaseClient || !currentRole) {
+    dataLoadStatus = "ready";
+    storageLoadStatus = "ready";
+    render();
+    return false;
+  }
+  if (isDataLoading && dataLoadPromise) {
+    startWarn("Pobieranie danych juz trwa - pomijam rownolegly start.", { reason: options.reason || "unknown" });
+    return dataLoadPromise;
+  }
+  dataLoadPromise = loadSupabaseDataWithRetry(options).finally(() => {
+    isDataLoading = false;
+    dataLoadPromise = null;
+  });
+  return dataLoadPromise;
+}
+
+async function loadSupabaseDataWithRetry(options = {}) {
+  const reason = options.reason || "manual";
+  isDataLoading = true;
+  dataLoadStatus = "loading";
+  storageLoadStatus = "loading";
+  dataLoadError = "";
+  storageLoadError = "";
+  setAllDataModulesStatus("loading");
+  startLog("Start pobierania danych.", { reason });
+  render();
+
+  for (let attemptIndex = 0; attemptIndex < DATA_RETRY_DELAYS.length; attemptIndex += 1) {
+    const delayMs = DATA_RETRY_DELAYS[attemptIndex];
+    if (delayMs) {
+      startLog("Ponawiam pobieranie po opoznieniu.", { delayMs, attempt: attemptIndex + 1 });
+      await delay(delayMs);
+    }
+    try {
+      startLog("Proba pobrania danych.", { attempt: attemptIndex + 1, reason });
+      const success = await refreshSupabaseData({ fromStartupFlow: true, attempt: attemptIndex + 1, reason });
+      if (success) {
+        dataLoadStatus = "ready";
+        storageLoadStatus = dataModuleStatus.docs === "error" ? "error" : "ready";
+        storageLoadError = dataModuleErrors.docs || "";
+        supabaseDataReady = true;
+        startLog("Dane pobrane poprawnie.", { attempt: attemptIndex + 1 });
+        render();
+        void refreshAuditLogs();
+        return true;
+      }
+      throw new Error("Pobieranie danych nie zwrocilo sukcesu.");
+    } catch (error) {
+      startError("Blad pobierania danych.", { attempt: attemptIndex + 1, error });
+      if (!currentRole) {
+        dataLoadStatus = "idle";
+        storageLoadStatus = "idle";
+        render();
+        return false;
+      }
+      if (attemptIndex === DATA_RETRY_DELAYS.length - 1) {
+        dataLoadStatus = "error";
+        dataLoadError = "Nie uda\u0142o si\u0119 pobra\u0107 danych. Sprawd\u017a po\u0142\u0105czenie i spr\u00f3buj ponownie.";
+        storageLoadStatus = storageLoadStatus === "ready" ? "ready" : "error";
+        storageLoadError = dataLoadError;
+        setAllDataModulesStatus("error", dataLoadError);
+        render();
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+async function refreshSupabaseData(options = {}) {
   if (!supabaseClient || !currentRole) return;
+  startLog("Sprawdzam sesje Supabase.", { reason: options.reason || "direct" });
   const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
   if (sessionError || !sessionData?.session) {
-    console.error("Brak aktywnej sesji Supabase Auth. Dane chronione RLS nie zostaną pobrane.", {
+    startError("Brak aktywnej sesji Supabase Auth.", {
       error: sessionError,
       hasCurrentRole: Boolean(currentRole)
     });
     clearLocalAuth();
-    return;
+    throw new Error("Brak aktywnej sesji Supabase Auth.");
   }
+  startLog("Sesja Supabase aktywna.", { userId: sessionData.session.user?.id || "" });
 
   const profile = await loadAuthenticatedProfile(sessionData.session.user);
   if (!profile) {
     clearLocalAuth();
-    return;
+    throw new Error("Brak profilu uzytkownika.");
   }
   currentRole = profile.role;
   currentUserName = profile.display_name || roleName(profile.role);
@@ -726,7 +873,7 @@ async function refreshSupabaseData() {
   document.body.classList.remove("locked");
   applyRole();
 
-  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, kitchenEventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = await Promise.all([
+  const settledResults = await Promise.allSettled([
     loadSupabaseResult("members", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, membership_type, board_role, created_at")
@@ -777,9 +924,16 @@ async function refreshSupabaseData() {
       .limit(1)
       .maybeSingle())
   ]);
+  let [membersResult, feesResult, inventoryResult, rentalsResult, eventsResult, kitchenEventsResult, fundingSourcesResult, moneyResult, docsResult, invoicesResult, invoiceRequestsResult, settingsResult] = settledResults.map((entry, index) => {
+    if (entry.status === "fulfilled") return entry.value;
+    const labels = ["members", "fees", "rental_inventory", "rentals", "events", "kitchen_events", "funding_sources", "transactions", "documents", "invoices", "invoice_requests", "organization_settings"];
+    const error = entry.reason || new Error("Nieznany blad pobierania.");
+    startError("Zapytanie Supabase odrzucone przez wyjatek.", { label: labels[index], error });
+    return { data: null, error };
+  });
 
   if (membersResult.error) {
-    console.error("Nie udało się pobrać członków z polem membership_type. Próba pobrania podstawowego widoku.", membersResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ czÄąâ€šonkÄ‚Ĺ‚w z polem membership_type. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", membersResult.error);
     const fallbackMembers = await loadSupabaseResult("members fallback", supabaseClient
       .from("members")
       .select("id, name, phone, email, status, board_role, created_at")
@@ -788,7 +942,7 @@ async function refreshSupabaseData() {
   }
 
   if (rentalsResult.error) {
-    console.error("Nie udało się pobrać wypożyczeń z nowymi polami płatności. Próba pobrania podstawowego widoku.", rentalsResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ wypoÄąÄ˝yczeÄąâ€ž z nowymi polami pÄąâ€šatnoÄąâ€şci. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", rentalsResult.error);
     const fallbackRentals = await loadSupabaseResult("rentals fallback", supabaseClient
       .from("rentals")
       .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
@@ -797,7 +951,7 @@ async function refreshSupabaseData() {
   }
 
   if (inventoryResult.error) {
-    console.error("Nie udało się pobrać magazynu z polem replacement_value. Próba pobrania podstawowego widoku.", inventoryResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ magazynu z polem replacement_value. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", inventoryResult.error);
     const fallbackInventory = await loadSupabaseResult("rental_inventory fallback", supabaseClient
       .from("rental_inventory")
       .select("id, name, quantity, price_per_day")
@@ -806,7 +960,7 @@ async function refreshSupabaseData() {
   }
 
   if (moneyResult.error) {
-    console.error("Nie udało się pobrać Finansów z polami źródła. Próba pobrania podstawowego widoku.", moneyResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ FinansÄ‚Ĺ‚w z polami ÄąĹźrÄ‚Ĺ‚dÄąâ€ša. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", moneyResult.error);
     const fallbackMoney = await loadSupabaseResult("transactions fallback", supabaseClient
       .from("transactions")
       .select("id, type, title, category, amount, transaction_date, event_id, status, cancelled_at, cancelled_reason")
@@ -815,7 +969,7 @@ async function refreshSupabaseData() {
   }
 
   if (invoicesResult.error) {
-    console.error("Nie udało się pobrać faktur z polami płatności. Próba pobrania podstawowego widoku.", invoicesResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ faktur z polami pÄąâ€šatnoÄąâ€şci. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", invoicesResult.error);
     const fallbackInvoices = await loadSupabaseResult("invoices fallback", supabaseClient
       .from("invoices")
       .select("id, number, invoice_date, buyer_name, buyer_address, buyer_nip, source, item_name, quantity, unit_price, vat_rate, net, vat, gross, rental_id, notes")
@@ -824,7 +978,7 @@ async function refreshSupabaseData() {
   }
 
   if (docsResult.error) {
-    console.error("Nie udało się pobrać dokumentów z polem document_section. Próba pobrania podstawowego widoku.", docsResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ dokumentÄ‚Ĺ‚w z polem document_section. PrÄ‚Ĺ‚ba pobrania podstawowego widoku.", docsResult.error);
     const fallbackDocs = await loadSupabaseResult("documents fallback", supabaseClient
       .from("documents")
       .select("id, title, sender, category, document_date, notes, file_path, file_name, file_size, mime_type, event_id, funding_source_id, transaction_id")
@@ -832,23 +986,47 @@ async function refreshSupabaseData() {
     if (!fallbackDocs.error) docsResult = fallbackDocs;
   }
 
-  logSupabaseLoadError("członków", membersResult.error);
-  logSupabaseLoadError("składek", feesResult.error);
-  logSupabaseLoadError("magazynu", inventoryResult.error);
-  logSupabaseLoadError("wypożyczeń", rentalsResult.error);
-  logSupabaseLoadError("wydarzeń", eventsResult.error);
-  logSupabaseLoadError("kulinarnych wspomnień", kitchenEventsResult.error);
-  logSupabaseLoadError("źródeł finansowania", fundingSourcesResult.error);
-  if (fundingSourcesResult.error) {
-    console.error("Nie udało się pobrać funding_sources. Lista źródeł w Finansach pokaże tylko opcję Bez źródła.", fundingSourcesResult.error);
+  const moduleResults = {
+    members: membersResult,
+    fees: feesResult,
+    rentalInventory: inventoryResult,
+    rentals: rentalsResult,
+    events: eventsResult,
+    kitchenEvents: kitchenEventsResult,
+    fundingSources: fundingSourcesResult,
+    money: moneyResult,
+    docs: docsResult,
+    invoices: invoicesResult,
+    invoiceRequests: invoiceRequestsResult,
+    settings: settingsResult
+  };
+  updateDataModuleStatuses(moduleResults);
+  storageLoadStatus = docsResult.error ? "error" : "ready";
+  storageLoadError = docsResult.error ? (docsResult.error?.message || "Nie udaĹ‚o siÄ™ sprawdziÄ‡ miejsca na pliki.") : "";
+  const loadedVisibleModules = Object.entries(moduleResults)
+    .filter(([key]) => key !== "settings")
+    .filter(([, result]) => !result?.error).length;
+  if (!loadedVisibleModules) {
+    throw new Error("Nie udaĹ‚o siÄ™ pobraÄ‡ danych z ĹĽadnego moduĹ‚u.");
   }
-  logSupabaseLoadError("Finansów", moneyResult.error);
-  logSupabaseLoadError("dokumentów", docsResult.error);
+
+  logSupabaseLoadError("czÄąâ€šonkÄ‚Ĺ‚w", membersResult.error);
+  logSupabaseLoadError("skÄąâ€šadek", feesResult.error);
+  logSupabaseLoadError("magazynu", inventoryResult.error);
+  logSupabaseLoadError("wypoÄąÄ˝yczeÄąâ€ž", rentalsResult.error);
+  logSupabaseLoadError("wydarzeÄąâ€ž", eventsResult.error);
+  logSupabaseLoadError("kulinarnych wspomnieÄąâ€ž", kitchenEventsResult.error);
+  logSupabaseLoadError("ÄąĹźrÄ‚Ĺ‚deÄąâ€š finansowania", fundingSourcesResult.error);
+  if (fundingSourcesResult.error) {
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ funding_sources. Lista ÄąĹźrÄ‚Ĺ‚deÄąâ€š w Finansach pokaÄąÄ˝e tylko opcjĂ„â„˘ Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.", fundingSourcesResult.error);
+  }
+  logSupabaseLoadError("FinansÄ‚Ĺ‚w", moneyResult.error);
+  logSupabaseLoadError("dokumentÄ‚Ĺ‚w", docsResult.error);
   logSupabaseLoadError("faktur", invoicesResult.error);
-  logSupabaseLoadError("zgłoszeń faktur ze stoiska", invoiceRequestsResult.error);
-  logSupabaseLoadError("ustawień strony stoiska", settingsResult.error);
+  logSupabaseLoadError("zgÄąâ€šoszeÄąâ€ž faktur ze stoiska", invoiceRequestsResult.error);
+  logSupabaseLoadError("ustawieÄąâ€ž strony stoiska", settingsResult.error);
   if (invoiceRequestsResult.error) {
-    console.error("Nie udało się pobrać zgłoszeń ze stoiska z public.invoice_requests. Faktury będą działały dalej.", invoiceRequestsResult.error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ zgÄąâ€šoszeÄąâ€ž ze stoiska z public.invoice_requests. Faktury bĂ„â„˘dĂ„â€¦ dziaÄąâ€šaÄąâ€šy dalej.", invoiceRequestsResult.error);
   }
   if (!membersResult.error) state.members = (membersResult.data || []).map((member) => ({
     id: member.id,
@@ -870,7 +1048,7 @@ async function refreshSupabaseData() {
       year: Number(fee.year || FEE_YEAR),
       dueAmount: ANNUAL_FEE,
       amount: Number(fee.amount || 0),
-      status: "Wpłata",
+      status: "WpÄąâ€šata",
       paidAt: fee.paid_at,
       note: fee.note || ""
     };
@@ -911,7 +1089,7 @@ async function refreshSupabaseData() {
       dateTo: rental.date_to,
       days: Number(rental.days || 1),
       total: Number(rental.total || 0),
-      status: rental.status || "Wypożyczone",
+      status: rental.status || "WypoÄąÄ˝yczone",
       notes: rental.notes || "",
       returnedAt: rental.returned_at,
       returnNotes: rental.return_notes || "",
@@ -1042,11 +1220,12 @@ async function refreshSupabaseData() {
   saveState();
   render();
   void refreshAuditLogs();
+  return true;
 }
 
 function logSupabaseLoadError(moduleName, error) {
   if (!error) return;
-  console.error(`Nie udało się pobrać danych modułu ${moduleName} z Supabase. Pozostałe moduły będą ładowane dalej.`, {
+  console.error(`Nie udaÄąâ€šo siĂ„â„˘ pobraĂ„â€ˇ danych moduÄąâ€šu ${moduleName} z Supabase. PozostaÄąâ€še moduÄąâ€šy bĂ„â„˘dĂ„â€¦ Äąâ€šadowane dalej.`, {
     moduleName,
     error
   });
@@ -1083,14 +1262,14 @@ async function loadSupabaseResult(label, query) {
   try {
     const result = await query;
     if (result.error) {
-      console.error(`Supabase zwrócił błąd dla zapytania: ${label}.`, {
+      console.error(`Supabase zwrÄ‚Ĺ‚ciÄąâ€š bÄąâ€šĂ„â€¦d dla zapytania: ${label}.`, {
         label,
         error: result.error
       });
     }
     return result;
   } catch (error) {
-    console.error(`Zapytanie Supabase przerwane wyjątkiem: ${label}.`, {
+    console.error(`Zapytanie Supabase przerwane wyjĂ„â€¦tkiem: ${label}.`, {
       label,
       error
     });
@@ -1109,7 +1288,7 @@ async function refreshAuditLogs() {
   state.auditLogs = (auditRows || []).map((entry) => ({
     id: entry.id,
     date: entry.created_at,
-    user: entry.details?.user || "Nieznany użytkownik",
+    user: entry.details?.user || "Nieznany uÄąÄ˝ytkownik",
     module: entry.table_name || entry.details?.module || "",
     action: entry.action || "",
     details: entry.details?.summary || ""
@@ -1124,9 +1303,9 @@ function setupRentalShell() {
 
   const tabs = document.createElement("div");
   tabs.className = "subtabs hidden";
-  tabs.setAttribute("aria-label", "Działy wypożyczalni");
+  tabs.setAttribute("aria-label", "DziaÄąâ€šy wypoÄąÄ˝yczalni");
   tabs.innerHTML = `
-    <button class="subtab active" data-rental-tab="new">Nowe wypożyczenie</button>
+    <button class="subtab active" data-rental-tab="new">Nowe wypoÄąÄ˝yczenie</button>
     <button class="subtab" data-rental-tab="returns">Zwroty</button>
     <button class="subtab" data-rental-tab="storage">Magazyn</button>
     <button class="subtab" data-rental-tab="history">Historia</button>
@@ -1179,22 +1358,23 @@ function prepareLocalVersion() {
 }
 
 async function refreshProgram() {
-  const confirmed = confirm("Odświeżyć program i wyczyścić lokalną pamięć tej przeglądarki? Dane w Supabase zostaną bez zmian.");
+  const confirmed = confirm("OdÄąâ€şwieÄąÄ˝yĂ„â€ˇ program i wyczyÄąâ€şciĂ„â€ˇ lokalnĂ„â€¦ pamiĂ„â„˘Ă„â€ˇ tej przeglĂ„â€¦darki? Dane w Supabase zostanĂ„â€¦ bez zmian.");
   if (!confirmed) return;
-  await logActivity("Program", "Odświeżenie programu", { summary: "Odświeżenie programu" });
+  await logActivity("Program", "OdÄąâ€şwieÄąÄ˝enie programu", { summary: "OdÄąâ€şwieÄąÄ˝enie programu" });
   localStorage.removeItem(STORAGE_KEY);
   localStorage.setItem(VERSION_KEY, APP_VERSION);
-  window.location.reload();
+  await startSupabaseDataLoad({ reason: "manual-refresh", force: true });
+  showToast("Pobieranie danych odĹ›wieĹĽone.");
 }
 
 async function handleStandInvoiceSettings(event) {
   event.preventDefault();
   if (!isAdmin()) {
-    alert("Te ustawienia może zmieniać tylko Administrator.");
+    alert("Te ustawienia moÄąÄ˝e zmieniaĂ„â€ˇ tylko Administrator.");
     return;
   }
   if (!supabaseClient || !currentRole) {
-    alert("Brak połączenia z Supabase. Nie można zapisać ustawień strony stoiska.");
+    alert("Brak poÄąâ€šĂ„â€¦czenia z Supabase. Nie moÄąÄ˝na zapisaĂ„â€ˇ ustawieÄąâ€ž strony stoiska.");
     return;
   }
 
@@ -1214,11 +1394,11 @@ async function handleStandInvoiceSettings(event) {
     : await supabaseClient.from("organization_settings").insert(payload).select("id").single();
 
   if (result.error) {
-    console.error("Nie udało się zapisać ustawień strony stoiska w public.organization_settings.", {
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ ustawieÄąâ€ž strony stoiska w public.organization_settings.", {
       payload,
       error: result.error
     });
-    alert(`Nie udało się zapisać ustawień strony stoiska: ${result.error.message}`);
+    alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ ustawieÄąâ€ž strony stoiska: ${result.error.message}`);
     return;
   }
 
@@ -1226,7 +1406,7 @@ async function handleStandInvoiceSettings(event) {
     id: settingsId || result.data?.id || "",
     ...payload
   });
-  await logActivity("Administracja", "Zmiana ustawień strony stoiska", {
+  await logActivity("Administracja", "Zmiana ustawieÄąâ€ž strony stoiska", {
     summary: `${payload.stand_invoice_enabled ? "aktywna" : "nieaktywna"} - ${payload.stand_invoice_event_name}`
   });
   saveState();
@@ -1236,12 +1416,12 @@ async function handleStandInvoiceSettings(event) {
 
 function toggleMobileMenu() {
   const open = document.body.classList.toggle("mobile-menu-open");
-  elements.mobileMenuButton.setAttribute("aria-label", open ? "Zamknij menu" : "Otwórz menu");
+  elements.mobileMenuButton.setAttribute("aria-label", open ? "Zamknij menu" : "OtwÄ‚Ĺ‚rz menu");
 }
 
 function closeMobileMenu() {
   document.body.classList.remove("mobile-menu-open");
-  elements.mobileMenuButton.setAttribute("aria-label", "Otwórz menu");
+  elements.mobileMenuButton.setAttribute("aria-label", "OtwÄ‚Ĺ‚rz menu");
 }
 
 function closeMobileMenuFromPage(event) {
@@ -1253,20 +1433,20 @@ function closeMobileMenuFromPage(event) {
 function openMailboxConfig() {
   const win = window.open("", "kgigw-mail-config", "width=760,height=620");
   if (!win) {
-    alert("Przeglądarka zablokowała nowe okno. Zezwól na wyskakujące okna dla tej strony.");
+    alert("PrzeglĂ„â€¦darka zablokowaÄąâ€ša nowe okno. ZezwÄ‚Ĺ‚l na wyskakujĂ„â€¦ce okna dla tej strony.");
     return;
   }
   win.document.write(`
     <title>Konfiguracja poczty KGiGW</title>
     <body style="font-family:Arial,sans-serif;max-width:720px;margin:24px auto;line-height:1.5;color:#202124">
       <h1>Konfiguracja poczty</h1>
-      <p>Najbezpieczniejszy wariant to osobne hasło aplikacji do poczty koła, a nie główne hasło do skrzynki.</p>
+      <p>Najbezpieczniejszy wariant to osobne hasÄąâ€šo aplikacji do poczty koÄąâ€ša, a nie gÄąâ€šÄ‚Ĺ‚wne hasÄąâ€šo do skrzynki.</p>
       <ol>
-        <li>Utwórz adres poczty koła albo wybierz istniejącą skrzynkę.</li>
-        <li>Włącz hasło aplikacji u dostawcy poczty, jeśli jest dostępne.</li>
-        <li>Dopiero potem podłączymy odbieranie dokumentów do panelu KGiGW.</li>
+        <li>UtwÄ‚Ĺ‚rz adres poczty koÄąâ€ša albo wybierz istniejĂ„â€¦cĂ„â€¦ skrzynkĂ„â„˘.</li>
+        <li>WÄąâ€šĂ„â€¦cz hasÄąâ€šo aplikacji u dostawcy poczty, jeÄąâ€şli jest dostĂ„â„˘pne.</li>
+        <li>Dopiero potem podÄąâ€šĂ„â€¦czymy odbieranie dokumentÄ‚Ĺ‚w do panelu KGiGW.</li>
       </ol>
-      <p>Ta część jest przygotowana jako osobne okno, żeby konfiguracja poczty nie mieszała się z codzienną pracą w panelu.</p>
+      <p>Ta czĂ„â„˘Äąâ€şĂ„â€ˇ jest przygotowana jako osobne okno, ÄąÄ˝eby konfiguracja poczty nie mieszaÄąâ€ša siĂ„â„˘ z codziennĂ„â€¦ pracĂ„â€¦ w panelu.</p>
     </body>
   `);
 }
@@ -1277,10 +1457,10 @@ function rememberUndo() {
 
 function undoLastChange() {
   if (!undoSnapshot) {
-    alert("Nie ma ostatniej zmiany do cofnięcia.");
+    alert("Nie ma ostatniej zmiany do cofniĂ„â„˘cia.");
     return;
   }
-  const confirmed = confirm("Cofnąć ostatnią zmianę?");
+  const confirmed = confirm("CofnĂ„â€¦Ă„â€ˇ ostatniĂ„â€¦ zmianĂ„â„˘?");
   if (!confirmed) return;
   state = JSON.parse(undoSnapshot);
   undoSnapshot = null;
@@ -1377,7 +1557,7 @@ async function handleMember(event) {
   data.membershipType = data.membershipType || "Zwyczajny";
   data.boardRole = data.boardRole || "Brak";
   const existingMember = memberId ? state.members.find((entry) => entry.id === memberId) : null;
-  const memberMessage = memberId ? "Zapisano zmiany członka" : "Zapisano członka";
+  const memberMessage = memberId ? "Zapisano zmiany czÄąâ€šonka" : "Zapisano czÄąâ€šonka";
   if (supabaseClient && currentRole) {
     const payload = {
       name: data.name,
@@ -1391,7 +1571,7 @@ async function handleMember(event) {
       ? await supabaseClient.from("members").update(payload).eq("id", memberId)
       : await supabaseClient.from("members").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać członka w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ czÄąâ€šonka w Supabase: ${error.message}`);
       return;
     }
     resetMemberForm(event.target);
@@ -1420,15 +1600,15 @@ async function handleMember(event) {
 async function logMemberChanges(previous, data, memberId) {
   const summary = `${data.name} - typ: ${data.membershipType || "Zwyczajny"} - funkcja: ${data.boardRole || "Brak"}`;
   if (!memberId) {
-    await logActivity("Członkowie", "Dodanie członka z typem członkostwa i funkcją", { summary });
+    await logActivity("CzÄąâ€šonkowie", "Dodanie czÄąâ€šonka z typem czÄąâ€šonkostwa i funkcjĂ„â€¦", { summary });
     return;
   }
-  await logActivity("Członkowie", "Edycja członka", { summary: data.name });
+  await logActivity("CzÄąâ€šonkowie", "Edycja czÄąâ€šonka", { summary: data.name });
   if (previous && (previous.membershipType || "Zwyczajny") !== (data.membershipType || "Zwyczajny")) {
-    await logActivity("Członkowie", "Zmiana typu członkostwa", { summary: `${data.name} - z ${previous.membershipType || "Zwyczajny"} na ${data.membershipType || "Zwyczajny"}` });
+    await logActivity("CzÄąâ€šonkowie", "Zmiana typu czÄąâ€šonkostwa", { summary: `${data.name} - z ${previous.membershipType || "Zwyczajny"} na ${data.membershipType || "Zwyczajny"}` });
   }
   if (previous && (previous.boardRole || "Brak") !== (data.boardRole || "Brak")) {
-    await logActivity("Członkowie", "Zmiana funkcji w kole", { summary: `${data.name} - z ${previous.boardRole || "Brak"} na ${data.boardRole || "Brak"}` });
+    await logActivity("CzÄąâ€šonkowie", "Zmiana funkcji w kole", { summary: `${data.name} - z ${previous.boardRole || "Brak"} na ${data.boardRole || "Brak"}` });
   }
 }
 
@@ -1437,18 +1617,18 @@ async function handleFee(event) {
   const data = formData(event.target);
   const member = state.members.find((entry) => entry.id === data.member);
   if (!member) {
-    alert("Wybierz członka z listy.");
+    alert("Wybierz czÄąâ€šonka z listy.");
     return;
   }
   const year = feeYear(data.period);
   const dueAmount = ANNUAL_FEE;
   const paidAmount = Number(data.amount);
   if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-    alert("Wpisz kwotę wpłaty większą niż 0 zł.");
+    alert("Wpisz kwotĂ„â„˘ wpÄąâ€šaty wiĂ„â„˘kszĂ„â€¦ niÄąÄ˝ 0 zÄąâ€š.");
     return;
   }
   const paidAt = new Date().toISOString().slice(0, 10);
-  const moneyTitle = `Składka członkowska ${year} - ${member.name}`;
+  const moneyTitle = `SkÄąâ€šadka czÄąâ€šonkowska ${year} - ${member.name}`;
   if (supabaseClient && currentRole) {
     const { data: savedFee, error } = await supabaseClient.from("fees").insert({
       member_id: member.id,
@@ -1457,26 +1637,26 @@ async function handleFee(event) {
       paid_at: paidAt
     }).select("id").single();
     if (error) {
-      alert(`Nie udało się zapisać składki w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ skÄąâ€šadki w Supabase: ${error.message}`);
       return;
     }
     const { error: moneyError } = await supabaseClient.from("transactions").insert({
       type: "income",
       title: moneyTitle,
-      category: "Składka członkowska",
+      category: "SkÄąâ€šadka czÄąâ€šonkowska",
       amount: paidAmount,
       transaction_date: paidAt
     });
     if (moneyError) {
-      alert(`Składka została zapisana, ale nie udało się dopisać wpływu do Finansów: ${moneyError.message}`);
+      alert(`SkÄąâ€šadka zostaÄąâ€ša zapisana, ale nie udaÄąâ€šo siĂ„â„˘ dopisaĂ„â€ˇ wpÄąâ€šywu do FinansÄ‚Ĺ‚w: ${moneyError.message}`);
       return;
     }
     event.target.reset();
     event.target.period.value = FEE_YEAR;
     event.target.dueAmount.value = ANNUAL_FEE;
-    await logActivity("Składki", "Dodanie składki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
+    await logActivity("SkÄąâ€šadki", "Dodanie skÄąâ€šadki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
     await refreshSupabaseData();
-    showToast("Składka zapisana i dodana do Finansów jako wpływ.");
+    showToast("SkÄąâ€šadka zapisana i dodana do FinansÄ‚Ĺ‚w jako wpÄąâ€šyw.");
     return;
   }
   state.fees.push({
@@ -1487,14 +1667,14 @@ async function handleFee(event) {
     year,
     dueAmount,
     amount: paidAmount,
-    status: "Wpłata"
+    status: "WpÄąâ€šata"
   });
   const savedLocalFee = state.fees.at(-1);
   state.money.push({
     id: makeId(),
     type: "income",
     title: moneyTitle,
-    category: "Składka członkowska",
+    category: "SkÄąâ€šadka czÄąâ€šonkowska",
     amount: paidAmount,
     date: paidAt,
     sourceType: "fee",
@@ -1503,8 +1683,8 @@ async function handleFee(event) {
   finishForm(event.target);
   event.target.period.value = FEE_YEAR;
   event.target.dueAmount.value = ANNUAL_FEE;
-  logActivity("Składki", "Dodanie składki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
-  showToast("Składka zapisana i dodana do Finansów jako wpływ.");
+  logActivity("SkÄąâ€šadki", "Dodanie skÄąâ€šadki", { summary: `${member.name} - ${money(paidAmount)} - ${year}` });
+  showToast("SkÄąâ€šadka zapisana i dodana do FinansÄ‚Ĺ‚w jako wpÄąâ€šyw.");
 }
 
 async function handleMoney(event) {
@@ -1534,12 +1714,12 @@ async function handleMoney(event) {
       ? await supabaseClient.from("transactions").update(payload).eq("id", moneyId)
       : await supabaseClient.from("transactions").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać operacji w Finansach: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ operacji w Finansach: ${error.message}`);
       return;
     }
     resetMoneyForm(event.target);
     if (fundingChanged) {
-      await logActivity("Finanse", "Zmiana źródła finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+      await logActivity("Finanse", "Zmiana ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
     } else {
       await logActivity("Finanse", moneyId ? "Edycja wpisu" : moneyLogAction(data.type), { summary: moneyLogSummary(data), type: data.type });
     }
@@ -1562,7 +1742,7 @@ async function handleMoney(event) {
     saveState();
     render();
     if (fundingChanged) {
-      logActivity("Finanse", "Zmiana źródła finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+      logActivity("Finanse", "Zmiana ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
     } else {
       logActivity("Finanse", "Edycja wpisu", { summary: moneyLogSummary(data), type: data.type });
     }
@@ -1588,7 +1768,7 @@ async function handleMoney(event) {
 async function handleFundingSource(event) {
   event.preventDefault();
   if (!canCorrect()) {
-    alert("Dodawanie i edycja źródeł finansowania jest dostępna tylko dla osób z uprawnieniami.");
+    alert("Dodawanie i edycja ÄąĹźrÄ‚Ĺ‚deÄąâ€š finansowania jest dostĂ„â„˘pna tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
   const data = formData(event.target);
@@ -1607,13 +1787,13 @@ async function handleFundingSource(event) {
       ? await supabaseClient.from("funding_sources").update(payload).eq("id", sourceId)
       : await supabaseClient.from("funding_sources").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać źródła finansowania w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania w Supabase: ${error.message}`);
       return;
     }
     resetFundingForm(event.target);
-    await logActivity("Źródła finansowania", sourceId ? "Edycja źródła finansowania" : "Dodanie źródła finansowania", { summary: data.name });
+    await logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", sourceId ? "Edycja ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania" : "Dodanie ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: data.name });
     await refreshSupabaseData();
-    showToast(sourceId ? "Zapisano źródło finansowania" : "Dodano źródło finansowania");
+    showToast(sourceId ? "Zapisano ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania" : "Dodano ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania");
     return;
   }
   if (sourceId) {
@@ -1631,8 +1811,8 @@ async function handleFundingSource(event) {
     resetFundingForm(event.target);
     saveState();
     render();
-    logActivity("Źródła finansowania", "Edycja źródła finansowania", { summary: data.name });
-    showToast("Zapisano źródło finansowania");
+    logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "Edycja ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: data.name });
+    showToast("Zapisano ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania");
     return;
   }
   state.fundingSources.push({
@@ -1646,8 +1826,8 @@ async function handleFundingSource(event) {
     status: data.status || "aktywne"
   });
   finishForm(event.target);
-  logActivity("Źródła finansowania", "Dodanie źródła finansowania", { summary: data.name });
-  showToast("Dodano źródło finansowania");
+  logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "Dodanie ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: data.name });
+  showToast("Dodano ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania");
 }
 
 async function handleEvent(event) {
@@ -1661,7 +1841,7 @@ async function handleEvent(event) {
       notes: data.notes || null
     });
     if (error) {
-      alert(`Nie udało się zapisać wydarzenia w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ wydarzenia w Supabase: ${error.message}`);
       return;
     }
     event.target.reset();
@@ -1695,21 +1875,21 @@ async function handleKitchenEvent(event) {
     if (eventId) {
       const { error } = await supabaseClient.from("kitchen_events").update(payload).eq("id", eventId);
       if (error) {
-        alert(`Nie udało się zapisać imprezy w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ imprezy w Supabase: ${error.message}`);
         return;
       }
       await logActivity("Kulinarne wspomnienia", "Edycja imprezy kulinarnej", { summary: data.name });
     } else {
       const { error } = await supabaseClient.from("kitchen_events").insert(payload);
       if (error) {
-        alert(`Nie udało się dodać imprezy w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ imprezy w Supabase: ${error.message}`);
         return;
       }
       await logActivity("Kulinarne wspomnienia", "Dodanie imprezy kulinarnej", { summary: data.name });
     }
     hideKitchenEventForm();
     await refreshSupabaseData();
-    showToast(eventId ? "Zapisano imprezę" : "Dodano imprezę");
+    showToast(eventId ? "Zapisano imprezĂ„â„˘" : "Dodano imprezĂ„â„˘");
     return;
   }
 
@@ -1739,7 +1919,7 @@ async function handleKitchenEvent(event) {
   hideKitchenEventForm();
   saveState();
   renderKitchen();
-  showToast(eventId ? "Zapisano imprezę" : "Dodano imprezę");
+  showToast(eventId ? "Zapisano imprezĂ„â„˘" : "Dodano imprezĂ„â„˘");
 }
 
 async function handleKitchenItem(event) {
@@ -1765,14 +1945,14 @@ async function handleKitchenItem(event) {
     if (itemId) {
       const { error } = await supabaseClient.from("kitchen_event_items").update(payload).eq("id", itemId);
       if (error) {
-        alert(`Nie udało się zapisać potrawy w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ potrawy w Supabase: ${error.message}`);
         return;
       }
       await logActivity("Kulinarne wspomnienia", "Edycja potrawy", { summary: `${parent.name} - ${data.itemName}` });
     } else {
       const { error } = await supabaseClient.from("kitchen_event_items").insert(payload);
       if (error) {
-        alert(`Nie udało się dodać potrawy w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ potrawy w Supabase: ${error.message}`);
         return;
       }
       await logActivity("Kulinarne wspomnienia", "Dodanie potrawy", { summary: `${parent.name} - ${data.itemName}` });
@@ -1781,7 +1961,7 @@ async function handleKitchenItem(event) {
     await refreshSupabaseData();
     selectedKitchenEventId = eventId;
     renderKitchenDetails();
-    showToast(itemId ? "Zapisano potrawę" : "Dodano potrawę");
+    showToast(itemId ? "Zapisano potrawĂ„â„˘" : "Dodano potrawĂ„â„˘");
     return;
   }
 
@@ -1814,7 +1994,7 @@ async function handleKitchenItem(event) {
   saveState();
   renderKitchen();
   renderKitchenDetails();
-  showToast(itemId ? "Zapisano potrawę" : "Dodano potrawę");
+  showToast(itemId ? "Zapisano potrawĂ„â„˘" : "Dodano potrawĂ„â„˘");
 }
 
 async function handleRental(event) {
@@ -1866,7 +2046,7 @@ async function handleRental(event) {
         date_to: data.dateTo,
         days,
         total,
-        status: "Wypożyczone",
+        status: "WypoÄąÄ˝yczone",
         notes: notesWithMeta || null,
         payment_status: paymentStatus,
         payment_method: rentalPaymentMethod(paymentStatus),
@@ -1876,7 +2056,7 @@ async function handleRental(event) {
       .single();
 
     if (rentalError) {
-      alert(`Nie udało się zapisać wypożyczenia w Supabase: ${rentalError.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ wypoÄąÄ˝yczenia w Supabase: ${rentalError.message}`);
       return;
     }
 
@@ -1889,7 +2069,7 @@ async function handleRental(event) {
     }));
     const { error: linesError } = await supabaseClient.from("rental_lines").insert(rentalLines);
     if (linesError) {
-      alert(`Wypożyczenie zapisane, ale nie udało się zapisać pozycji: ${linesError.message}`);
+      alert(`WypoÄąÄ˝yczenie zapisane, ale nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ pozycji: ${linesError.message}`);
       return;
     }
 
@@ -1905,15 +2085,15 @@ async function handleRental(event) {
     form.reset();
     form.dateFrom.valueAsDate = new Date();
     form.dateTo.valueAsDate = new Date();
-    await logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
+    await logActivity("WypoÄąÄ˝yczalnia", "WypoÄąÄ˝yczenie przedmiotÄ‚Ĺ‚w", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
     if (meta.discountAmount > 0) {
-      await logActivity("Wypożyczalnia", "Rabat przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
+      await logActivity("WypoÄąÄ˝yczalnia", "Rabat przy wypoÄąÄ˝yczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
     }
     if (meta.depositAmount > 0) {
-      await logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
+      await logActivity("WypoÄąÄ˝yczalnia", "Kaucja przy wypoÄąÄ˝yczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
     }
     await refreshSupabaseData();
-    showToast("Wypożyczenie zapisane");
+    showToast("WypoÄąÄ˝yczenie zapisane");
     return;
   }
   state.rentalLoans.push({
@@ -1927,7 +2107,7 @@ async function handleRental(event) {
     days,
     items,
     total,
-    status: "Wypożyczone",
+    status: "WypoÄąÄ˝yczone",
     createdAt: new Date().toISOString(),
     paymentStatus,
     paymentMethod: rentalPaymentMethod(paymentStatus),
@@ -1941,10 +2121,10 @@ async function handleRental(event) {
   form.dateTo.valueAsDate = new Date();
   renderRentalItemInputs();
   updateRentalSummary();
-  logActivity("Wypożyczalnia", "Wypożyczenie przedmiotów", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
-  if (meta.discountAmount > 0) logActivity("Wypożyczalnia", "Rabat przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
-  if (meta.depositAmount > 0) logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
-  showToast("Wypożyczenie zapisane");
+  logActivity("WypoÄąÄ˝yczalnia", "WypoÄąÄ˝yczenie przedmiotÄ‚Ĺ‚w", { summary: `${data.firstName} ${data.lastName} - ${money(total)}` });
+  if (meta.discountAmount > 0) logActivity("WypoÄąÄ˝yczalnia", "Rabat przy wypoÄąÄ˝yczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.discountAmount)}` });
+  if (meta.depositAmount > 0) logActivity("WypoÄąÄ˝yczalnia", "Kaucja przy wypoÄąÄ˝yczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
+  showToast("WypoÄąÄ˝yczenie zapisane");
 }
 
 async function handleDoc(event) {
@@ -1965,7 +2145,7 @@ async function handleDoc(event) {
     return;
   }
   if (shouldAddExpense && documentExpenseAmount <= 0) {
-    alert("Wpisz kwotę większą niż 0 w polu Kwota - wydatek, żeby dodać wydatek do Finansów.");
+    alert("Wpisz kwotĂ„â„˘ wiĂ„â„˘kszĂ„â€¦ niÄąÄ˝ 0 w polu Kwota - wydatek, ÄąÄ˝eby dodaĂ„â€ˇ wydatek do FinansÄ‚Ĺ‚w.");
     return;
   }
   if (supabaseClient && currentRole) {
@@ -1982,7 +2162,7 @@ async function handleDoc(event) {
         .from(DOCUMENT_BUCKET)
         .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ wysÄąâ€šaĂ„â€ˇ pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -2014,7 +2194,7 @@ async function handleDoc(event) {
           mime_type: mimeType || null
         }).select("id").single();
     if (error) {
-      alert(`Plik mógł zostać wysłany, ale nie udało się zapisać dokumentu: ${error.message}`);
+      alert(`Plik mÄ‚Ĺ‚gÄąâ€š zostaĂ„â€ˇ wysÄąâ€šany, ale nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ dokumentu: ${error.message}`);
       return;
     }
     if (shouldAddExpense) {
@@ -2034,8 +2214,8 @@ async function handleDoc(event) {
         .select("id")
         .single();
       if (expenseError) {
-        alert(`Dokument zapisano, ale nie udało się dodać wydatku do Finansów: ${expenseError.message}`);
-        await logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
+        alert(`Dokument zapisano, ale nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ wydatku do FinansÄ‚Ĺ‚w: ${expenseError.message}`);
+        await logActivity("Dokumenty", "Dodanie dokumentu z sekcjĂ„â€¦/kategoriĂ„â€¦", { summary: docLogSummary(data) });
         await refreshSupabaseData();
         return;
       }
@@ -2044,26 +2224,26 @@ async function handleDoc(event) {
         .update({ transaction_id: savedExpense.id })
         .eq("id", savedDoc.id);
       if (linkError) {
-        alert(`Wydatek dodano do Finansów, ale nie udało się powiązać go z dokumentem: ${linkError.message}`);
+        alert(`Wydatek dodano do FinansÄ‚Ĺ‚w, ale nie udaÄąâ€šo siĂ„â„˘ powiĂ„â€¦zaĂ„â€ˇ go z dokumentem: ${linkError.message}`);
         await logActivity("Dokumenty", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
         await refreshSupabaseData();
         return;
       }
-      await logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
-      await logActivity("Dokumenty", "Powiązanie dokumentu z wpisem Finansów", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
+      await logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša" ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${newFundingName}` : ""}` });
+      await logActivity("Dokumenty", "PowiĂ„â€¦zanie dokumentu z wpisem FinansÄ‚Ĺ‚w", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
     }
     resetDocForm(event.target);
     if (fundingChanged) {
-      await logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+      await logActivity("Dokumenty", "Zmiana ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
     }
     if (sectionChanged) {
       await logActivity("Dokumenty", "Zmiana sekcji/kategorii dokumentu", { summary: `${data.title} - z ${oldDocSection} na ${data.section}` });
     }
     if (!fundingChanged && !sectionChanged) {
-      await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
+      await logActivity("Dokumenty", docId ? "Edycja dokumentu" : "Dodanie dokumentu z sekcjĂ„â€¦/kategoriĂ„â€¦", { summary: docLogSummary(data) });
     }
     await refreshSupabaseData();
-    showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
+    showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do FinansÄ‚Ĺ‚w" : "Zapisano dokument");
     return;
   }
   const attachment = file ? await readPdfAttachment(file) : null;
@@ -2084,7 +2264,7 @@ async function handleDoc(event) {
     saveState();
     render();
     if (fundingChanged) {
-      logActivity("Dokumenty", "Zmiana źródła finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
+      logActivity("Dokumenty", "Zmiana ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania dokumentu", { summary: `${data.title} - z ${oldFundingName} na ${newFundingName}` });
     }
     if (sectionChanged) {
       logActivity("Dokumenty", "Zmiana sekcji/kategorii dokumentu", { summary: `${data.title} - z ${oldDocSection} na ${data.section}` });
@@ -2114,20 +2294,20 @@ async function handleDoc(event) {
       sourceType: "document_expense",
       sourceId: localDocId
     });
-    logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez źródła" ? ` - Źródło: ${newFundingName}` : ""}` });
-    logActivity("Dokumenty", "Powiązanie dokumentu z wpisem Finansów", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
+    logActivity("Finanse", "Dodanie wydatku z dokumentu", { summary: `${data.title} - ${money(documentExpenseAmount)}${newFundingName !== "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša" ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${newFundingName}` : ""}` });
+    logActivity("Dokumenty", "PowiĂ„â€¦zanie dokumentu z wpisem FinansÄ‚Ĺ‚w", { summary: `${data.title} - ${money(documentExpenseAmount)}` });
   }
   state.docs.push({ id: localDocId, ...data, section: data.section, fundingSourceId: data.fundingSourceId || "", fundingSourceName: newFundingName, transactionId, attachment });
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
-  logActivity("Dokumenty", "Dodanie dokumentu z sekcją/kategorią", { summary: docLogSummary(data) });
-  showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do Finansów" : "Zapisano dokument");
+  logActivity("Dokumenty", "Dodanie dokumentu z sekcjĂ„â€¦/kategoriĂ„â€¦", { summary: docLogSummary(data) });
+  showToast(shouldAddExpense ? "Zapisano dokument i dodano wydatek do FinansÄ‚Ĺ‚w" : "Zapisano dokument");
 }
 
 async function handleDocumentationDoc(event) {
   event.preventDefault();
   if (!canCorrect()) {
-    alert("Dodawanie i edycja dokumentacji jest dostępna tylko dla osób z uprawnieniami.");
+    alert("Dodawanie i edycja dokumentacji jest dostĂ„â„˘pna tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
   const form = event.target;
@@ -2153,7 +2333,7 @@ async function handleDocumentationDoc(event) {
         .from(DOCUMENT_BUCKET)
         .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ wysÄąâ€šaĂ„â€ˇ pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -2175,7 +2355,7 @@ async function handleDocumentationDoc(event) {
       ? await supabaseClient.from("documents").update(payload).eq("id", docId)
       : await supabaseClient.from("documents").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać dokumentacji KGiGW: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ dokumentacji KGiGW: ${error.message}`);
       return;
     }
     await logActivity("Dokumenty", docId ? "Edycja dokumentacji KGiGW" : "Dodanie dokumentacji KGiGW", {
@@ -2183,7 +2363,7 @@ async function handleDocumentationDoc(event) {
     });
     resetDocumentationForm(form);
     await refreshSupabaseData();
-    showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
+    showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentacjĂ„â„˘ KGiGW");
     return;
   }
 
@@ -2218,13 +2398,13 @@ async function handleDocumentationDoc(event) {
   logActivity("Dokumenty", docId ? "Edycja dokumentacji KGiGW" : "Dodanie dokumentacji KGiGW", {
     summary: `${data.title} - ${kind}`
   });
-  showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentację KGiGW");
+  showToast(docId ? "Zapisano zmiany dokumentacji" : "Zapisano dokumentacjĂ„â„˘ KGiGW");
 }
 
 async function handleSectionDoc(event, sectionName) {
   event.preventDefault();
   if (!canCorrect()) {
-    alert("Dodawanie i edycja dokumentów jest dostępna tylko dla osób z uprawnieniami.");
+    alert("Dodawanie i edycja dokumentÄ‚Ĺ‚w jest dostĂ„â„˘pna tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
   const form = event.target;
@@ -2235,7 +2415,7 @@ async function handleSectionDoc(event, sectionName) {
     return;
   }
   const category = data.category || (sectionName === "Notatki" ? "Notatka" : "Inne");
-  const singular = sectionName === "Wzory" ? "wzór" : "notatkę";
+  const singular = sectionName === "Wzory" ? "wzÄ‚Ĺ‚r" : "notatkĂ„â„˘";
   const singularTitle = sectionName === "Wzory" ? "wzoru" : "notatki";
   let filePath = "";
   let fileName = "";
@@ -2252,7 +2432,7 @@ async function handleSectionDoc(event, sectionName) {
         .from(DOCUMENT_BUCKET)
         .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ wysÄąâ€šaĂ„â€ˇ pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
     }
@@ -2274,7 +2454,7 @@ async function handleSectionDoc(event, sectionName) {
       ? await supabaseClient.from("documents").update(payload).eq("id", docId)
       : await supabaseClient.from("documents").insert(payload);
     if (error) {
-      alert(`Nie udało się zapisać ${singularTitle}: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ ${singularTitle}: ${error.message}`);
       return;
     }
     await logActivity("Dokumenty", docId ? `Edycja ${singularTitle}` : `Dodanie ${singularTitle}`, {
@@ -2325,13 +2505,13 @@ async function handleInvoice(event) {
   const data = formData(event.target);
   const sourceRequest = pendingInvoiceRequestId ? state.invoiceRequests.find((entry) => entry.id === pendingInvoiceRequestId) : null;
   if (sourceRequest?.status === "wystawiona") {
-    alert("Z tego zgłoszenia faktura została już przygotowana. Nie można utworzyć drugiej faktury z tego samego zgłoszenia.");
+    alert("Z tego zgÄąâ€šoszenia faktura zostaÄąâ€ša juÄąÄ˝ przygotowana. Nie moÄąÄ˝na utworzyĂ„â€ˇ drugiej faktury z tego samego zgÄąâ€šoszenia.");
     pendingInvoiceRequestId = "";
     return;
   }
   const selectedRental = state.rentalLoans.find((entry) => entry.id === data.rentalId);
   if (data.rentalId && rentalInvoice(data.rentalId)) {
-    alert("Do tego wypożyczenia faktura została już wystawiona.");
+    alert("Do tego wypoÄąÄ˝yczenia faktura zostaÄąâ€ša juÄąÄ˝ wystawiona.");
     return;
   }
   const invoice = makeInvoice({
@@ -2371,7 +2551,7 @@ async function handleInvoice(event) {
       bank_account: invoice.bankAccount || null
     }).select("id").single();
     if (error) {
-      alert(`Nie udało się zapisać faktury w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ faktury w Supabase: ${error.message}`);
       return;
     }
     const paymentResult = await addInvoicePaymentToSupabase({ ...invoice, id: savedInvoice.id });
@@ -2382,11 +2562,11 @@ async function handleInvoice(event) {
         .update({ status: "wystawiona" })
         .eq("id", sourceRequest.id);
       if (requestUpdate.error) {
-        console.error("Faktura została zapisana, ale nie udało się oznaczyć zgłoszenia jako wystawione.", requestUpdate.error);
-        showToast("Faktura zapisana, ale zgłoszenie nie zmieniło statusu", "error");
+        console.error("Faktura zostaÄąâ€ša zapisana, ale nie udaÄąâ€šo siĂ„â„˘ oznaczyĂ„â€ˇ zgÄąâ€šoszenia jako wystawione.", requestUpdate.error);
+        showToast("Faktura zapisana, ale zgÄąâ€šoszenie nie zmieniÄąâ€šo statusu", "error");
       } else {
-        await logActivity("Faktury", "Utworzenie faktury ze zgłoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
-        await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
+        await logActivity("Faktury", "Utworzenie faktury ze zgÄąâ€šoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
+        await logActivity("Faktury", "Zmiana statusu zgÄąâ€šoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
       }
       pendingInvoiceRequestId = "";
     }
@@ -2395,22 +2575,22 @@ async function handleInvoice(event) {
     event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
     await logActivity("Faktury", "Wystawienie faktury", { summary: `${invoice.number} - ${invoice.buyerName} - ${money(invoice.gross)}` });
     await refreshSupabaseData();
-    showToast("Zapisano fakturę");
+    showToast("Zapisano fakturĂ„â„˘");
     return;
   }
   state.invoices.push(invoice);
   addInvoicePaymentLocal(state.invoices.at(-1));
   if (sourceRequest) {
     sourceRequest.status = "wystawiona";
-    logActivity("Faktury", "Utworzenie faktury ze zgłoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
-    logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
+    logActivity("Faktury", "Utworzenie faktury ze zgÄąâ€šoszenia", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - ${money(invoice.gross)}` });
+    logActivity("Faktury", "Zmiana statusu zgÄąâ€šoszenia ze stoiska", { summary: `${sourceRequest.buyerName || "Brak nabywcy"} - Wystawiona` });
     pendingInvoiceRequestId = "";
   }
   finishForm(event.target);
   event.target.date.valueAsDate = new Date();
   event.target.paymentDueDate.value = dateOffset(new Date().toISOString().slice(0, 10), 7);
   logActivity("Faktury", "Wystawienie faktury", { summary: `${invoice.number} - ${invoice.buyerName} - ${money(invoice.gross)}` });
-  showToast("Zapisano fakturę");
+  showToast("Zapisano fakturĂ„â„˘");
 }
 
 function finishForm(form) {
@@ -2462,6 +2642,92 @@ function render() {
   renderFundingSourceOptions();
   renderInvoiceRentalOptions();
   renderGlobalSearchResults();
+  renderDataLoadPlaceholders();
+}
+
+function setElementLoadingState(element, html) {
+  if (!element) return;
+  element.innerHTML = html;
+}
+
+function dataLoadingHtml() {
+  return '<div class="row"><small>Ĺadowanie danychâ€¦</small></div>';
+}
+
+function dataErrorHtml() {
+  return `
+    <div class="row">
+      <div>
+        <strong>Nie udaĹ‚o siÄ™ pobraÄ‡ danych.</strong>
+        <small>SprawdĹş poĹ‚Ä…czenie i sprĂłbuj ponownie.</small>
+      </div>
+      <div class="row-actions">
+        <button class="small-button" type="button" onclick="startSupabaseDataLoad({ reason: 'retry-button', force: true })">PonĂłw pobieranie danych</button>
+      </div>
+    </div>
+  `;
+}
+
+function hasKnownModuleData(key) {
+  switch (key) {
+    case "members":
+      return Boolean(state.members?.length);
+    case "fees":
+      return Boolean(state.members?.length || state.fees?.length);
+    case "money":
+      return Boolean(state.money?.length);
+    case "fundingSources":
+      return Boolean(state.fundingSources?.length);
+    case "events":
+      return Boolean(state.events?.length);
+    case "kitchenEvents":
+      return Boolean(state.kitchenEvents?.length);
+    case "rentalInventory":
+      return Boolean(state.rentalInventory?.length);
+    case "rentals":
+      return Boolean(state.rentalLoans?.length);
+    case "docs":
+      return Boolean(state.docs?.length);
+    case "invoices":
+      return Boolean(state.invoices?.length || state.invoiceRequests?.length);
+    default:
+      return false;
+  }
+}
+
+function renderDataLoadPlaceholders() {
+  if (!currentRole) return;
+  const targets = [
+    { key: "members", element: elements.membersList },
+    { key: "fees", element: elements.feesList },
+    { key: "money", element: elements.moneyList },
+    { key: "fundingSources", element: elements.fundingSourcesList },
+    { key: "events", element: elements.eventsList },
+    { key: "kitchenEvents", element: elements.kitchenEventsList },
+    { key: "rentalInventory", element: elements.rentalInventory },
+    { key: "rentals", element: elements.rentalsList },
+    { key: "rentals", element: elements.rentalReturnsList },
+    { key: "docs", element: elements.docsList },
+    { key: "docs", element: elements.docsDocumentationList },
+    { key: "docs", element: elements.docsTemplatesList },
+    { key: "docs", element: elements.docsNotesList },
+    { key: "invoices", element: elements.invoicesList },
+    { key: "members", element: elements.boardList }
+  ];
+  const loadingInitialData = dataLoadStatus === "loading" && !supabaseDataReady;
+  if (loadingInitialData) {
+    targets.forEach((target) => setElementLoadingState(target.element, dataLoadingHtml()));
+    return;
+  }
+  if (dataLoadStatus === "error" && !supabaseDataReady) {
+    targets.forEach((target) => setElementLoadingState(target.element, dataErrorHtml()));
+    return;
+  }
+  targets.forEach((target) => {
+    if (dataModuleStatus[target.key] === "error" && !hasKnownModuleData(target.key)) {
+      setElementLoadingState(target.element, dataErrorHtml());
+    }
+  });
 }
 
 function renderStandInvoiceSettings() {
@@ -2512,8 +2778,8 @@ async function handleCopyLinkClick(event) {
     }
     showToast("Skopiowano link.");
   } catch (error) {
-    console.warn("Nie udało się skopiować linku", error);
-    showToast("Nie udało się skopiować linku.", "error");
+    console.warn("Nie udaÄąâ€šo siĂ„â„˘ skopiowaĂ„â€ˇ linku", error);
+    showToast("Nie udaÄąâ€šo siĂ„â„˘ skopiowaĂ„â€ˇ linku.", "error");
   }
 }
 
@@ -2530,7 +2796,7 @@ function renderGlobalSearchResults() {
   elements.globalSearchResults.innerHTML = `
     <strong>Wyniki wyszukiwania</strong>
     <div class="global-search-list">
-      ${results.length ? results.map(globalSearchResultRow).join("") : '<div class="global-search-empty">Brak wyników wyszukiwania.</div>'}
+      ${results.length ? results.map(globalSearchResultRow).join("") : '<div class="global-search-empty">Brak wynikÄ‚Ĺ‚w wyszukiwania.</div>'}
     </div>
   `;
 }
@@ -2560,18 +2826,18 @@ function globalSearchResults(search) {
   };
 
   state.members.forEach((member) => addResult(
-    "Członkowie",
+    "CzÄąâ€šonkowie",
     "members",
-    member.name || "Członek",
-    [member.phone, member.email, member.status, member.membershipType, member.boardRole].filter(Boolean).join(" · "),
+    member.name || "CzÄąâ€šonek",
+    [member.phone, member.email, member.status, member.membershipType, member.boardRole].filter(Boolean).join(" Ă‚Â· "),
     [member.name, member.phone, member.email, member.status, member.membershipType, member.boardRole]
   ));
 
   state.fees.forEach((fee) => addResult(
-    "Składki",
+    "SkÄąâ€šadki",
     "fees",
-    fee.member || "Składka",
-    `${fee.year || fee.period || FEE_YEAR} · ${money(fee.amount)} · ${fee.note || ""}`,
+    fee.member || "SkÄąâ€šadka",
+    `${fee.year || fee.period || FEE_YEAR} Ă‚Â· ${money(fee.amount)} Ă‚Â· ${fee.note || ""}`,
     [fee.member, fee.year, fee.period, fee.amount, money(fee.amount), fee.note]
   ));
 
@@ -2579,7 +2845,7 @@ function globalSearchResults(search) {
     "Finanse",
     "money",
     entry.title || "Wpis finansowy",
-    `${formatDate(entry.date)} · ${entry.category || "Bez kategorii"} · ${money(entry.amount)}${entry.fundingSourceName ? ` · ${entry.fundingSourceName}` : ""}`,
+    `${formatDate(entry.date)} Ă‚Â· ${entry.category || "Bez kategorii"} Ă‚Â· ${money(entry.amount)}${entry.fundingSourceName ? ` Ă‚Â· ${entry.fundingSourceName}` : ""}`,
     [entry.title, entry.category, entry.amount, money(entry.amount), entry.eventName, entry.fundingSourceName, moneyTypeLabel(entry.type)]
   ));
 
@@ -2587,23 +2853,23 @@ function globalSearchResults(search) {
     "Faktury",
     "invoices",
     `Faktura ${invoice.number}`,
-    `${invoice.buyerName || "Brak nabywcy"} · ${money(invoice.gross)} · ${invoicePaymentStatusLabel(invoice.paymentStatus)}`,
+    `${invoice.buyerName || "Brak nabywcy"} Ă‚Â· ${money(invoice.gross)} Ă‚Â· ${invoicePaymentStatusLabel(invoice.paymentStatus)}`,
     [invoice.number, `faktura ${invoice.number}`, invoice.buyerName, invoice.buyerAddress, invoice.buyerNip, invoice.gross, money(invoice.gross), invoicePaymentStatusLabel(invoice.paymentStatus), invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)), invoice.rentalLabel, invoice.notes]
   ));
 
   state.invoiceRequests.forEach((request) => addResult(
     "Faktury",
     "invoices",
-    `Zgłoszenie ze stoiska - ${request.buyerName || "Brak nabywcy"}`,
-    `${formatDate(request.date)} · ${money(request.gross)} · ${invoiceRequestStatusLabel(request.status)}`,
+    `ZgÄąâ€šoszenie ze stoiska - ${request.buyerName || "Brak nabywcy"}`,
+    `${formatDate(request.date)} Ă‚Â· ${money(request.gross)} Ă‚Â· ${invoiceRequestStatusLabel(request.status)}`,
     [request.buyerName, request.buyerNip, request.buyerAddress, request.buyerEmail, request.buyerPhone, request.itemDescription, request.gross, money(request.gross), invoiceRequestPaymentLabel(request.paymentMethod), invoiceRequestStatusLabel(request.status), request.eventName, request.notes]
   ));
 
   state.rentalLoans.forEach((loan) => addResult(
-    "Wypożyczalnia",
+    "WypoÄąÄ˝yczalnia",
     "rentals",
-    `${loan.firstName || ""} ${loan.lastName || ""}`.trim() || "Wypożyczenie",
-    `${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} · ${money(loan.total)} · ${loan.status}`,
+    `${loan.firstName || ""} ${loan.lastName || ""}`.trim() || "WypoÄąÄ˝yczenie",
+    `${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} Ă‚Â· ${money(loan.total)} Ă‚Â· ${loan.status}`,
     [loan.firstName, loan.lastName, loan.phone, loan.status, loan.total, money(loan.total), rentalItemsText(loan.items), rentalUserNotes(loan.notes), loan.returnNotes],
     "history"
   ));
@@ -2612,7 +2878,7 @@ function globalSearchResults(search) {
     "Dokumenty",
     "docs",
     doc.title || "Dokument",
-    `${formatDate(doc.date)} · ${doc.category || "Dokument"} · ${normalizeDocSection(doc.section)} · ${doc.sender || "Brak nadawcy"}${doc.fundingSourceName ? ` · ${doc.fundingSourceName}` : ""}`,
+    `${formatDate(doc.date)} Ă‚Â· ${doc.category || "Dokument"} Ă‚Â· ${normalizeDocSection(doc.section)} Ă‚Â· ${doc.sender || "Brak nadawcy"}${doc.fundingSourceName ? ` Ă‚Â· ${doc.fundingSourceName}` : ""}`,
     [doc.title, doc.sender, doc.category, normalizeDocSection(doc.section), doc.date, doc.notes, doc.fileName, doc.eventName, doc.fundingSourceName],
     docTabForSection(doc.section)
   ));
@@ -2621,7 +2887,7 @@ function globalSearchResults(search) {
     "Wydarzenia",
     "events",
     event.name || "Wydarzenie",
-    `${formatDate(event.date)} · ${event.place || "Brak miejsca"}`,
+    `${formatDate(event.date)} Ă‚Â· ${event.place || "Brak miejsca"}`,
     [event.name, event.date, event.place, event.notes]
   ));
 
@@ -2629,7 +2895,7 @@ function globalSearchResults(search) {
     "Kulinarne wspomnienia",
     "kitchen",
     event.name || "Impreza",
-    `${formatDate(event.date)} · ${event.place || "Brak miejsca"} · ${kitchenItemsSummary(event.items)}`,
+    `${formatDate(event.date)} Ă‚Â· ${event.place || "Brak miejsca"} Ă‚Â· ${kitchenItemsSummary(event.items)}`,
     [
       event.name,
       event.date,
@@ -2640,10 +2906,10 @@ function globalSearchResults(search) {
   ));
 
   state.fundingSources.forEach((source) => addResult(
-    "Źródła finansowania",
+    "ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania",
     "funding",
-    source.name || "Źródło finansowania",
-    `${source.type || "Inne"} · ${source.status || "aktywne"} · ${money(source.plannedAmount)}`,
+    source.name || "ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo finansowania",
+    `${source.type || "Inne"} Ă‚Â· ${source.status || "aktywne"} Ă‚Â· ${money(source.plannedAmount)}`,
     [source.name, source.type, source.status, source.description, source.plannedAmount, money(source.plannedAmount)]
   ));
 
@@ -2652,29 +2918,29 @@ function globalSearchResults(search) {
 
 function globalSearchMatches(values, search) {
   const haystack = values.map(normalizeSearchText).join(" ");
-  const expanded = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  const expanded = `${haystack} ${haystack.replace(/[^a-z0-9Ă„â€¦Ă„â€ˇĂ„â„˘Äąâ€šÄąâ€žÄ‚Ĺ‚Äąâ€şÄąĹźÄąÄ˝]+/gi, " ")}`;
   return search.split(" ").filter(Boolean).every((term) => expanded.includes(term));
 }
 
 function renderAuditLogs() {
   if (!elements.auditLogList) return;
   if (!state.auditLogs.length) {
-    elements.auditLogList.innerHTML = '<div class="row"><small>Brak zapisanych logów aktywności.</small></div>';
+    elements.auditLogList.innerHTML = '<div class="row"><small>Brak zapisanych logÄ‚Ĺ‚w aktywnoÄąâ€şci.</small></div>';
     return;
   }
   elements.auditLogList.innerHTML = `
     <div class="audit-table">
       <div class="audit-head">Data</div>
-      <div class="audit-head">Użytkownik</div>
-      <div class="audit-head">Moduł</div>
+      <div class="audit-head">UÄąÄ˝ytkownik</div>
+      <div class="audit-head">ModuÄąâ€š</div>
       <div class="audit-head">Akcja</div>
-      <div class="audit-head">Szczegóły</div>
+      <div class="audit-head">SzczegÄ‚Ĺ‚Äąâ€šy</div>
       ${state.auditLogs.map((entry) => `
         <div>${formatDateTime(entry.date)}</div>
-        <div>${escapeHtml(entry.user || "Nieznany użytkownik")}</div>
-        <div>${escapeHtml(entry.module || "—")}</div>
-        <div>${escapeHtml(entry.action || "—")}</div>
-        <div>${escapeHtml(entry.details || "—")}</div>
+        <div>${escapeHtml(entry.user || "Nieznany uÄąÄ˝ytkownik")}</div>
+        <div>${escapeHtml(entry.module || "Ă˘â‚¬â€ť")}</div>
+        <div>${escapeHtml(entry.action || "Ă˘â‚¬â€ť")}</div>
+        <div>${escapeHtml(entry.details || "Ă˘â‚¬â€ť")}</div>
       `).join("")}
     </div>
   `;
@@ -2685,12 +2951,12 @@ function logActivity(moduleName, action, details = {}) {
   return (async () => {
     try {
       let logAction = action;
-      if (moduleName === "Finanse" && action === "Dodanie wpływu/wydatku") {
+      if (moduleName === "Finanse" && action === "Dodanie wpÄąâ€šywu/wydatku") {
         logAction = moneyLogAction(details.type);
       }
       const { data, error: userError } = await supabaseClient.auth.getUser();
       if (userError) {
-        console.error("Nie udało się odczytać użytkownika do logu aktywności.", {
+        console.error("Nie udaÄąâ€šo siĂ„â„˘ odczytaĂ„â€ˇ uÄąÄ˝ytkownika do logu aktywnoÄąâ€şci.", {
           moduleName,
           action: logAction,
           details,
@@ -2709,15 +2975,15 @@ function logActivity(moduleName, action, details = {}) {
       };
       const { error } = await supabaseClient.from("audit_log").insert(payload);
       if (error) {
-        console.error("Nie udało się zapisać logu aktywności do public.audit_log.", {
+        console.error("Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ logu aktywnoÄąâ€şci do public.audit_log.", {
           payload,
           error
         });
       }
     } catch (error) {
-      console.error("Nie udało się zapisać logu aktywności do public.audit_log.", {
+      console.error("Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ logu aktywnoÄąâ€şci do public.audit_log.", {
         moduleName,
-        action: moduleName === "Finanse" && action === "Dodanie wpływu/wydatku" ? moneyLogAction(details.type) : action,
+        action: moduleName === "Finanse" && action === "Dodanie wpÄąâ€šywu/wydatku" ? moneyLogAction(details.type) : action,
         details,
         error
       });
@@ -2726,7 +2992,7 @@ function logActivity(moduleName, action, details = {}) {
 }
 
 function formatDateTime(value) {
-  if (!value) return "—";
+  if (!value) return "Ă˘â‚¬â€ť";
   return new Intl.DateTimeFormat("pl-PL", {
     dateStyle: "short",
     timeStyle: "short"
@@ -2742,7 +3008,7 @@ function renderDashboard() {
   const unpaidInvoicesTotal = unpaidInvoices.reduce((sum, invoice) => sum + Number(invoice.gross || 0), 0);
 
   elements.cashBalance.textContent = money(balance);
-  elements.unpaidInvoicesSummary.textContent = `Nieopłacone faktury: ${money(unpaidInvoicesTotal)}`;
+  elements.unpaidInvoicesSummary.textContent = `NieopÄąâ€šacone faktury: ${money(unpaidInvoicesTotal)}`;
   renderUnpaidInvoiceDashboardLine(unpaidInvoices);
   setupUnpaidInvoiceDashboardRotation(unpaidInvoices);
   renderLateFeeDashboardLine(lateFeeRows, lateFees);
@@ -2752,10 +3018,10 @@ function renderDashboard() {
   renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoices, unpaidInvoicesTotal, balance);
 
   const recent = [...state.money].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-  elements.recentMoney.innerHTML = recent.length ? recent.map(moneyRow).join("") : `<div class="dashboard-empty-state"><strong>Brak wpisów</strong><small>Po dodaniu pierwszej operacji zobaczysz ją tutaj.</small></div>`;
+  elements.recentMoney.innerHTML = recent.length ? recent.map(moneyRow).join("") : `<div class="dashboard-empty-state"><strong>Brak wpisÄ‚Ĺ‚w</strong><small>Po dodaniu pierwszej operacji zobaczysz jĂ„â€¦ tutaj.</small></div>`;
 
   const upcoming = [...state.events].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 8);
-  elements.upcomingEvents.innerHTML = upcoming.length ? upcoming.map(eventRow).join("") : `<div class="dashboard-empty-state"><strong>Brak zaplanowanych wydarzeń</strong><small>Dodaj wydarzenie, aby pojawiło się na pulpicie.</small></div>`;
+  elements.upcomingEvents.innerHTML = upcoming.length ? upcoming.map(eventRow).join("") : `<div class="dashboard-empty-state"><strong>Brak zaplanowanych wydarzeÄąâ€ž</strong><small>Dodaj wydarzenie, aby pojawiÄąâ€šo siĂ„â„˘ na pulpicie.</small></div>`;
 }
 
 function renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoices, unpaidInvoicesTotal, balance) {
@@ -2763,39 +3029,39 @@ function renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoic
 
   const standInvoiceRequests = (state.invoiceRequests || []).filter((item) => {
     const status = String(item.status || '').toLowerCase();
-    return !status || status === 'do wystawienia' || status === 'w trakcie' || status === 'zgłoszenie';
+    return !status || status === 'do wystawienia' || status === 'w trakcie' || status === 'zgÄąâ€šoszenie';
   });
   const nextEvent = [...state.events].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))[0] || null;
 
   const focusItems = [
     {
       kind: lateFeeRows.length ? 'danger' : 'ok',
-      title: lateFeeRows.length ? `Zaległe składki: ${lateFeeRows.length} osób` : 'Składki są pod kontrolą',
-      detail: lateFeeRows.length ? `Łączna zaległość na dziś: ${money(lateFees)}.` : 'Obecnie brak osób z zaległością na dziś.'
+      title: lateFeeRows.length ? `ZalegÄąâ€še skÄąâ€šadki: ${lateFeeRows.length} osÄ‚Ĺ‚b` : 'SkÄąâ€šadki sĂ„â€¦ pod kontrolĂ„â€¦',
+      detail: lateFeeRows.length ? `ÄąÂĂ„â€¦czna zalegÄąâ€šoÄąâ€şĂ„â€ˇ na dziÄąâ€ş: ${money(lateFees)}.` : 'Obecnie brak osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦ na dziÄąâ€ş.'
     },
     {
       kind: unpaidInvoices.length ? 'warning' : 'ok',
-      title: unpaidInvoices.length ? `Nieopłacone faktury: ${unpaidInvoices.length}` : 'Brak nieopłaconych faktur',
-      detail: unpaidInvoices.length ? `Do rozliczenia pozostało ${money(unpaidInvoicesTotal)}.` : 'Wszystkie faktury są obecnie opłacone.'
+      title: unpaidInvoices.length ? `NieopÄąâ€šacone faktury: ${unpaidInvoices.length}` : 'Brak nieopÄąâ€šaconych faktur',
+      detail: unpaidInvoices.length ? `Do rozliczenia pozostaÄąâ€šo ${money(unpaidInvoicesTotal)}.` : 'Wszystkie faktury sĂ„â€¦ obecnie opÄąâ€šacone.'
     },
     {
       kind: activeRentals.length ? 'info' : 'ok',
-      title: activeRentals.length ? `Aktywne wypożyczenia: ${activeRentals.length}` : 'Brak aktywnych wypożyczeń',
-      detail: activeRentals.length ? `Aktualnie aktywne wypożyczenia wymagają kontroli terminów.` : 'Magazyn jest obecnie wolny od aktywnych wypożyczeń.'
+      title: activeRentals.length ? `Aktywne wypoÄąÄ˝yczenia: ${activeRentals.length}` : 'Brak aktywnych wypoÄąÄ˝yczeÄąâ€ž',
+      detail: activeRentals.length ? `Aktualnie aktywne wypoÄąÄ˝yczenia wymagajĂ„â€¦ kontroli terminÄ‚Ĺ‚w.` : 'Magazyn jest obecnie wolny od aktywnych wypoÄąÄ˝yczeÄąâ€ž.'
     },
     {
       kind: standInvoiceRequests.length ? 'warning' : 'ok',
-      title: standInvoiceRequests.length ? `Zgłoszenia ze stoiska: ${standInvoiceRequests.length}` : 'Brak zgłoszeń ze stoiska',
-      detail: standInvoiceRequests.length ? 'Sprawdź moduł Faktury i dokończ wystawianie dokumentów.' : 'Nie ma nowych zgłoszeń oczekujących na wystawienie.'
+      title: standInvoiceRequests.length ? `ZgÄąâ€šoszenia ze stoiska: ${standInvoiceRequests.length}` : 'Brak zgÄąâ€šoszeÄąâ€ž ze stoiska',
+      detail: standInvoiceRequests.length ? 'SprawdÄąĹź moduÄąâ€š Faktury i dokoÄąâ€žcz wystawianie dokumentÄ‚Ĺ‚w.' : 'Nie ma nowych zgÄąâ€šoszeÄąâ€ž oczekujĂ„â€¦cych na wystawienie.'
     },
     {
       kind: nextEvent ? 'info' : 'neutral',
-      title: nextEvent ? `Najbliższe wydarzenie: ${nextEvent.name}` : 'Brak najbliższego wydarzenia',
-      detail: nextEvent ? `${formatDate(nextEvent.date)} · ${nextEvent.place || 'Brak miejsca'}` : 'Dodaj wydarzenie, jeśli chcesz widzieć je na pulpicie.'
+      title: nextEvent ? `NajbliÄąÄ˝sze wydarzenie: ${nextEvent.name}` : 'Brak najbliÄąÄ˝szego wydarzenia',
+      detail: nextEvent ? `${formatDate(nextEvent.date)} Ă‚Â· ${nextEvent.place || 'Brak miejsca'}` : 'Dodaj wydarzenie, jeÄąâ€şli chcesz widzieĂ„â€ˇ je na pulpicie.'
     },
     {
       kind: balance < 0 ? 'danger' : 'ok',
-      title: balance < 0 ? 'Uwaga na saldo kasy' : 'Saldo kasy wygląda dobrze',
+      title: balance < 0 ? 'Uwaga na saldo kasy' : 'Saldo kasy wyglĂ„â€¦da dobrze',
       detail: balance < 0 ? `Stan kasy wynosi ${money(balance)}.` : `Aktualne saldo to ${money(balance)}.`
     }
   ];
@@ -2809,19 +3075,19 @@ function renderDashboardFocus(lateFeeRows, lateFees, activeRentals, unpaidInvoic
 
   if (elements.dashboardTodayTitle) {
     if (lateFeeRows.length) {
-      elements.dashboardTodayTitle.textContent = `${lateFeeRows.length} osób ma zaległości`;
-      elements.dashboardTodaySummary.textContent = `Na dziś do sprawdzenia jest ${money(lateFees)} zaległych składek.`;
+      elements.dashboardTodayTitle.textContent = `${lateFeeRows.length} osÄ‚Ĺ‚b ma zalegÄąâ€šoÄąâ€şci`;
+      elements.dashboardTodaySummary.textContent = `Na dziÄąâ€ş do sprawdzenia jest ${money(lateFees)} zalegÄąâ€šych skÄąâ€šadek.`;
     } else if (unpaidInvoices.length) {
-      elements.dashboardTodayTitle.textContent = `${unpaidInvoices.length} faktur czeka na opłacenie`;
-      elements.dashboardTodaySummary.textContent = `Łączna kwota nieopłaconych faktur: ${money(unpaidInvoicesTotal)}.`;
+      elements.dashboardTodayTitle.textContent = `${unpaidInvoices.length} faktur czeka na opÄąâ€šacenie`;
+      elements.dashboardTodaySummary.textContent = `ÄąÂĂ„â€¦czna kwota nieopÄąâ€šaconych faktur: ${money(unpaidInvoicesTotal)}.`;
     } else if (standInvoiceRequests.length) {
-      elements.dashboardTodayTitle.textContent = `${standInvoiceRequests.length} zgłoszeń ze stoiska do sprawdzenia`;
-      elements.dashboardTodaySummary.textContent = 'W module Faktury możesz od razu dokończyć wystawienie dokumentów.';
+      elements.dashboardTodayTitle.textContent = `${standInvoiceRequests.length} zgÄąâ€šoszeÄąâ€ž ze stoiska do sprawdzenia`;
+      elements.dashboardTodaySummary.textContent = 'W module Faktury moÄąÄ˝esz od razu dokoÄąâ€žczyĂ„â€ˇ wystawienie dokumentÄ‚Ĺ‚w.';
     } else {
       elements.dashboardTodayTitle.textContent = 'Program gotowy do pracy';
       elements.dashboardTodaySummary.textContent = nextEvent
-        ? `Najbliższe wydarzenie: ${nextEvent.name} — ${formatDate(nextEvent.date)}.`
-        : 'Najważniejsze moduły są gotowe do codziennej pracy.';
+        ? `NajbliÄąÄ˝sze wydarzenie: ${nextEvent.name} Ă˘â‚¬â€ť ${formatDate(nextEvent.date)}.`
+        : 'NajwaÄąÄ˝niejsze moduÄąâ€šy sĂ„â€¦ gotowe do codziennej pracy.';
     }
   }
 }
@@ -2843,12 +3109,12 @@ function renderMembers() {
   elements.membersList.innerHTML = rows(filterItems(visibleMembers), (item) => `
     <div>
       <button class="link-button" type="button" onclick="showMemberDetails('${item.id}')">${escapeHtml(item.name)}</button>
-      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status || "Aktywny")} · Typ: ${escapeHtml(item.membershipType || "Zwyczajny")}${memberBoardRoleText(item)}</small>
+      <small>${escapeHtml(item.phone || "Brak telefonu")} Ă‚Â· ${escapeHtml(item.email || "Brak e-maila")} Ă‚Â· ${escapeHtml(item.status || "Aktywny")} Ă‚Â· Typ: ${escapeHtml(item.membershipType || "Zwyczajny")}${memberBoardRoleText(item)}</small>
     </div>
     <div class="row-actions">
-      <button class="small-button" onclick="showMemberDetails('${item.id}')">Szczegóły</button>
+      <button class="small-button" onclick="showMemberDetails('${item.id}')">SzczegÄ‚Ĺ‚Äąâ€šy</button>
       ${canCorrect() ? `<button class="small-button" onclick="editMember('${item.id}')">Edytuj</button>` : ""}
-      ${canCorrect() ? `<button class="delete-button" onclick="removeItem('members', '${item.id}')">Usuń</button>` : ""}
+      ${canCorrect() ? `<button class="delete-button" onclick="removeItem('members', '${item.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `);
 }
@@ -2862,13 +3128,13 @@ function showMemberDetails(id) {
     .filter((fee) => fee.memberId === member.id || fee.member === member.name)
     .sort((a, b) => String(b.paidAt || b.date || "").localeCompare(String(a.paidAt || a.date || "")));
   const memberRentals = memberRentalHistory(member);
-  const feeStatus = feeRow?.isLate ? "Zaległość" : feeRow?.paid >= ANNUAL_FEE ? "Opłacone do końca roku" : `Opłacone do ${feeRow?.paidUntil || "brak danych"}`;
+  const feeStatus = feeRow?.isLate ? "ZalegÄąâ€šoÄąâ€şĂ„â€ˇ" : feeRow?.paid >= ANNUAL_FEE ? "OpÄąâ€šacone do koÄąâ€žca roku" : `OpÄąâ€šacone do ${feeRow?.paidUntil || "brak danych"}`;
 
   elements.memberDetails.innerHTML = `
     <div class="member-details-head">
       <div>
         <h3>${escapeHtml(member.name)}</h3>
-        <small>Karta członka</small>
+        <small>Karta czÄąâ€šonka</small>
       </div>
       <button class="small-button" type="button" onclick="hideMemberDetails()">Zamknij</button>
     </div>
@@ -2876,28 +3142,28 @@ function showMemberDetails(id) {
       <div><span>Telefon</span><strong>${escapeHtml(member.phone || "Brak telefonu")}</strong></div>
       <div><span>E-mail</span><strong>${escapeHtml(member.email || "Brak e-maila")}</strong></div>
       <div><span>Status</span><strong>${escapeHtml(member.status || "Aktywny")}</strong></div>
-      <div><span>Typ członkostwa</span><strong>${escapeHtml(member.membershipType || "Zwyczajny")}</strong></div>
+      <div><span>Typ czÄąâ€šonkostwa</span><strong>${escapeHtml(member.membershipType || "Zwyczajny")}</strong></div>
       <div><span>Funkcja w kole</span><strong>${escapeHtml(member.boardRole || "Brak")}</strong></div>
-      <div><span>Suma wpłat ${FEE_YEAR}</span><strong>${money(feeRow?.paid || 0)}</strong></div>
-      <div><span>Status składek</span><strong>${escapeHtml(feeStatus)}</strong></div>
+      <div><span>Suma wpÄąâ€šat ${FEE_YEAR}</span><strong>${money(feeRow?.paid || 0)}</strong></div>
+      <div><span>Status skÄąâ€šadek</span><strong>${escapeHtml(feeStatus)}</strong></div>
     </div>
     <div class="member-details-section">
-      <h4>Składki</h4>
+      <h4>SkÄąâ€šadki</h4>
       ${memberFees.length ? memberFees.map((fee) => `
         <div class="member-detail-line">
           <strong>${escapeHtml(fee.year || fee.period || FEE_YEAR)}</strong>
-          <span>${money(fee.amount)}${fee.paidAt || fee.date ? ` · ${formatDate(fee.paidAt || fee.date)}` : ""}${fee.note ? ` · ${escapeHtml(fee.note)}` : ""}</span>
+          <span>${money(fee.amount)}${fee.paidAt || fee.date ? ` Ă‚Â· ${formatDate(fee.paidAt || fee.date)}` : ""}${fee.note ? ` Ă‚Â· ${escapeHtml(fee.note)}` : ""}</span>
         </div>
-      `).join("") : '<small>Brak zapisanych składek dla tego członka.</small>'}
+      `).join("") : '<small>Brak zapisanych skÄąâ€šadek dla tego czÄąâ€šonka.</small>'}
     </div>
     <div class="member-details-section">
-      <h4>Historia wypożyczeń</h4>
+      <h4>Historia wypoÄąÄ˝yczeÄąâ€ž</h4>
       ${memberRentals.length ? memberRentals.map((loan) => `
         <div class="member-detail-line">
           <strong>${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)}</strong>
-          <span>${escapeHtml(loan.status)} · ${money(loan.total)} · ${loan.items.map((item) => `${escapeHtml(item.name)}: ${item.quantity} szt.`).join(" · ")}</span>
+          <span>${escapeHtml(loan.status)} Ă‚Â· ${money(loan.total)} Ă‚Â· ${loan.items.map((item) => `${escapeHtml(item.name)}: ${item.quantity} szt.`).join(" Ă‚Â· ")}</span>
         </div>
-      `).join("") : '<small>Brak powiązanych wypożyczeń.</small>'}
+      `).join("") : '<small>Brak powiĂ„â€¦zanych wypoÄąÄ˝yczeÄąâ€ž.</small>'}
     </div>
   `;
   elements.memberDetails.classList.remove("hidden");
@@ -2933,7 +3199,7 @@ function editMember(id) {
   form.status.value = member.status || "Aktywny";
   form.membershipType.value = member.membershipType || "Zwyczajny";
   form.boardRole.value = member.boardRole || "Brak";
-  elements.memberFormTitle.textContent = "Edytuj członka";
+  elements.memberFormTitle.textContent = "Edytuj czÄąâ€šonka";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   elements.cancelMemberEdit.classList.remove("hidden");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2949,18 +3215,18 @@ function resetMemberForm(form) {
   form.id.value = "";
   form.membershipType.value = "Zwyczajny";
   form.boardRole.value = "Brak";
-  elements.memberFormTitle.textContent = "Dodaj członka";
+  elements.memberFormTitle.textContent = "Dodaj czÄąâ€šonka";
   form.querySelector('button[type="submit"]').textContent = "Dodaj";
   elements.cancelMemberEdit.classList.add("hidden");
 }
 
 function memberBoardRoleText(member) {
   const role = member.boardRole || "Brak";
-  return role === "Brak" ? "" : ` · Funkcja: ${escapeHtml(role)}`;
+  return role === "Brak" ? "" : ` Ă‚Â· Funkcja: ${escapeHtml(role)}`;
 }
 
 function isBoardRole(role) {
-  return ["Przewodnicząca", "Wiceprzewodnicząca", "Członek zarządu"].includes(role || "Brak");
+  return ["PrzewodniczĂ„â€¦ca", "WiceprzewodniczĂ„â€¦ca", "CzÄąâ€šonek zarzĂ„â€¦du"].includes(role || "Brak");
 }
 
 function memberMatchesRoleFilter(member, filter) {
@@ -2974,7 +3240,7 @@ function memberMatchesRoleFilter(member, filter) {
 function renderFees() {
   const visibleRows = visibleFeeRows();
   if (!visibleRows.length) {
-    elements.feesList.innerHTML = '<div class="row"><small>Brak składek pasujących do filtrów.</small></div>';
+    elements.feesList.innerHTML = '<div class="row"><small>Brak skÄąâ€šadek pasujĂ„â€¦cych do filtrÄ‚Ĺ‚w.</small></div>';
     return;
   }
 
@@ -2984,12 +3250,12 @@ function renderFees() {
   elements.feesList.innerHTML = `
     ${showFeeContactPanel ? feeContactPanel(unpaidRows) : ""}
     <section class="fee-group fee-group-due">
-      <h3>1. Osoby, które mają zaległość na dziś</h3>
-      ${unpaidRows.length ? unpaidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osób z zaległością.</small></div>'}
+      <h3>1. Osoby, ktÄ‚Ĺ‚re majĂ„â€¦ zalegÄąâ€šoÄąâ€şĂ„â€ˇ na dziÄąâ€ş</h3>
+      ${unpaidRows.length ? unpaidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦.</small></div>'}
     </section>
     <section class="fee-group fee-group-paid">
-      <h3>2. Osoby opłacone na dziś</h3>
-      ${paidRows.length ? paidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osób z opłaconą składką.</small></div>'}
+      <h3>2. Osoby opÄąâ€šacone na dziÄąâ€ş</h3>
+      ${paidRows.length ? paidRows.map(feeMemberRowHtml).join("") : '<div class="row"><small>Brak osÄ‚Ĺ‚b z opÄąâ€šaconĂ„â€¦ skÄąâ€šadkĂ„â€¦.</small></div>'}
     </section>
   `;
 }
@@ -2997,7 +3263,7 @@ function renderFees() {
 function visibleFeeRows() {
   const search = normalizeSearchText(elements.feeSearch?.value || "");
   const status = feeFilterValue(elements.feeStatusFilter?.value, ["all", "late", "paid"], "all");
-  const type = feeFilterValue(elements.feeTypeFilter?.value, ["all", "zwyczajny", "wspierający"], "all");
+  const type = feeFilterValue(elements.feeTypeFilter?.value, ["all", "zwyczajny", "wspierajĂ„â€¦cy"], "all");
   const memberStatus = feeFilterValue(elements.feeMemberStatusFilter?.value, ["all", "active", "inactive"], "all");
   const sort = feeFilterValue(elements.feeSort?.value, [
     "status_late_first",
@@ -3032,7 +3298,7 @@ function feeFilterValue(value, allowed, fallback) {
 
 function feeMembershipTypeValue(value) {
   const normalized = normalizeSearchText(value || "Zwyczajny");
-  if (normalized.includes("wspier")) return "wspierający";
+  if (normalized.includes("wspier")) return "wspierajĂ„â€¦cy";
   return "zwyczajny";
 }
 
@@ -3044,7 +3310,7 @@ function feeMemberIsActive(status) {
 
 function feeMatchesSearch(item, search) {
   if (!search) return true;
-  const statusText = item.isLate ? "zaległe zaległość" : "opłacone";
+  const statusText = item.isLate ? "zalegÄąâ€še zalegÄąâ€šoÄąâ€şĂ„â€ˇ" : "opÄąâ€šacone";
   const haystack = [
     item.name,
     item.phone,
@@ -3111,20 +3377,20 @@ function feeMemberRowHtml(item) {
   return `
     <div class="row fee-row ${item.isLate ? "fee-row-due" : "fee-row-paid"}">
       <div>
-        <strong>${escapeHtml(item.name)} · ${FEE_YEAR} · zaległość na dziś: ${money(item.currentDue)}</strong>
+        <strong>${escapeHtml(item.name)} Ă‚Â· ${FEE_YEAR} Ă‚Â· zalegÄąâ€šoÄąâ€şĂ„â€ˇ na dziÄąâ€ş: ${money(item.currentDue)}</strong>
         <small>
           Telefon: ${escapeHtml(item.phone || "brak telefonu")}
-          · Wymagane na dziś: ${money(item.currentRequired)}
-          · Rocznie: ${money(item.required)}
-          · Zapłacono: ${money(item.paid)}
-          · <span class="badge ${item.isLate ? "due" : "paid"}">${item.isLate ? "Zaległość" : item.paid >= ANNUAL_FEE ? "Opłacone do końca roku" : `Opłacone do ${escapeHtml(item.paidUntil)}`}</span><br>
+          Ă‚Â· Wymagane na dziÄąâ€ş: ${money(item.currentRequired)}
+          Ă‚Â· Rocznie: ${money(item.required)}
+          Ă‚Â· ZapÄąâ€šacono: ${money(item.paid)}
+          Ă‚Â· <span class="badge ${item.isLate ? "due" : "paid"}">${item.isLate ? "ZalegÄąâ€šoÄąâ€şĂ„â€ˇ" : item.paid >= ANNUAL_FEE ? "OpÄąâ€šacone do koÄąâ€žca roku" : `OpÄąâ€šacone do ${escapeHtml(item.paidUntil)}`}</span><br>
           <span class="fee-stages">${item.stages.map(feeStageHtml).join("")}</span>
           <br>${feePaymentsHtml(item)}
           ${item.isLate ? feeContactHtml(item) : ""}
         </small>
       </div>
       <div class="row-actions">
-        ${canCorrect() ? `<button class="delete-button" onclick="resetMemberFees('${escapeHtml(item.name)}')">Reset wpłat</button>` : ""}
+        ${canCorrect() ? `<button class="delete-button" onclick="resetMemberFees('${escapeHtml(item.name)}')">Reset wpÄąâ€šat</button>` : ""}
       </div>
     </div>
   `;
@@ -3138,7 +3404,7 @@ function renderMoney() {
         <span>Aktualny stan kasy</span>
         <strong>${money(balance)}</strong>
       </div>
-      <small>Wpływy: ${money(income)} · Wydatki: ${money(expenses)} · Saldo: ${money(balance)}</small>
+      <small>WpÄąâ€šywy: ${money(income)} Ă‚Â· Wydatki: ${money(expenses)} Ă‚Â· Saldo: ${money(balance)}</small>
     `;
   }
   renderOverdueInvoiceNotice();
@@ -3148,8 +3414,8 @@ function renderMoney() {
 
 function renderMoneyFilterOptions() {
   renderMoneyFilterSelect(elements.moneyFundingFilter, [
-    { value: "all", label: "Źródło: wszystkie" },
-    { value: "none", label: "Bez źródła" },
+    { value: "all", label: "ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: wszystkie" },
+    { value: "none", label: "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša" },
     ...state.fundingSources.map((source) => ({ value: source.id, label: source.name }))
   ]);
   renderMoneyFilterSelect(elements.moneyEventFilter, [
@@ -3256,7 +3522,7 @@ function renderUnpaidInvoiceDashboardLine(invoices = unpaidInvoiceRows()) {
   if (!elements.unpaidInvoicesList) return;
   if (!invoices.length) {
     unpaidInvoiceDashboardIndex = 0;
-    elements.unpaidInvoicesList.innerHTML = "Brak nieopłaconych faktur";
+    elements.unpaidInvoicesList.innerHTML = "Brak nieopÄąâ€šaconych faktur";
     return;
   }
   if (unpaidInvoiceDashboardIndex >= invoices.length) unpaidInvoiceDashboardIndex = 0;
@@ -3290,14 +3556,14 @@ function unpaidInvoiceDashboardRow(invoice) {
 }
 
 function activeRentalRows() {
-  return state.rentalLoans.filter((loan) => loan.status !== "Zwrócone");
+  return state.rentalLoans.filter((loan) => loan.status !== "ZwrÄ‚Ĺ‚cone");
 }
 
 function renderLateFeeDashboardLine(rows = feeMemberRows().filter((member) => member.isLate), total = rows.reduce((sum, member) => sum + member.currentDue, 0)) {
   if (!elements.lateFees) return;
   if (!rows.length) {
     lateFeeDashboardIndex = 0;
-    elements.lateFees.innerHTML = dashboardMetricHtml(money(0), "brak zaległości");
+    elements.lateFees.innerHTML = dashboardMetricHtml(money(0), "brak zalegÄąâ€šoÄąâ€şci");
     return;
   }
   if (lateFeeDashboardIndex >= rows.length) lateFeeDashboardIndex = 0;
@@ -3387,12 +3653,12 @@ function renderOverdueInvoiceNotice() {
     return;
   }
   elements.overdueInvoiceNotice.innerHTML = `
-    <strong>Masz ${overdue.length} ${overdue.length === 1 ? "nieopłaconą fakturę po terminie" : "nieopłacone faktury po terminie"}</strong>
+    <strong>Masz ${overdue.length} ${overdue.length === 1 ? "nieopÄąâ€šaconĂ„â€¦ fakturĂ„â„˘ po terminie" : "nieopÄąâ€šacone faktury po terminie"}</strong>
     <div class="overdue-list">
       ${overdue.map((invoice) => `
         <div class="overdue-item">
-          <span>Faktura ${escapeHtml(invoice.number)} · ${escapeHtml(invoice.buyerName)} · termin: ${formatDate(invoice.paymentDueDate)} · ${money(invoice.gross)}</span>
-          <button class="small-button" type="button" onclick="switchView('invoices')">Przejdź do Faktur</button>
+          <span>Faktura ${escapeHtml(invoice.number)} Ă‚Â· ${escapeHtml(invoice.buyerName)} Ă‚Â· termin: ${formatDate(invoice.paymentDueDate)} Ă‚Â· ${money(invoice.gross)}</span>
+          <button class="small-button" type="button" onclick="switchView('invoices')">PrzejdÄąĹź do Faktur</button>
         </div>
       `).join("")}
     </div>
@@ -3411,7 +3677,7 @@ function renderFundingSources() {
   const sources = filteredFundingSources();
   elements.fundingSourcesList.innerHTML = sources.length
     ? sources.map((source) => `<div class="row">${fundingSourceRow(source)}</div>`).join("")
-    : '<div class="row"><small>Brak źródeł finansowania pasujących do filtrów.</small></div>';
+    : '<div class="row"><small>Brak ÄąĹźrÄ‚Ĺ‚deÄąâ€š finansowania pasujĂ„â€¦cych do filtrÄ‚Ĺ‚w.</small></div>';
 }
 
 function filteredFundingSources() {
@@ -3445,7 +3711,7 @@ function fundingSourceSortComparator(sort) {
   const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""), "pl");
   const byAmount = (a, b) => Number(a.plannedAmount || 0) - Number(b.plannedAmount || 0);
   const byStatus = (a, b) => {
-    const statusOrder = { aktywne: 0, zakończone: 1, archiwalne: 2 };
+    const statusOrder = { aktywne: 0, ["zako\u0144czone"]: 1, zakonczone: 1, archiwalne: 2 };
     return (statusOrder[fundingStatusValue(a.status)] ?? 9) - (statusOrder[fundingStatusValue(b.status)] ?? 9) || byName(a, b);
   };
   if (sort === "date_asc") return byDate;
@@ -3470,7 +3736,7 @@ function fundingSourceRow(source) {
     <div>
       <strong>${escapeHtml(source.name)}</strong>
       <small>
-        ${escapeHtml(source.type || "Inne")} · ${money(source.plannedAmount || 0)} ·
+        ${escapeHtml(source.type || "Inne")} Ă‚Â· ${money(source.plannedAmount || 0)} Ă‚Â·
         ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}
         <br>${escapeHtml(source.description || "Bez opisu")}
       </small>
@@ -3480,7 +3746,7 @@ function fundingSourceRow(source) {
       <button class="small-button" onclick="showFundingSettlement('${source.id}')">Rozliczenie</button>
       ${canCorrect() ? `<button class="small-button" onclick="editFundingSource('${source.id}')">Edytuj</button>` : ""}
       ${canCorrect() && source.status !== "archiwalne" ? `<button class="delete-button" onclick="archiveFundingSource('${source.id}')">Archiwizuj</button>` : ""}
-      ${isAdmin() ? `<button class="delete-button" onclick="deleteFundingSource('${source.id}')">Usuń</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="deleteFundingSource('${source.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `;
 }
@@ -3524,20 +3790,20 @@ function renderFundingDetails() {
       <div>
         <h2>${escapeHtml(source.name)}</h2>
         <small>
-          Typ: ${escapeHtml(source.type || "Inne")} ·
-          Status: ${escapeHtml(source.status || "aktywne")} ·
-          Kwota planowana: ${money(source.plannedAmount || 0)} ·
+          Typ: ${escapeHtml(source.type || "Inne")} Ă‚Â·
+          Status: ${escapeHtml(source.status || "aktywne")} Ă‚Â·
+          Kwota planowana: ${money(source.plannedAmount || 0)} Ă‚Â·
           Okres: ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}
         </small>
       </div>
       <div class="panel-head-actions">
         <button class="small-button" type="button" onclick="printFundingSettlement('${source.id}')">Drukuj rozliczenie</button>
-        <button class="small-button" type="button" onclick="hideFundingSettlement()">Wróć do listy</button>
+        <button class="small-button" type="button" onclick="hideFundingSettlement()">WrÄ‚Ĺ‚Ă„â€ˇ do listy</button>
       </div>
     </div>
 
     <div class="funding-summary-grid">
-      <div class="funding-summary-card"><span>Wpływy</span><strong>${money(income)}</strong></div>
+      <div class="funding-summary-card"><span>WpÄąâ€šywy</span><strong>${money(income)}</strong></div>
       <div class="funding-summary-card"><span>Wydatki</span><strong>${money(expenses)}</strong></div>
       <div class="funding-summary-card"><span>Saldo</span><strong>${money(income - expenses)}</strong></div>
       <div class="funding-summary-card"><span>Dokumenty</span><strong>${docs.length}</strong></div>
@@ -3546,14 +3812,14 @@ function renderFundingDetails() {
     <section class="funding-section">
       <h3>Finanse</h3>
       <div class="table">
-        ${moneyEntries.length ? moneyEntries.map(fundingMoneyRow).join("") : '<div class="row"><small>Brak wpisów finansowych dla tego źródła.</small></div>'}
+        ${moneyEntries.length ? moneyEntries.map(fundingMoneyRow).join("") : '<div class="row"><small>Brak wpisÄ‚Ĺ‚w finansowych dla tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.</small></div>'}
       </div>
     </section>
 
     <section class="funding-section">
       <h3>Dokumenty</h3>
       <div class="table">
-        ${docs.length ? docs.map(fundingDocRow).join("") : '<div class="row"><small>Brak dokumentów dla tego źródła.</small></div>'}
+        ${docs.length ? docs.map(fundingDocRow).join("") : '<div class="row"><small>Brak dokumentÄ‚Ĺ‚w dla tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.</small></div>'}
       </div>
     </section>
   `;
@@ -3564,8 +3830,8 @@ function fundingMoneyRow(entry) {
   return `
     <div class="row">
       <div>
-        <strong>${formatDate(entry.date)} · ${moneyTypeLabel(entry.type)} · ${money(entry.amount)}</strong>
-        <small>${escapeHtml(entry.title || "Bez opisu")} · ${escapeHtml(entry.category || "Bez kategorii")} ${cancelledBadge}</small>
+        <strong>${formatDate(entry.date)} Ă‚Â· ${moneyTypeLabel(entry.type)} Ă‚Â· ${money(entry.amount)}</strong>
+        <small>${escapeHtml(entry.title || "Bez opisu")} Ă‚Â· ${escapeHtml(entry.category || "Bez kategorii")} ${cancelledBadge}</small>
       </div>
     </div>
   `;
@@ -3576,14 +3842,14 @@ function fundingDocRow(doc) {
   return `
     <div class="row">
       <div>
-        <strong>${formatDate(doc.date)} · ${escapeHtml(doc.title)}</strong>
+        <strong>${formatDate(doc.date)} Ă‚Â· ${escapeHtml(doc.title)}</strong>
         <small>
-          ${escapeHtml(doc.category || "Dokument")} · ${escapeHtml(doc.sender || "Brak nadawcy")}
-          ${amountText ? ` · ${amountText}` : ""}
+          ${escapeHtml(doc.category || "Dokument")} Ă‚Â· ${escapeHtml(doc.sender || "Brak nadawcy")}
+          ${amountText ? ` Ă‚Â· ${amountText}` : ""}
         </small>
       </div>
       <div class="row-actions">
-        ${docHasFile(doc) ? `<button class="small-button" onclick="openDocumentAttachment('${doc.id}')">Otwórz plik</button>` : ""}
+        ${docHasFile(doc) ? `<button class="small-button" onclick="openDocumentAttachment('${doc.id}')">OtwÄ‚Ĺ‚rz plik</button>` : ""}
       </div>
     </div>
   `;
@@ -3594,14 +3860,14 @@ function documentAmountText(doc) {
   if (linkedTransaction) return `${moneyTypeLabel(linkedTransaction.type)}: ${money(linkedTransaction.amount)}`;
   const income = Number(doc.incomeAmount || 0);
   const expense = Number(doc.expenseAmount || 0);
-  if (income > 0) return `Wpływ: ${money(income)}`;
+  if (income > 0) return `WpÄąâ€šyw: ${money(income)}`;
   if (expense > 0) return `Wydatek: ${money(expense)}`;
   return "";
 }
 
 function fundingStatusClass(status) {
   if (status === "aktywne") return "paid";
-  if (status === "zakończone") return "returned";
+  if (status === "zakoÄąâ€žczone") return "returned";
   return "neutral";
 }
 
@@ -3618,7 +3884,7 @@ function editFundingSource(id) {
   form.dateTo.value = source.dateTo || "";
   form.status.value = source.status || "aktywne";
   form.description.value = source.description || "";
-  elements.fundingFormTitle.textContent = "Edytuj źródło finansowania";
+  elements.fundingFormTitle.textContent = "Edytuj ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   elements.cancelFundingEdit.classList.remove("hidden");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3633,8 +3899,8 @@ function resetFundingForm(form) {
   form.reset();
   form.id.value = "";
   form.status.value = "aktywne";
-  elements.fundingFormTitle.textContent = "Dodaj źródło finansowania";
-  form.querySelector('button[type="submit"]').textContent = "Zapisz źródło";
+  elements.fundingFormTitle.textContent = "Dodaj ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz ÄąĹźrÄ‚Ĺ‚dÄąâ€šo";
   elements.cancelFundingEdit.classList.add("hidden");
 }
 
@@ -3642,7 +3908,7 @@ async function archiveFundingSource(id) {
   if (!canCorrect()) return;
   const source = state.fundingSources.find((entry) => entry.id === id);
   if (!source) return;
-  const confirmed = confirm(`Archiwizować źródło finansowania: ${source.name}? Dane zostaną w bazie.`);
+  const confirmed = confirm(`ArchiwizowaĂ„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania: ${source.name}? Dane zostanĂ„â€¦ w bazie.`);
   if (!confirmed) return;
   if (supabaseClient && currentRole) {
     const { error } = await supabaseClient
@@ -3650,24 +3916,24 @@ async function archiveFundingSource(id) {
       .update({ status: "archiwalne" })
       .eq("id", id);
     if (error) {
-      alert(`Nie udało się zarchiwizować źródła finansowania: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zarchiwizowaĂ„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania: ${error.message}`);
       return;
     }
-    await logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
+    await logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "Archiwizacja ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: source.name });
     await refreshSupabaseData();
-    showToast("Źródło finansowania zostało zarchiwizowane");
+    showToast("ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo finansowania zostaÄąâ€šo zarchiwizowane");
     return;
   }
   source.status = "archiwalne";
   saveState();
   render();
-  logActivity("Źródła finansowania", "Archiwizacja źródła finansowania", { summary: source.name });
-  showToast("Źródło finansowania zostało zarchiwizowane");
+  logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "Archiwizacja ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: source.name });
+  showToast("ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo finansowania zostaÄąâ€šo zarchiwizowane");
 }
 
 async function deleteFundingSource(id) {
   if (!isAdmin()) {
-    alert("Usuwanie źródeł finansowania jest dostępne tylko dla Administratora.");
+    alert("Usuwanie ÄąĹźrÄ‚Ĺ‚deÄąâ€š finansowania jest dostĂ„â„˘pne tylko dla Administratora.");
     return;
   }
   const source = state.fundingSources.find((entry) => entry.id === id);
@@ -3675,10 +3941,10 @@ async function deleteFundingSource(id) {
   const linkedMoney = state.money.some((entry) => entry.fundingSourceId === id);
   const linkedDocs = state.docs.some((doc) => doc.fundingSourceId === id);
   if (linkedMoney || linkedDocs) {
-    alert("Tego źródła nie można bezpiecznie usunąć, ponieważ jest powiązane z finansami lub dokumentami. Użyj opcji Archiwizuj albo najpierw odłącz wpisy.");
+    alert("Tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša nie moÄąÄ˝na bezpiecznie usunĂ„â€¦Ă„â€ˇ, poniewaÄąÄ˝ jest powiĂ„â€¦zane z finansami lub dokumentami. UÄąÄ˝yj opcji Archiwizuj albo najpierw odÄąâ€šĂ„â€¦cz wpisy.");
     return;
   }
-  const confirmed = confirm("Czy na pewno usunąć źródło finansowania? Tej operacji nie można cofnąć.");
+  const confirmed = confirm("Czy na pewno usunĂ„â€¦Ă„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€šo finansowania? Tej operacji nie moÄąÄ˝na cofnĂ„â€¦Ă„â€ˇ.");
   if (!confirmed) return;
 
   if (supabaseClient && currentRole) {
@@ -3687,14 +3953,14 @@ async function deleteFundingSource(id) {
       .delete()
       .eq("id", id);
     if (error) {
-      console.error("Nie udało się usunąć źródła finansowania.", { id, source, error });
-      alert("Nie udało się usunąć źródła finansowania. Sprawdź uprawnienia Administratora.");
+      console.error("Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania.", { id, source, error });
+      alert("Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania. SprawdÄąĹź uprawnienia Administratora.");
       return;
     }
-    await logActivity("Źródła finansowania", "Usunięcie źródła finansowania", { summary: source.name });
+    await logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "UsuniĂ„â„˘cie ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: source.name });
     if (selectedFundingSourceId === id) selectedFundingSourceId = "";
     await refreshSupabaseData();
-    showToast("Źródło finansowania zostało usunięte");
+    showToast("ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo finansowania zostaÄąâ€šo usuniĂ„â„˘te");
     return;
   }
 
@@ -3702,8 +3968,8 @@ async function deleteFundingSource(id) {
   if (selectedFundingSourceId === id) selectedFundingSourceId = "";
   saveState();
   render();
-  await logActivity("Źródła finansowania", "Usunięcie źródła finansowania", { summary: source.name });
-  showToast("Źródło finansowania zostało usunięte");
+  await logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "UsuniĂ„â„˘cie ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania", { summary: source.name });
+  showToast("ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo finansowania zostaÄąâ€šo usuniĂ„â„˘te");
 }
 
 function renderEvents() {
@@ -3713,17 +3979,17 @@ function renderEvents() {
       <details class="event-details">
         <summary>
           <strong>${escapeHtml(item.name)}</strong>
-          <small>${formatDate(item.date)} · ${escapeHtml(item.place || "Brak miejsca")}</small>
+          <small>${formatDate(item.date)} Ă‚Â· ${escapeHtml(item.place || "Brak miejsca")}</small>
         </summary>
         <small>${escapeHtml(item.notes || "Bez notatek")}</small>
         <div class="event-note-form">
-          <textarea id="eventNote-${item.id}" placeholder="Dopisz notatkę do wydarzenia"></textarea>
-          <button class="small-button" onclick="addEventNote('${item.id}')">Dodaj notatkę</button>
+          <textarea id="eventNote-${item.id}" placeholder="Dopisz notatkĂ„â„˘ do wydarzenia"></textarea>
+          <button class="small-button" onclick="addEventNote('${item.id}')">Dodaj notatkĂ„â„˘</button>
         </div>
       </details>
     </div>
     ${deleteAction("events", item.id)}
-  </div>`).join("") : '<div class="row"><small>Brak wydarzeń pasujących do wyszukiwania.</small></div>';
+  </div>`).join("") : '<div class="row"><small>Brak wydarzeÄąâ€ž pasujĂ„â€¦cych do wyszukiwania.</small></div>';
 }
 
 function filteredEvents() {
@@ -3771,7 +4037,7 @@ function renderKitchen() {
   elements.kitchenListPanel?.classList.toggle("hidden", Boolean(selectedKitchenEventId));
   elements.kitchenEventsList.innerHTML = events.length
     ? events.map(kitchenEventCard).join("")
-    : '<div class="kitchen-empty">Brak imprez pasujących do wyszukiwania.</div>';
+    : '<div class="kitchen-empty">Brak imprez pasujĂ„â€¦cych do wyszukiwania.</div>';
   renderKitchenDetails();
 }
 
@@ -3824,16 +4090,16 @@ function kitchenEventCard(event) {
         <p class="kitchen-card-eyebrow">Impreza kulinarna</p>
         <strong>${escapeHtml(event.name || "Impreza bez nazwy")}</strong>
         <div class="kitchen-event-badges">
-          <span>🍲 Potrawy: ${items.length}</span>
-          ${hasNotes ? "<span>📝 Uwagi: są</span>" : "<span>📝 Uwagi: brak</span>"}
+          <span>Ä‘ĹşĹ¤Ë› Potrawy: ${items.length}</span>
+          ${hasNotes ? "<span>Ä‘Ĺşâ€śĹĄ Uwagi: sĂ„â€¦</span>" : "<span>Ä‘Ĺşâ€śĹĄ Uwagi: brak</span>"}
         </div>
         <p class="kitchen-items-preview">${escapeHtml(kitchenItemsSummary(items))}</p>
       </div>
       <div class="kitchen-card-actions">
-        <button class="small-button kitchen-open-button" type="button" onclick="openKitchenEvent('${event.id}')">Otwórz</button>
+        <button class="small-button kitchen-open-button" type="button" onclick="openKitchenEvent('${event.id}')">OtwÄ‚Ĺ‚rz</button>
         ${canCorrect() ? `<button class="small-button secondary-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj</button>` : ""}
         <button class="small-button secondary-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj</button>
-        ${canCorrect() ? `<button class="delete-button" type="button" onclick="deleteKitchenEvent('${event.id}')">Usuń</button>` : ""}
+        ${canCorrect() ? `<button class="delete-button" type="button" onclick="deleteKitchenEvent('${event.id}')">UsuÄąâ€ž</button>` : ""}
       </div>
     </article>
   `;
@@ -3841,8 +4107,8 @@ function kitchenEventCard(event) {
 
 function kitchenItemsSummary(items = []) {
   if (!items.length) return "Brak potraw";
-  const summary = items.slice(0, 5).map((item) => [item.itemName, item.quantity].filter(Boolean).join(" ")).join(" • ");
-  return items.length > 5 ? `${summary} • ...` : summary;
+  const summary = items.slice(0, 5).map((item) => [item.itemName, item.quantity].filter(Boolean).join(" ")).join(" Ă˘â‚¬Ë ");
+  return items.length > 5 ? `${summary} Ă˘â‚¬Ë ...` : summary;
 }
 
 function openKitchenEvent(id) {
@@ -3871,21 +4137,21 @@ function renderKitchenDetails() {
   elements.kitchenDetails.innerHTML = `
     <div class="kitchen-details-head kitchen-details-hero">
       <div>
-        <p class="eyebrow">Szczegóły imprezy</p>
+        <p class="eyebrow">SzczegÄ‚Ĺ‚Äąâ€šy imprezy</p>
         <h2>${escapeHtml(event.name || "Impreza")}</h2>
-        <small>${formatDate(event.date)} · ${escapeHtml(event.place || "Brak miejsca")} · Potrawy: ${(event.items || []).length}</small>
+        <small>${formatDate(event.date)} Ă‚Â· ${escapeHtml(event.place || "Brak miejsca")} Ă‚Â· Potrawy: ${(event.items || []).length}</small>
       </div>
       <div class="kitchen-details-actions">
-        ${canCorrect() ? `<button class="small-button kitchen-open-button" type="button" onclick="showKitchenItemForm('${event.id}')">+ Dodaj potrawę</button>` : ""}
-        <button class="small-button secondary-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj imprezę</button>
-        ${canCorrect() ? `<button class="small-button secondary-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj imprezę</button>` : ""}
-        <button class="small-button secondary-button" type="button" onclick="closeKitchenEvent()">Wróć do imprez</button>
+        ${canCorrect() ? `<button class="small-button kitchen-open-button" type="button" onclick="showKitchenItemForm('${event.id}')">+ Dodaj potrawĂ„â„˘</button>` : ""}
+        <button class="small-button secondary-button" type="button" onclick="printKitchenEvent('${event.id}')">Drukuj imprezĂ„â„˘</button>
+        ${canCorrect() ? `<button class="small-button secondary-button" type="button" onclick="showKitchenEventForm('${event.id}')">Edytuj imprezĂ„â„˘</button>` : ""}
+        <button class="small-button secondary-button" type="button" onclick="closeKitchenEvent()">WrÄ‚Ĺ‚Ă„â€ˇ do imprez</button>
       </div>
     </div>
-    ${event.notes ? `<div class="kitchen-notes-box"><strong>Uwagi ogólne</strong><p>${escapeHtml(event.notes)}</p></div>` : ""}
+    ${event.notes ? `<div class="kitchen-notes-box"><strong>Uwagi ogÄ‚Ĺ‚lne</strong><p>${escapeHtml(event.notes)}</p></div>` : ""}
     <div class="kitchen-section-head">
       <strong>Potrawy i produkty</strong>
-      <small>Co przygotowano, ile było i co warto zapamiętać na kolejną imprezę.</small>
+      <small>Co przygotowano, ile byÄąâ€šo i co warto zapamiĂ„â„˘taĂ„â€ˇ na kolejnĂ„â€¦ imprezĂ„â„˘.</small>
     </div>
     <div class="kitchen-item-grid">
       ${(event.items || []).length ? event.items.map((item) => kitchenItemCard(event, item)).join("") : '<div class="kitchen-empty">Brak potraw w tej imprezie.</div>'}
@@ -3898,14 +4164,14 @@ function kitchenItemCard(event, item) {
     <article class="kitchen-item-card">
       <div>
         <strong>${escapeHtml(item.itemName || "Potrawa")}</strong>
-        <small>Ilość: ${escapeHtml(item.quantity || "brak danych")} · Czy wystarczyło: ${escapeHtml(item.enoughStatus || "Nie wiadomo")}</small>
+        <small>IloÄąâ€şĂ„â€ˇ: ${escapeHtml(item.quantity || "brak danych")} Ă‚Â· Czy wystarczyÄąâ€šo: ${escapeHtml(item.enoughStatus || "Nie wiadomo")}</small>
       </div>
-      ${item.ingredients ? `<p><span>Wykonane z / składniki:</span> ${escapeHtml(item.ingredients)}</p>` : ""}
-      ${item.notes ? `<p><span>Uwagi na przyszłość:</span> ${escapeHtml(item.notes)}</p>` : ""}
+      ${item.ingredients ? `<p><span>Wykonane z / skÄąâ€šadniki:</span> ${escapeHtml(item.ingredients)}</p>` : ""}
+      ${item.notes ? `<p><span>Uwagi na przyszÄąâ€šoÄąâ€şĂ„â€ˇ:</span> ${escapeHtml(item.notes)}</p>` : ""}
       ${canCorrect() ? `
         <div class="kitchen-card-actions">
           <button class="small-button" type="button" onclick="showKitchenItemForm('${event.id}', '${item.id}')">Edytuj</button>
-          <button class="delete-button" type="button" onclick="deleteKitchenItem('${event.id}', '${item.id}')">Usuń</button>
+          <button class="delete-button" type="button" onclick="deleteKitchenItem('${event.id}', '${item.id}')">UsuÄąâ€ž</button>
         </div>
       ` : ""}
     </article>
@@ -3924,7 +4190,7 @@ function showKitchenEventForm(id = "") {
   form.place.value = event?.place || "";
   form.notes.value = event?.notes || "";
   if (!event) form.date.valueAsDate = new Date();
-  elements.kitchenEventFormTitle.textContent = event ? "Edytuj imprezę" : "Dodaj imprezę";
+  elements.kitchenEventFormTitle.textContent = event ? "Edytuj imprezĂ„â„˘" : "Dodaj imprezĂ„â„˘";
   elements.kitchenEventFormPanel?.classList.remove("hidden");
   elements.kitchenEventFormPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -3932,7 +4198,7 @@ function showKitchenEventForm(id = "") {
 function hideKitchenEventForm(reset = true) {
   if (reset) elements.kitchenEventForm?.reset();
   elements.kitchenEventFormPanel?.classList.add("hidden");
-  if (elements.kitchenEventFormTitle) elements.kitchenEventFormTitle.textContent = "Dodaj imprezę";
+  if (elements.kitchenEventFormTitle) elements.kitchenEventFormTitle.textContent = "Dodaj imprezĂ„â„˘";
 }
 
 function showKitchenItemForm(eventId, itemId = "") {
@@ -3949,7 +4215,7 @@ function showKitchenItemForm(eventId, itemId = "") {
   form.ingredients.value = item?.ingredients || "";
   form.enoughStatus.value = item?.enoughStatus || "Nie wiadomo";
   form.notes.value = item?.notes || "";
-  elements.kitchenItemFormTitle.textContent = item ? "Edytuj potrawę" : "Dodaj potrawę";
+  elements.kitchenItemFormTitle.textContent = item ? "Edytuj potrawĂ„â„˘" : "Dodaj potrawĂ„â„˘";
   elements.kitchenItemFormPanel?.classList.remove("hidden");
   elements.kitchenItemFormPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -3957,33 +4223,33 @@ function showKitchenItemForm(eventId, itemId = "") {
 function hideKitchenItemForm(reset = true) {
   if (reset) elements.kitchenItemForm?.reset();
   elements.kitchenItemFormPanel?.classList.add("hidden");
-  if (elements.kitchenItemFormTitle) elements.kitchenItemFormTitle.textContent = "Dodaj potrawę";
+  if (elements.kitchenItemFormTitle) elements.kitchenItemFormTitle.textContent = "Dodaj potrawĂ„â„˘";
 }
 
 async function deleteKitchenEvent(id) {
   if (!canCorrect()) return;
   const event = state.kitchenEvents.find((entry) => entry.id === id);
   if (!event) return;
-  const confirmed = confirm(`Usunąć imprezę: ${event.name}? Usunięte zostaną też jej potrawy.`);
+  const confirmed = confirm(`UsunĂ„â€¦Ă„â€ˇ imprezĂ„â„˘: ${event.name}? UsuniĂ„â„˘te zostanĂ„â€¦ teÄąÄ˝ jej potrawy.`);
   if (!confirmed) return;
   if (supabaseClient && currentRole) {
     const { error } = await supabaseClient.from("kitchen_events").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć imprezy w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ imprezy w Supabase: ${error.message}`);
       return;
     }
-    await logActivity("Kulinarne wspomnienia", "Usunięcie imprezy kulinarnej", { summary: event.name });
+    await logActivity("Kulinarne wspomnienia", "UsuniĂ„â„˘cie imprezy kulinarnej", { summary: event.name });
     if (selectedKitchenEventId === id) selectedKitchenEventId = "";
     await refreshSupabaseData();
-    showToast("Usunięto imprezę");
+    showToast("UsuniĂ„â„˘to imprezĂ„â„˘");
     return;
   }
   state.kitchenEvents = state.kitchenEvents.filter((entry) => entry.id !== id);
   if (selectedKitchenEventId === id) selectedKitchenEventId = "";
   saveState();
   renderKitchen();
-  logActivity("Kulinarne wspomnienia", "Usunięcie imprezy kulinarnej", { summary: event.name });
-  showToast("Usunięto imprezę");
+  logActivity("Kulinarne wspomnienia", "UsuniĂ„â„˘cie imprezy kulinarnej", { summary: event.name });
+  showToast("UsuniĂ„â„˘to imprezĂ„â„˘");
 }
 
 async function deleteKitchenItem(eventId, itemId) {
@@ -3991,26 +4257,26 @@ async function deleteKitchenItem(eventId, itemId) {
   const event = state.kitchenEvents.find((entry) => entry.id === eventId);
   const item = event?.items.find((entry) => entry.id === itemId);
   if (!event || !item) return;
-  const confirmed = confirm(`Usunąć potrawę: ${item.itemName}?`);
+  const confirmed = confirm(`UsunĂ„â€¦Ă„â€ˇ potrawĂ„â„˘: ${item.itemName}?`);
   if (!confirmed) return;
   if (supabaseClient && currentRole) {
     const { error } = await supabaseClient.from("kitchen_event_items").delete().eq("id", itemId);
     if (error) {
-      alert(`Nie udało się usunąć potrawy w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ potrawy w Supabase: ${error.message}`);
       return;
     }
-    await logActivity("Kulinarne wspomnienia", "Usunięcie potrawy", { summary: `${event.name} - ${item.itemName}` });
+    await logActivity("Kulinarne wspomnienia", "UsuniĂ„â„˘cie potrawy", { summary: `${event.name} - ${item.itemName}` });
     await refreshSupabaseData();
     selectedKitchenEventId = eventId;
     renderKitchenDetails();
-    showToast("Usunięto potrawę");
+    showToast("UsuniĂ„â„˘to potrawĂ„â„˘");
     return;
   }
   event.items = event.items.filter((entry) => entry.id !== itemId);
   saveState();
   renderKitchenDetails();
-  logActivity("Kulinarne wspomnienia", "Usunięcie potrawy", { summary: `${event.name} - ${item.itemName}` });
-  showToast("Usunięto potrawę");
+  logActivity("Kulinarne wspomnienia", "UsuniĂ„â„˘cie potrawy", { summary: `${event.name} - ${item.itemName}` });
+  showToast("UsuniĂ„â„˘to potrawĂ„â„˘");
 }
 
 function printKitchenEvent(id) {
@@ -4024,20 +4290,20 @@ function kitchenPrintHtml(event) {
   const items = event.items || [];
   return `
     <div class="kitchen-print-document">
-      <h1>KGiGW we Włosani</h1>
+      <h1>KGiGW we WÄąâ€šosani</h1>
       <h2>Kulinarne wspomnienia</h2>
       <p><strong>Impreza:</strong> ${escapeHtml(event.name || "Impreza")}</p>
       <p><strong>Data:</strong> ${formatDate(event.date)} &nbsp; <strong>Miejsce:</strong> ${escapeHtml(event.place || "Brak miejsca")}</p>
-      ${event.notes ? `<p><strong>Uwagi ogólne:</strong> ${escapeHtml(event.notes)}</p>` : ""}
+      ${event.notes ? `<p><strong>Uwagi ogÄ‚Ĺ‚lne:</strong> ${escapeHtml(event.notes)}</p>` : ""}
       <table>
         <thead>
           <tr>
             <th>Lp.</th>
             <th>Potrawa / produkt</th>
-            <th>Ilość</th>
-            <th>Składniki</th>
-            <th>Czy wystarczyło</th>
-            <th>Uwagi na przyszłość</th>
+            <th>IloÄąâ€şĂ„â€ˇ</th>
+            <th>SkÄąâ€šadniki</th>
+            <th>Czy wystarczyÄąâ€šo</th>
+            <th>Uwagi na przyszÄąâ€šoÄąâ€şĂ„â€ˇ</th>
           </tr>
         </thead>
         <tbody>
@@ -4095,27 +4361,27 @@ function rentalHistoryRow(loan) {
     </div>
     <div class="row-actions">
       <button class="small-button" onclick="printRental('${loan.id}')">Druk wydania</button>
-      ${loan.status === "Zwrócone" ? `<button class="small-button" onclick="printReturn('${loan.id}')">Druk zwrotu</button>` : ""}
-      ${invoice ? `<button class="small-button" onclick="downloadInvoicePdf('${invoice.id}')">Drukuj / Zapisz PDF</button>` : `<button class="small-button" onclick="prepareInvoiceFromRental('${loan.id}')">Wystaw fakturę</button>`}
+      ${loan.status === "ZwrÄ‚Ĺ‚cone" ? `<button class="small-button" onclick="printReturn('${loan.id}')">Druk zwrotu</button>` : ""}
+      ${invoice ? `<button class="small-button" onclick="downloadInvoicePdf('${invoice.id}')">Drukuj / Zapisz PDF</button>` : `<button class="small-button" onclick="prepareInvoiceFromRental('${loan.id}')">Wystaw fakturĂ„â„˘</button>`}
       ${deleteAction("rentalLoans", loan.id)}
     </div>
   `;
 }
 
 function rentalLifecycleStatus(loan) {
-  if (loan.status !== "Zwrócone" && !loan.returnedAt) {
+  if (loan.status !== "ZwrÄ‚Ĺ‚cone" && !loan.returnedAt) {
     const plannedDate = parseDateOnly(loan.dateTo);
     const todayDate = parseDateOnly(new Date().toISOString().slice(0, 10));
     if (!plannedDate || !todayDate || plannedDate >= todayDate) {
       return { label: "W terminie", className: "return-on-time" };
     }
     const daysLate = Math.max(1, Math.round((todayDate - plannedDate) / 86400000));
-    return { label: `Po terminie: ${daysLate} ${daysLate === 1 ? "dzień" : "dni"}`, className: "return-overdue" };
+    return { label: `Po terminie: ${daysLate} ${daysLate === 1 ? "dzieÄąâ€ž" : "dni"}`, className: "return-overdue" };
   }
   if (rentalReturnedWithIssues(loan)) {
-    return { label: "Zwrócone uszkodzone", className: "rental-damaged" };
+    return { label: "ZwrÄ‚Ĺ‚cone uszkodzone", className: "rental-damaged" };
   }
-  return { label: "Zwrócone", className: "rental-ok" };
+  return { label: "ZwrÄ‚Ĺ‚cone", className: "rental-ok" };
 }
 
 function rentalReturnedWithIssues(loan) {
@@ -4135,7 +4401,7 @@ function renderReturnConfirmation() {
   const container = elements.rentalReturnConfirmation;
   if (!container) return;
   const loan = lastReturnedRentalId ? state.rentalLoans.find((entry) => entry.id === lastReturnedRentalId) : null;
-  if (!loan || loan.status !== "Zwrócone") {
+  if (!loan || loan.status !== "ZwrÄ‚Ĺ‚cone") {
     container.classList.add("hidden");
     container.innerHTML = "";
     return;
@@ -4145,17 +4411,17 @@ function renderReturnConfirmation() {
     <div class="row">
       <div>
         <strong>Zwrot zapisany: ${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</strong>
-        <small>Możesz teraz wydrukować protokół zwrotu.</small>
+        <small>MoÄąÄ˝esz teraz wydrukowaĂ„â€ˇ protokÄ‚Ĺ‚Äąâ€š zwrotu.</small>
       </div>
       <div class="row-actions">
-        <button class="small-button" onclick="printReturn('${loan.id}')">Drukuj protokół zwrotu</button>
+        <button class="small-button" onclick="printReturn('${loan.id}')">Drukuj protokÄ‚Ĺ‚Äąâ€š zwrotu</button>
       </div>
     </div>
   `;
 }
 
 function renderRentalReturns() {
-  const activeLoans = state.rentalLoans.filter((loan) => loan.status !== "Zwrócone");
+  const activeLoans = state.rentalLoans.filter((loan) => loan.status !== "ZwrÄ‚Ĺ‚cone");
   renderReturnConfirmation();
   elements.rentalReturnsList.innerHTML = rows(filterItems(activeLoans), (loan) => `
     <div>
@@ -4168,11 +4434,11 @@ function renderRentalReturns() {
           <small>${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} - ${escapeHtml(loan.phone)}</small>
         </summary>
         <div class="return-check">
-          <p class="doc-tab-intro">Wpisz faktyczne ilości zwrócone, uszkodzone i brakujące dla każdego przedmiotu. Jeśli wszystko wróciło w porządku, zostaw uszkodzenia i braki jako 0.</p>
+          <p class="doc-tab-intro">Wpisz faktyczne iloÄąâ€şci zwrÄ‚Ĺ‚cone, uszkodzone i brakujĂ„â€¦ce dla kaÄąÄ˝dego przedmiotu. JeÄąâ€şli wszystko wrÄ‚Ĺ‚ciÄąâ€šo w porzĂ„â€¦dku, zostaw uszkodzenia i braki jako 0.</p>
           <div class="return-check-head">
             <span>Przedmiot</span>
             <span>Wydano</span>
-            <span>Wróciło</span>
+            <span>WrÄ‚Ĺ‚ciÄąâ€šo</span>
             <span>Uszk.</span>
             <span>Brak</span>
           </div>
@@ -4188,22 +4454,22 @@ function renderRentalReturns() {
         </div>
         <div class="return-form">
           <select id="returnPayment-${loan.id}">
-            <option value="unpaid" ${loan.paymentStatus === "unpaid" ? "selected" : ""}>Nieopłacone</option>
-            <option value="cash" ${loan.paymentStatus === "cash" ? "selected" : ""}>Opłacone gotówką</option>
-            <option value="transfer" ${loan.paymentStatus === "transfer" ? "selected" : ""}>Opłacone przelewem</option>
-            <option value="invoice_later" ${loan.paymentStatus === "invoice_later" ? "selected" : ""}>Faktura / płatność później</option>
+            <option value="unpaid" ${loan.paymentStatus === "unpaid" ? "selected" : ""}>NieopÄąâ€šacone</option>
+            <option value="cash" ${loan.paymentStatus === "cash" ? "selected" : ""}>OpÄąâ€šacone gotÄ‚Ĺ‚wkĂ„â€¦</option>
+            <option value="transfer" ${loan.paymentStatus === "transfer" ? "selected" : ""}>OpÄąâ€šacone przelewem</option>
+            <option value="invoice_later" ${loan.paymentStatus === "invoice_later" ? "selected" : ""}>Faktura / pÄąâ€šatnoÄąâ€şĂ„â€ˇ pÄ‚Ĺ‚ÄąĹźniej</option>
           </select>
           <select id="returnCondition-${loan.id}" onchange="toggleMainReturnDamageField('${loan.id}'); updateTableclothReturnSummary('${loan.id}')">
-            <option value="ok">Ogólna ocena zwrotu: OK</option>
-            <option value="damaged">Ogólna ocena zwrotu: Z uwagami / uszkodzony</option>
+            <option value="ok">OgÄ‚Ĺ‚lna ocena zwrotu: OK</option>
+            <option value="damaged">OgÄ‚Ĺ‚lna ocena zwrotu: Z uwagami / uszkodzony</option>
           </select>
           <div id="returnDamageWrap-${loan.id}" class="hidden">
-            <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="Dopłata za braki/uszkodzenia" oninput="updateTableclothReturnSummary('${loan.id}')" />
-            <small>Dopłatę wpisz tylko wtedy, gdy chcesz pobrać dodatkową kwotę za braki, uszkodzenia, pranie lub inne koszty.</small>
+            <input id="returnDamage-${loan.id}" type="number" min="0" step="0.01" placeholder="DopÄąâ€šata za braki/uszkodzenia" oninput="updateTableclothReturnSummary('${loan.id}')" />
+            <small>DopÄąâ€šatĂ„â„˘ wpisz tylko wtedy, gdy chcesz pobraĂ„â€ˇ dodatkowĂ„â€¦ kwotĂ„â„˘ za braki, uszkodzenia, pranie lub inne koszty.</small>
           </div>
           ${tableclothReturnFormHtml(loan)}
           <textarea id="returnNotes-${loan.id}" placeholder="Uwagi do zwrotu, np. uszkodzone, brakuje sztuk, zabrudzone obrusy"></textarea>
-          <small>W uwagach opisz, co było uszkodzone, czego brakowało albo za co naliczono dopłatę.</small>
+          <small>W uwagach opisz, co byÄąâ€šo uszkodzone, czego brakowaÄąâ€šo albo za co naliczono dopÄąâ€šatĂ„â„˘.</small>
         </div>
       </details>
     </div>
@@ -4221,7 +4487,7 @@ function rentalReturnStatusBadge(loan) {
     return `<span class="badge return-on-time">W terminie</span>`;
   }
   const daysLate = Math.max(1, Math.round((todayDate - plannedDate) / 86400000));
-  return `<span class="badge return-overdue">Po terminie: ${daysLate} ${daysLate === 1 ? "dzień" : "dni"}</span>`;
+  return `<span class="badge return-overdue">Po terminie: ${daysLate} ${daysLate === 1 ? "dzieÄąâ€ž" : "dni"}</span>`;
 }
 
 function parseDateOnly(value) {
@@ -4244,7 +4510,7 @@ function renderRentalInventory() {
   try {
     sectionsHtml = rentalInventorySectionsHtml(visibleItems);
   } catch (error) {
-    console.error("Nie udało się pogrupować magazynu. Pokazuję pozycje w sekcji Pozostałe.", error);
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ pogrupowaĂ„â€ˇ magazynu. PokazujĂ„â„˘ pozycje w sekcji PozostaÄąâ€še.", error);
   }
   elements.rentalInventory.innerHTML = sectionsHtml?.trim() ? sectionsHtml : rentalInventoryFallbackSectionHtml(visibleItems);
 }
@@ -4252,38 +4518,38 @@ function renderRentalInventory() {
 const RENTAL_INVENTORY_SECTIONS = [
   {
     key: "packages",
-    title: "Pakiety do wypożyczenia",
-    description: "Pakiety służą do szybkiego tworzenia wypożyczeń. Przy brakach i uszkodzeniach rozliczaj pojedyncze elementy z sekcji poniżej."
+    title: "Pakiety do wypoÄąÄ˝yczenia",
+    description: "Pakiety sÄąâ€šuÄąÄ˝Ă„â€¦ do szybkiego tworzenia wypoÄąÄ˝yczeÄąâ€ž. Przy brakach i uszkodzeniach rozliczaj pojedyncze elementy z sekcji poniÄąÄ˝ej."
   },
   {
     key: "tableware",
-    title: "Zastawa — elementy osobne",
-    description: "Elementy osobne służą do pojedynczego wypożyczenia albo rozliczenia braków i uszkodzeń."
+    title: "Zastawa Ă˘â‚¬â€ť elementy osobne",
+    description: "Elementy osobne sÄąâ€šuÄąÄ˝Ă„â€¦ do pojedynczego wypoÄąÄ˝yczenia albo rozliczenia brakÄ‚Ĺ‚w i uszkodzeÄąâ€ž."
   },
   {
     key: "cutlery",
-    title: "Sztućce — elementy osobne",
-    description: "Sztućce osobno służą głównie do rozliczania braków, uszkodzeń albo pojedynczego wypożyczenia."
+    title: "SztuĂ„â€ˇce Ă˘â‚¬â€ť elementy osobne",
+    description: "SztuĂ„â€ˇce osobno sÄąâ€šuÄąÄ˝Ă„â€¦ gÄąâ€šÄ‚Ĺ‚wnie do rozliczania brakÄ‚Ĺ‚w, uszkodzeÄąâ€ž albo pojedynczego wypoÄąÄ˝yczenia."
   },
   {
     key: "serving",
     title: "Serwowanie",
-    description: "Elementy serwujące są dodatkiem do zastawy i mogą być wypożyczane razem z pełnym zestawem albo osobno."
+    description: "Elementy serwujĂ„â€¦ce sĂ„â€¦ dodatkiem do zastawy i mogĂ„â€¦ byĂ„â€ˇ wypoÄąÄ˝yczane razem z peÄąâ€šnym zestawem albo osobno."
   },
   {
     key: "tables",
-    title: "Stoły i obrusy / pranie",
-    description: "Stoły i obrusy są doliczane osobno. Obrus oznacza opłatę za pranie i przygotowanie."
+    title: "StoÄąâ€šy i obrusy / pranie",
+    description: "StoÄąâ€šy i obrusy sĂ„â€¦ doliczane osobno. Obrus oznacza opÄąâ€šatĂ„â„˘ za pranie i przygotowanie."
   },
   {
     key: "other",
-    title: "Pozostałe",
-    description: "Pozycje spoza głównych grup magazynu. Ta sekcja pilnuje, żeby nic nie zniknęło z listy."
+    title: "PozostaÄąâ€še",
+    description: "Pozycje spoza gÄąâ€šÄ‚Ĺ‚wnych grup magazynu. Ta sekcja pilnuje, ÄąÄ˝eby nic nie zniknĂ„â„˘Äąâ€šo z listy."
   }
 ];
 
 function rentalInventoryName(value) {
-  return normalizeSearchText(value).replace(/ł/g, "l");
+  return normalizeSearchText(value).replace(/Äąâ€š/g, "l");
 }
 
 function rentalInventoryCategory(item) {
@@ -4300,7 +4566,7 @@ function safeRentalInventoryCategory(item) {
   try {
     return rentalInventoryCategory(item) || RENTAL_INVENTORY_SECTIONS[5];
   } catch (error) {
-    console.error("Nie udało się sklasyfikować pozycji magazynu.", { item, error });
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ sklasyfikowaĂ„â€ˇ pozycji magazynu.", { item, error });
     return RENTAL_INVENTORY_SECTIONS[5];
   }
 }
@@ -4328,8 +4594,8 @@ function rentalInventoryFallbackSectionHtml(items) {
   return `
     <section class="inventory-section">
       <div class="inventory-section-header">
-        <h3>Pozostałe</h3>
-        <p>Pozycje, których nie udało się przypisać do głównych sekcji. Nic nie znika z magazynu.</p>
+        <h3>PozostaÄąâ€še</h3>
+        <p>Pozycje, ktÄ‚Ĺ‚rych nie udaÄąâ€šo siĂ„â„˘ przypisaĂ„â€ˇ do gÄąâ€šÄ‚Ĺ‚wnych sekcji. Nic nie znika z magazynu.</p>
       </div>
       <div class="inventory-section-list">${items.map((item) => safeRentalInventoryCard(item)).join("")}</div>
     </section>
@@ -4341,7 +4607,7 @@ function safeInventoryMetric(label, fallback, compute) {
     const value = compute();
     return Number.isFinite(Number(value)) ? value : fallback;
   } catch (error) {
-    console.error(`Nie udało się policzyć pola magazynu: ${label}.`, error);
+    console.error(`Nie udaÄąâ€šo siĂ„â„˘ policzyĂ„â€ˇ pola magazynu: ${label}.`, error);
     return fallback;
   }
 }
@@ -4350,18 +4616,18 @@ function safeRentalInventoryCard(item) {
   try {
     return rentalInventoryCard(item);
   } catch (error) {
-    console.error("Nie udało się wyrenderować pozycji magazynu. Pokazuję kartę awaryjną.", { item, error });
+    console.error("Nie udaÄąâ€šo siĂ„â„˘ wyrenderowaĂ„â€ˇ pozycji magazynu. PokazujĂ„â„˘ kartĂ„â„˘ awaryjnĂ„â€¦.", { item, error });
     return `
       <article class="inventory-card">
         <div class="inventory-card-main">
           <strong>${escapeHtml(item?.name || "Pozycja magazynu")}</strong>
           <div class="inventory-stat-grid">
-            <span><small>Stan całkowity</small><b>${escapeHtml(item?.quantity || 0)} szt.</b></span>
-            <span><small>Dostępne</small><b>0 szt.</b></span>
-            <span><small>Wypożyczone</small><b>0 szt.</b></span>
+            <span><small>Stan caÄąâ€škowity</small><b>${escapeHtml(item?.quantity || 0)} szt.</b></span>
+            <span><small>DostĂ„â„˘pne</small><b>0 szt.</b></span>
+            <span><small>WypoÄąÄ˝yczone</small><b>0 szt.</b></span>
             <span><small>Uszkodzone</small><b>0 szt.</b></span>
-            <span><small>Cena za dobę</small><b>${money(item?.price || 0)}</b></span>
-            <span><small>Wartość odtworzeniowa</small><b>${item?.replacementValue ? `${money(item.replacementValue)} / szt.` : "—"}</b></span>
+            <span><small>Cena za dobĂ„â„˘</small><b>${money(item?.price || 0)}</b></span>
+            <span><small>WartoÄąâ€şĂ„â€ˇ odtworzeniowa</small><b>${item?.replacementValue ? `${money(item.replacementValue)} / szt.` : "Ă˘â‚¬â€ť"}</b></span>
           </div>
         </div>
       </article>
@@ -4370,35 +4636,35 @@ function safeRentalInventoryCard(item) {
 }
 
 function rentalInventoryCard(item) {
-  const available = safeInventoryMetric("dostępne", 0, () => availableQuantity(item.id));
-  const borrowed = safeInventoryMetric("wypożyczone", 0, () => borrowedQuantity(item.id));
+  const available = safeInventoryMetric("dostĂ„â„˘pne", 0, () => availableQuantity(item.id));
+  const borrowed = safeInventoryMetric("wypoÄąÄ˝yczone", 0, () => borrowedQuantity(item.id));
   const damaged = safeInventoryMetric("uszkodzone", 0, () => damagedQuantity(item.id));
-  const quantity = safeInventoryMetric("stan całkowity", 0, () => Number(item.quantity || 0));
-  const price = safeInventoryMetric("cena za dobę", 0, () => Number(item.price || 0));
-  const replacementValue = item.replacementValue === null || item.replacementValue === undefined ? null : safeInventoryMetric("wartość odtworzeniowa", 0, () => Number(item.replacementValue || 0));
-  const replacementText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "—";
+  const quantity = safeInventoryMetric("stan caÄąâ€škowity", 0, () => Number(item.quantity || 0));
+  const price = safeInventoryMetric("cena za dobĂ„â„˘", 0, () => Number(item.price || 0));
+  const replacementValue = item.replacementValue === null || item.replacementValue === undefined ? null : safeInventoryMetric("wartoÄąâ€şĂ„â€ˇ odtworzeniowa", 0, () => Number(item.replacementValue || 0));
+  const replacementText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "Ă˘â‚¬â€ť";
   return `
     <article class="inventory-card">
       <div class="inventory-card-main">
         <strong>${escapeHtml(item.name)}</strong>
         <div class="inventory-stat-grid">
-          <span><small>Stan całkowity</small><b>${escapeHtml(quantity)} szt.</b></span>
-          <span><small>Dostępne</small><b>${escapeHtml(available)} szt.</b></span>
-          <span><small>Wypożyczone</small><b>${escapeHtml(borrowed)} szt.</b></span>
+          <span><small>Stan caÄąâ€škowity</small><b>${escapeHtml(quantity)} szt.</b></span>
+          <span><small>DostĂ„â„˘pne</small><b>${escapeHtml(available)} szt.</b></span>
+          <span><small>WypoÄąÄ˝yczone</small><b>${escapeHtml(borrowed)} szt.</b></span>
           <span><small>Uszkodzone</small><b>${escapeHtml(damaged)} szt.</b></span>
-          <span><small>Cena za dobę</small><b>${money(price)}</b></span>
-          <span><small>Wartość odtworzeniowa</small><b>${replacementText}</b></span>
+          <span><small>Cena za dobĂ„â„˘</small><b>${money(price)}</b></span>
+          <span><small>WartoÄąâ€şĂ„â€ˇ odtworzeniowa</small><b>${replacementText}</b></span>
         </div>
       </div>
       <div class="inventory-edit admin-only ${canCorrect() ? "" : "hidden-role"}">
-        <label>Ilość w magazynie
-          <input type="number" min="0" step="1" value="${quantity}" aria-label="Ilość w magazynie ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
+        <label>IloÄąâ€şĂ„â€ˇ w magazynie
+          <input type="number" min="0" step="1" value="${quantity}" aria-label="IloÄąâ€şĂ„â€ˇ w magazynie ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'quantity', this.value)" />
         </label>
-        <label>Cena za dobę
-          <input type="number" min="0" step="0.01" value="${price}" aria-label="Cena za dobę ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
+        <label>Cena za dobĂ„â„˘
+          <input type="number" min="0" step="0.01" value="${price}" aria-label="Cena za dobĂ„â„˘ ${escapeHtml(item.name)}" onchange="updateInventory('${item.id}', 'price', this.value)" />
         </label>
-        <label>Wartość odtworzeniowa
-          <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="Wartość odtworzeniowa ${escapeHtml(item.name)}" placeholder="Wartość odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
+        <label>WartoÄąâ€şĂ„â€ˇ odtworzeniowa
+          <input type="number" min="0" step="0.01" value="${item.replacementValue ?? ""}" aria-label="WartoÄąâ€şĂ„â€ˇ odtworzeniowa ${escapeHtml(item.name)}" placeholder="WartoÄąâ€şĂ„â€ˇ odtworzeniowa" onchange="updateInventory('${item.id}', 'replacementValue', this.value)" />
         </label>
       </div>
     </article>
@@ -4435,7 +4701,7 @@ function renderDocumentationDocs() {
   const docs = filteredDocumentationDocs();
   elements.docsDocumentationList.innerHTML = docs.length
     ? docs.map((item) => `<div class="row documentation-row">${documentationRowHtml(item)}</div>`).join("")
-    : '<div class="row"><small>Brak dokumentów w tej sekcji.</small></div>';
+    : '<div class="row"><small>Brak dokumentÄ‚Ĺ‚w w tej sekcji.</small></div>';
 }
 
 function filteredDocumentationDocs() {
@@ -4477,9 +4743,9 @@ function documentationRowHtml(item) {
       </small>
     </div>
     <div class="row-actions">
-      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz / Pobierz</button>` : ""}
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">OtwÄ‚Ĺ‚rz / Pobierz</button>` : ""}
       ${canCorrect() ? `<button class="small-button" onclick="editDocumentationDoc('${item.id}')">Edytuj</button>` : ""}
-      ${isAdmin() ? `<button class="delete-button" onclick="deleteDocumentationDoc('${item.id}')">Usuń</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="deleteDocumentationDoc('${item.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `;
 }
@@ -4488,7 +4754,7 @@ function renderSectionDocs(sectionName) {
   const container = sectionName === "Wzory" ? elements.docsTemplatesList : elements.docsNotesList;
   if (!container) return;
   const docs = filteredSectionDocs(sectionName);
-  const emptyText = sectionName === "Wzory" ? "Brak wzorów w tej sekcji." : "Brak notatek w tej sekcji.";
+  const emptyText = sectionName === "Wzory" ? "Brak wzorÄ‚Ĺ‚w w tej sekcji." : "Brak notatek w tej sekcji.";
   container.innerHTML = docs.length
     ? docs.map((item) => `<div class="row section-doc-row">${sectionDocRowHtml(item, sectionName)}</div>`).join("")
     : `<div class="row"><small>${emptyText}</small></div>`;
@@ -4523,12 +4789,12 @@ function sectionDocSortComparator(sort) {
 
 function sectionDocRowHtml(item, sectionName) {
   const fileName = docFileName(item);
-  const openText = "Otwórz plik";
+  const openText = "OtwÄ‚Ĺ‚rz plik";
   return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
       <small>
-        ${formatDate(item.date)}${sectionName === "Wzory" ? ` · <span class="badge neutral">${escapeHtml(item.category || "Wzór")}</span>` : ""}<br>
+        ${formatDate(item.date)}${sectionName === "Wzory" ? ` Ă‚Â· <span class="badge neutral">${escapeHtml(item.category || "WzÄ‚Ĺ‚r")}</span>` : ""}<br>
         ${docPreviewHtml(item)}
         ${fileName ? `<br>Plik: ${escapeHtml(fileName)} (${formatBytes(docFileSize(item))})` : ""}
       </small>
@@ -4536,7 +4802,7 @@ function sectionDocRowHtml(item, sectionName) {
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="${sectionName === "Wzory" ? "editTemplateDoc" : "editNoteDoc"}('${item.id}')">Edytuj</button>` : ""}
       ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">${openText}</button>` : ""}
-      ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `;
 }
@@ -4544,19 +4810,19 @@ function sectionDocRowHtml(item, sectionName) {
 function renderDocSectionList(container, sectionName) {
   if (!container) return;
   const docs = filterItems(state.docs.filter((item) => normalizeDocSection(item.section) === sectionName));
-  container.innerHTML = docs.length ? docs.map((item) => `<div class="row">${docRowHtml(item)}</div>`).join("") : '<div class="row"><small>Brak dokumentów w tej sekcji.</small></div>';
+  container.innerHTML = docs.length ? docs.map((item) => `<div class="row">${docRowHtml(item)}</div>`).join("") : '<div class="row"><small>Brak dokumentÄ‚Ĺ‚w w tej sekcji.</small></div>';
 }
 
 function docRowHtml(item) {
   return `
     <div>
       <strong>${escapeHtml(item.title)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.sender || "Brak nadawcy")} · <span class="badge neutral">${escapeHtml(item.category)}</span> · Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${docPreviewHtml(item)}${item.fundingSourceName ? `<br>Źródło: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiązany" : ""}${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
+      <small>${formatDate(item.date)} Ă‚Â· ${escapeHtml(item.sender || "Brak nadawcy")} Ă‚Â· <span class="badge neutral">${escapeHtml(item.category)}</span> Ă‚Â· Sekcja: ${escapeHtml(normalizeDocSection(item.section))}<br>${docPreviewHtml(item)}${item.fundingSourceName ? `<br>ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${escapeHtml(item.fundingSourceName)}` : ""}${item.transactionId ? "<br>Finanse: wydatek powiĂ„â€¦zany" : ""}${docFileName(item) ? `<br>Plik: ${escapeHtml(docFileName(item))} (${formatBytes(docFileSize(item))})` : ""}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editDoc('${item.id}')">Edytuj</button>` : ""}
-      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">Otwórz plik</button>` : ""}
-      ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">Usuń</button>` : ""}
+      ${docHasFile(item) ? `<button class="small-button" onclick="openDocumentAttachment('${item.id}')">OtwÄ‚Ĺ‚rz plik</button>` : ""}
+      ${isAdmin() ? `<button class="delete-button" onclick="removeItem('docs', '${item.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `;
 }
@@ -4626,7 +4892,7 @@ function editSectionDoc(id, sectionName) {
   form.notes.value = doc.notes || "";
   form.file.value = "";
   const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
-  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Edytuj wzór" : "Edytuj notatkę";
+  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Edytuj wzÄ‚Ĺ‚r" : "Edytuj notatkĂ„â„˘";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -4702,17 +4968,17 @@ function hideTemplateLargeEdit() {
 }
 
 function currentFileInfoHtml(doc) {
-  if (!docHasFile(doc)) return '<small>Obecny plik: brak załącznika.</small>';
+  if (!docHasFile(doc)) return '<small>Obecny plik: brak zaÄąâ€šĂ„â€¦cznika.</small>';
   return `
     <small>Obecny plik: <strong>${escapeHtml(docFileName(doc))}</strong> (${formatBytes(docFileSize(doc))})</small>
-    <button class="small-button" type="button" onclick="openDocumentAttachment('${doc.id}')">Otwórz obecny plik</button>
+    <button class="small-button" type="button" onclick="openDocumentAttachment('${doc.id}')">OtwÄ‚Ĺ‚rz obecny plik</button>
   `;
 }
 
 async function handleLargeDocEdit(event, sectionName = "documents") {
   event.preventDefault();
   if (!canCorrect()) {
-    alert("Edycja dokumentów jest dostępna tylko dla osób z uprawnieniami.");
+    alert("Edycja dokumentÄ‚Ĺ‚w jest dostĂ„â„˘pna tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
   const form = event.target;
@@ -4741,7 +5007,7 @@ async function handleLargeDocEdit(event, sectionName = "documents") {
         .from(DOCUMENT_BUCKET)
         .upload(filePath, file, { contentType: mimeType, upsert: false });
       if (uploadError) {
-        alert(`Nie udało się wysłać pliku do Supabase Storage: ${uploadError.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ wysÄąâ€šaĂ„â€ˇ pliku do Supabase Storage: ${uploadError.message}`);
         return;
       }
       payload.file_path = filePath;
@@ -4751,7 +5017,7 @@ async function handleLargeDocEdit(event, sectionName = "documents") {
     }
     const { error } = await supabaseClient.from("documents").update(payload).eq("id", doc.id);
     if (error) {
-      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ zmian: ${error.message}`);
       return;
     }
     await logActivity("Dokumenty", sectionName === "Notatki" ? "Edycja notatki" : "Edycja dokumentu", {
@@ -4784,8 +5050,8 @@ function resetDocumentationForm(form) {
   form.reset();
   form.id.value = "";
   form.date.valueAsDate = new Date();
-  if (elements.documentationFormTitle) elements.documentationFormTitle.textContent = "Dodaj dokumentację KGiGW";
-  form.querySelector('button[type="submit"]').textContent = "Zapisz dokumentację";
+  if (elements.documentationFormTitle) elements.documentationFormTitle.textContent = "Dodaj dokumentacjĂ„â„˘ KGiGW";
+  form.querySelector('button[type="submit"]').textContent = "Zapisz dokumentacjĂ„â„˘";
 }
 
 function clearDocumentationFilters() {
@@ -4802,8 +5068,8 @@ function resetSectionDocForm(form, sectionName) {
   form.date.valueAsDate = new Date();
   if (sectionName === "Notatki" && form.category) form.category.value = "Notatka";
   const titleElement = sectionName === "Wzory" ? elements.templateFormTitle : elements.noteFormTitle;
-  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Dodaj wzór" : "Dodaj notatkę / dokument";
-  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz wzór" : "Zapisz";
+  if (titleElement) titleElement.textContent = sectionName === "Wzory" ? "Dodaj wzÄ‚Ĺ‚r" : "Dodaj notatkĂ„â„˘ / dokument";
+  form.querySelector('button[type="submit"]').textContent = sectionName === "Wzory" ? "Zapisz wzÄ‚Ĺ‚r" : "Zapisz";
 }
 
 function clearSectionDocFilters(sectionName) {
@@ -4822,10 +5088,10 @@ async function deleteDocumentationDoc(id) {
   const doc = state.docs.find((entry) => entry.id === id);
   if (!doc) return;
   if (!isAdmin()) {
-    alert("Dokumentację KGiGW może usuwać tylko Administrator.");
+    alert("DokumentacjĂ„â„˘ KGiGW moÄąÄ˝e usuwaĂ„â€ˇ tylko Administrator.");
     return;
   }
-  const confirmed = confirm(`Usunąć dokumentację KGiGW: ${doc.title || "wybrany wpis"}? Tej operacji nie da się cofnąć.`);
+  const confirmed = confirm(`UsunĂ„â€¦Ă„â€ˇ dokumentacjĂ„â„˘ KGiGW: ${doc.title || "wybrany wpis"}? Tej operacji nie da siĂ„â„˘ cofnĂ„â€¦Ă„â€ˇ.`);
   if (!confirmed) return;
 
   if (supabaseClient && currentRole) {
@@ -4834,14 +5100,14 @@ async function deleteDocumentationDoc(id) {
     }
     const { error } = await supabaseClient.from("documents").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć dokumentacji KGiGW w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ dokumentacji KGiGW w Supabase: ${error.message}`);
       return;
     }
-    await logActivity("Dokumenty", "Usunięcie dokumentacji KGiGW", {
+    await logActivity("Dokumenty", "UsuniĂ„â„˘cie dokumentacji KGiGW", {
       summary: `${doc.title || id} - ${doc.category || "Dokumentacja KGiGW"}`
     });
     await refreshSupabaseData();
-    showToast("Usunięto dokumentację KGiGW");
+    showToast("UsuniĂ„â„˘to dokumentacjĂ„â„˘ KGiGW");
     return;
   }
 
@@ -4850,10 +5116,10 @@ async function deleteDocumentationDoc(id) {
   saveState();
   renderDocs();
   renderStorageInfo();
-  await logActivity("Dokumenty", "Usunięcie dokumentacji KGiGW", {
+  await logActivity("Dokumenty", "UsuniĂ„â„˘cie dokumentacji KGiGW", {
     summary: `${doc.title || id} - ${doc.category || "Dokumentacja KGiGW"}`
   });
-  showToast("Usunięto dokumentację KGiGW");
+  showToast("UsuniĂ„â„˘to dokumentacjĂ„â„˘ KGiGW");
 }
 
 function cancelDocEdit() {
@@ -4868,7 +5134,7 @@ function resetDocForm(form) {
   form.date.valueAsDate = new Date();
   form.fundingSourceId.value = "";
   form.documentMoneyAction.value = "save_only";
-  elements.docFormTitle.textContent = "Dodaj notatkę / dokument";
+  elements.docFormTitle.textContent = "Dodaj notatkĂ„â„˘ / dokument";
   form.querySelector('button[type="submit"]').textContent = "Zapisz";
   elements.cancelDocEdit.classList.add("hidden");
   renderEventOptions();
@@ -4877,6 +5143,26 @@ function resetDocForm(form) {
 
 function renderStorageInfo() {
   if (!elements.storageTexts?.length || !elements.storageBars?.length) return;
+  if (storageLoadStatus === "loading" && !supabaseDataReady) {
+    elements.storageTexts.forEach((item) => {
+      item.textContent = "Sprawdzanie miejsca na plikiâ€¦";
+    });
+    elements.storageBars.forEach((item) => {
+      item.style.width = "0%";
+      item.className = "";
+    });
+    return;
+  }
+  if (storageLoadStatus === "error" && !state.docs?.length) {
+    elements.storageTexts.forEach((item) => {
+      item.textContent = "Nie udaĹ‚o siÄ™ sprawdziÄ‡ miejsca na pliki.";
+    });
+    elements.storageBars.forEach((item) => {
+      item.style.width = "0%";
+      item.className = "warning";
+    });
+    return;
+  }
   const used = state.docs.reduce((sum, doc) => sum + docFileSize(doc), 0);
   const percent = Math.min(100, Math.round((used / STORAGE_LIMIT_BYTES) * 100));
   elements.storageTexts.forEach((item) => {
@@ -4890,7 +5176,7 @@ function renderStorageInfo() {
 
 function renderInvoices() {
   const invoices = filteredInvoices();
-  elements.invoicesList.innerHTML = invoices.length ? invoices.map((invoice) => `<div class="row ${invoice.rowType === "request" ? "invoice-request-row" : ""}">${invoice.rowType === "request" ? invoiceRequestRow(invoice) : invoiceRow(invoice)}</div>`).join("") : '<div class="row"><small>Brak faktur pasujących do filtrów.</small></div>';
+  elements.invoicesList.innerHTML = invoices.length ? invoices.map((invoice) => `<div class="row ${invoice.rowType === "request" ? "invoice-request-row" : ""}">${invoice.rowType === "request" ? invoiceRequestRow(invoice) : invoiceRow(invoice)}</div>`).join("") : '<div class="row"><small>Brak faktur pasujĂ„â€¦cych do filtrÄ‚Ĺ‚w.</small></div>';
 }
 
 function invoiceRow(invoice) {
@@ -4898,9 +5184,9 @@ function invoiceRow(invoice) {
     <div>
       <strong>Faktura ${escapeHtml(invoice.number)} - ${money(invoice.gross)}</strong>
       <small>
-        ${formatDate(invoice.date)} - ${escapeHtml(invoice.buyerName)} - ${escapeHtml(invoice.source)}${invoice.rentalLabel ? ` - Wypożyczenie: ${escapeHtml(invoice.rentalLabel)}` : ""}<br>
+        ${formatDate(invoice.date)} - ${escapeHtml(invoice.buyerName)} - ${escapeHtml(invoice.source)}${invoice.rentalLabel ? ` - WypoÄąÄ˝yczenie: ${escapeHtml(invoice.rentalLabel)}` : ""}<br>
         ${escapeHtml(invoice.itemName)}: ${invoice.quantity} x ${money(invoice.unitPrice)} netto<br>
-        Płatność: ${escapeHtml(invoicePaymentStatusLabel(invoice.paymentStatus))} - ${escapeHtml(invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)))} - termin: ${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "—"}
+        PÄąâ€šatnoÄąâ€şĂ„â€ˇ: ${escapeHtml(invoicePaymentStatusLabel(invoice.paymentStatus))} - ${escapeHtml(invoicePaymentMethodLabel(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus)))} - termin: ${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "Ă˘â‚¬â€ť"}
         ${invoiceDueBadge(invoice)}
       </small>
     </div>
@@ -4971,7 +5257,7 @@ function invoiceMatchesSearch(invoice, search) {
     invoice.rentalLabel,
     invoice.notes
   ].map(normalizeSearchText).join(" ");
-  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9Ă„â€¦Ă„â€ˇĂ„â„˘Äąâ€šÄąâ€žÄ‚Ĺ‚Äąâ€şÄąĹźÄąÄ˝]+/gi, " ")}`;
   return search.split(" ").filter(Boolean).every((term) => searchable.includes(term));
 }
 
@@ -4980,24 +5266,24 @@ function invoiceRequestRow(request) {
   if (editingInvoiceRequestId === request.id) return invoiceRequestEditForm(request);
   return `
     <div>
-      <strong>ZGŁOSZENIE ZE STOISKA - ${escapeHtml(request.buyerName || "Brak nabywcy")} - ${money(request.gross)}</strong>
+      <strong>ZGÄąÂOSZENIE ZE STOISKA - ${escapeHtml(request.buyerName || "Brak nabywcy")} - ${money(request.gross)}</strong>
       <small>
         ${formatDate(request.date)} - NIP: ${escapeHtml(request.buyerNip || "brak")} - E-mail: ${escapeHtml(request.buyerEmail || "brak")}<br>
-        Telefon: ${escapeHtml(request.buyerPhone || "brak")} - Płatność: ${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}<br>
+        Telefon: ${escapeHtml(request.buyerPhone || "brak")} - PÄąâ€šatnoÄąâ€şĂ„â€ˇ: ${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}<br>
         Adres: ${escapeHtml(request.buyerAddress || "brak adresu")}<br>
         Opis: ${escapeHtml(request.itemDescription || "brak opisu")}<br>
         Status: <span class="badge ${invoiceRequestStatusClass(request.status)}">${escapeHtml(statusLabel)}</span>
-        <span class="badge neutral">Zgłoszenie</span>
+        <span class="badge neutral">ZgÄąâ€šoszenie</span>
         ${request.notes ? `<br>Uwagi: ${escapeHtml(request.notes)}` : ""}
       </small>
     </div>
     <div class="row-actions">
-      ${request.status !== "wystawiona" ? `<button class="small-button" onclick="prepareInvoiceFromRequest('${request.id}')">Utwórz fakturę</button>` : '<span class="badge paid">Faktura wystawiona</span>'}
+      ${request.status !== "wystawiona" ? `<button class="small-button" onclick="prepareInvoiceFromRequest('${request.id}')">UtwÄ‚Ĺ‚rz fakturĂ„â„˘</button>` : '<span class="badge paid">Faktura wystawiona</span>'}
       <button class="small-button" onclick="editInvoiceRequest('${request.id}')">Edytuj</button>
       <button class="small-button" onclick="prepareInvoiceRequestEmail('${request.id}')">Przygotuj e-mail</button>
       ${request.status !== "w_trakcie" ? `<button class="small-button" onclick="updateInvoiceRequestStatus('${request.id}', 'w_trakcie')">Oznacz jako w trakcie</button>` : ""}
-      <button class="small-button" onclick="printInvoiceRequest('${request.id}')">Drukuj zgłoszenie</button>
-      ${request.status !== "anulowana" ? `<button class="delete-button" onclick="updateInvoiceRequestStatus('${request.id}', 'anulowana')">Anuluj zgłoszenie</button>` : ""}
+      <button class="small-button" onclick="printInvoiceRequest('${request.id}')">Drukuj zgÄąâ€šoszenie</button>
+      ${request.status !== "anulowana" ? `<button class="delete-button" onclick="updateInvoiceRequestStatus('${request.id}', 'anulowana')">Anuluj zgÄąâ€šoszenie</button>` : ""}
     </div>
   `;
 }
@@ -5005,7 +5291,7 @@ function invoiceRequestRow(request) {
 function invoiceRequestEditForm(request) {
   return `
     <form class="invoice-request-edit" onsubmit="saveInvoiceRequestEdit(event, '${request.id}')">
-      <h3>Edytuj zgłoszenie ze stoiska</h3>
+      <h3>Edytuj zgÄąâ€šoszenie ze stoiska</h3>
       <div class="form-grid">
         <input name="buyerName" required placeholder="Nabywca" value="${escapeHtml(request.buyerName || "")}" />
         <input name="buyerNip" placeholder="NIP" value="${escapeHtml(request.buyerNip || "")}" />
@@ -5013,10 +5299,10 @@ function invoiceRequestEditForm(request) {
         <input name="buyerPhone" placeholder="Telefon" value="${escapeHtml(request.buyerPhone || "")}" />
         <input name="gross" type="number" min="0" step="0.01" placeholder="Kwota brutto" value="${Number(request.gross || 0)}" />
         <select name="paymentMethod">
-          <option value="">Forma płatności: brak</option>
-          <option value="cash" ${invoiceRequestPaymentCode(request.paymentMethod) === "cash" ? "selected" : ""}>Gotówka</option>
+          <option value="">Forma pÄąâ€šatnoÄąâ€şci: brak</option>
+          <option value="cash" ${invoiceRequestPaymentCode(request.paymentMethod) === "cash" ? "selected" : ""}>GotÄ‚Ĺ‚wka</option>
           <option value="transfer" ${invoiceRequestPaymentCode(request.paymentMethod) === "transfer" ? "selected" : ""}>Przelew</option>
-          <option value="other" ${invoiceRequestPaymentCode(request.paymentMethod) === "other" ? "selected" : ""}>Płatność on-line / inna</option>
+          <option value="other" ${invoiceRequestPaymentCode(request.paymentMethod) === "other" ? "selected" : ""}>PÄąâ€šatnoÄąâ€şĂ„â€ˇ on-line / inna</option>
         </select>
         <select name="status">
           <option value="do_wystawienia" ${request.status === "do_wystawienia" ? "selected" : ""}>Do wystawienia</option>
@@ -5041,7 +5327,7 @@ function invoiceRequestMatchesSearch(request, search) {
   const plainAmount = String(request.gross || "").replace(".", ",");
   const compactNip = String(request.buyerNip || "").replace(/\D/g, "");
   const haystack = [
-    "zgłoszenie ze stoiska",
+    "zgÄąâ€šoszenie ze stoiska",
     "zgloszenie ze stoiska",
     request.buyerName,
     request.buyerAddress,
@@ -5058,7 +5344,7 @@ function invoiceRequestMatchesSearch(request, search) {
     request.eventName,
     request.notes
   ].map(normalizeSearchText).join(" ");
-  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9ąćęłńóśźż]+/gi, " ")}`;
+  const searchable = `${haystack} ${haystack.replace(/[^a-z0-9Ă„â€¦Ă„â€ˇĂ„â„˘Äąâ€šÄąâ€žÄ‚Ĺ‚Äąâ€şÄąĹźÄąÄ˝]+/gi, " ")}`;
   return search.split(" ").filter(Boolean).every((term) => searchable.includes(term));
 }
 
@@ -5104,7 +5390,7 @@ function clearInvoiceFilters() {
 
 function invoicePaymentMethodCode(invoice) {
   const value = normalizeText(invoice.paymentMethod || invoicePaymentMethod(invoice.paymentStatus));
-  if (value === "cash" || value === "gotówka") return "cash";
+  if (value === "cash" || value === "gotÄ‚Ĺ‚wka") return "cash";
   if (value === "transfer" || value === "przelew") return "transfer";
   if (value === "other" || value.includes("inna") || value.includes("online") || value.includes("on-line")) return "other";
   return "";
@@ -5137,9 +5423,9 @@ function invoiceRequestPaymentCode(method) {
 
 function invoiceRequestPaymentLabel(method) {
   const code = invoiceRequestPaymentCode(method);
-  if (code === "cash") return "Gotówka";
+  if (code === "cash") return "GotÄ‚Ĺ‚wka";
   if (code === "transfer") return "Przelew";
-  if (code === "other") return "Płatność on-line / inna";
+  if (code === "other") return "PÄąâ€šatnoÄąâ€şĂ„â€ˇ on-line / inna";
   return method || "brak";
 }
 
@@ -5150,30 +5436,30 @@ function isInvoiceOverdue(invoice) {
 
 function invoicePaymentAction(invoice) {
   if (isInvoicePaid(invoice.paymentStatus)) {
-    return `<span class="badge paid">Zapłacono${invoice.paidAt ? `: ${formatDate(invoice.paidAt)}` : ""}</span>`;
+    return `<span class="badge paid">ZapÄąâ€šacono${invoice.paidAt ? `: ${formatDate(invoice.paidAt)}` : ""}</span>`;
   }
   const loan = invoice.rentalId ? state.rentalLoans.find((entry) => entry.id === invoice.rentalId) : null;
   if (rentalAlreadyPaid(loan)) {
-    return '<span class="badge neutral">Wypożyczenie już rozliczone</span>';
+    return '<span class="badge neutral">WypoÄąÄ˝yczenie juÄąÄ˝ rozliczone</span>';
   }
-  return `<button class="small-button" onclick="markInvoicePaid('${invoice.id}')">Oznacz jako opłaconą</button>`;
+  return `<button class="small-button" onclick="markInvoicePaid('${invoice.id}')">Oznacz jako opÄąâ€šaconĂ„â€¦</button>`;
 }
 
 function renderBoard() {
   const boardMembers = state.members.filter((member) => isBoardRole(member.boardRole));
   if (!boardMembers.length) {
     elements.boardList.innerHTML = `
-      <div class="notice">Zarząd jest tworzony automatycznie na podstawie funkcji ustawionej w module Członkowie.</div>
-      <div class="row"><small>Brak osób z przypisaną funkcją w zarządzie. Funkcję można nadać w module Członkowie.</small></div>
+      <div class="notice">ZarzĂ„â€¦d jest tworzony automatycznie na podstawie funkcji ustawionej w module CzÄąâ€šonkowie.</div>
+      <div class="row"><small>Brak osÄ‚Ĺ‚b z przypisanĂ„â€¦ funkcjĂ„â€¦ w zarzĂ„â€¦dzie. FunkcjĂ„â„˘ moÄąÄ˝na nadaĂ„â€ˇ w module CzÄąâ€šonkowie.</small></div>
     `;
     return;
   }
   elements.boardList.innerHTML = `
-    <div class="notice">Zarząd jest tworzony automatycznie na podstawie funkcji ustawionej w module Członkowie.</div>
+    <div class="notice">ZarzĂ„â€¦d jest tworzony automatycznie na podstawie funkcji ustawionej w module CzÄąâ€šonkowie.</div>
     ${rows(filterItems(boardMembers), (item) => `
     <div>
       <strong>${escapeHtml(item.boardRole)}: ${escapeHtml(item.name)}</strong>
-      <small>${escapeHtml(item.phone || "Brak telefonu")} · ${escapeHtml(item.email || "Brak e-maila")} · ${escapeHtml(item.status || "Aktywny")}</small>
+      <small>${escapeHtml(item.phone || "Brak telefonu")} Ă‚Â· ${escapeHtml(item.email || "Brak e-maila")} Ă‚Â· ${escapeHtml(item.status || "Aktywny")}</small>
     </div>
   `)}
   `;
@@ -5253,10 +5539,10 @@ function feeYear(value) {
 
 function feeStages(paid) {
   return [
-    { label: "I kwartał", deadline: "do końca marca", amount: QUARTER_FEE, ok: paid >= 30 },
-    { label: "II kwartał", deadline: "do końca czerwca", amount: QUARTER_FEE, ok: paid >= 60 },
-    { label: "III kwartał", deadline: "do końca września", amount: QUARTER_FEE, ok: paid >= 90 },
-    { label: "IV kwartał", deadline: "do końca grudnia", amount: QUARTER_FEE, ok: paid >= 120 }
+    { label: "I kwartaÄąâ€š", deadline: "do koÄąâ€žca marca", amount: QUARTER_FEE, ok: paid >= 30 },
+    { label: "II kwartaÄąâ€š", deadline: "do koÄąâ€žca czerwca", amount: QUARTER_FEE, ok: paid >= 60 },
+    { label: "III kwartaÄąâ€š", deadline: "do koÄąâ€žca wrzeÄąâ€şnia", amount: QUARTER_FEE, ok: paid >= 90 },
+    { label: "IV kwartaÄąâ€š", deadline: "do koÄąâ€žca grudnia", amount: QUARTER_FEE, ok: paid >= 120 }
   ];
 }
 
@@ -5269,11 +5555,11 @@ function requiredFeeToday(date = new Date()) {
 }
 
 function paidUntilLabel(paid) {
-  if (paid >= ANNUAL_FEE) return "końca roku";
-  if (paid >= 90) return "końca września";
-  if (paid >= 60) return "końca czerwca";
-  if (paid >= 30) return "końca marca";
-  return "brak opłaconego kwartału";
+  if (paid >= ANNUAL_FEE) return "koÄąâ€žca roku";
+  if (paid >= 90) return "koÄąâ€žca wrzeÄąâ€şnia";
+  if (paid >= 60) return "koÄąâ€žca czerwca";
+  if (paid >= 30) return "koÄąâ€žca marca";
+  return "brak opÄąâ€šaconego kwartaÄąâ€šu";
 }
 
 function feeStageHtml(stage) {
@@ -5281,13 +5567,13 @@ function feeStageHtml(stage) {
 }
 
 function feePaymentsHtml(item) {
-  if (!item.fees.length) return "Brak wpłat w tym roku";
+  if (!item.fees.length) return "Brak wpÄąâ€šat w tym roku";
   return `
     <span class="fee-payment-list">
       ${item.fees.map((fee) => `
         <span class="fee-payment-item">
-          Wpłata ${escapeHtml(fee.period)}: ${money(fee.amount)}
-          ${canCorrect() ? `<button class="delete-button fee-delete-button" onclick="removeItem('fees', '${fee.id}')">Usuń</button>` : ""}
+          WpÄąâ€šata ${escapeHtml(fee.period)}: ${money(fee.amount)}
+          ${canCorrect() ? `<button class="delete-button fee-delete-button" onclick="removeItem('fees', '${fee.id}')">UsuÄąâ€ž</button>` : ""}
         </span>
       `).join("")}
     </span>
@@ -5295,22 +5581,22 @@ function feePaymentsHtml(item) {
 }
 
 function feeSmsText(name, due) {
-  return `Dzień dobry, przypominamy o zaległej składce członkowskiej KGIGW. Zaległość na dziś: ${money(due)}. Prosimy o uregulowanie wpłaty. Dziękujemy.`;
+  return `DzieÄąâ€ž dobry, przypominamy o zalegÄąâ€šej skÄąâ€šadce czÄąâ€šonkowskiej KGIGW. ZalegÄąâ€šoÄąâ€şĂ„â€ˇ na dziÄąâ€ş: ${money(due)}. Prosimy o uregulowanie wpÄąâ€šaty. DziĂ„â„˘kujemy.`;
 }
 
 function feeContactPanel(rows) {
   if (!rows.length) {
-    return '<div class="notice fee-contact-panel"><strong>Lista kontaktów</strong><br>Brak osób z zaległością na dziś.</div>';
+    return '<div class="notice fee-contact-panel"><strong>Lista kontaktÄ‚Ĺ‚w</strong><br>Brak osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦ na dziÄąâ€ş.</div>';
   }
   return `
     <div class="notice fee-contact-panel">
-      <strong>Lista kontaktów do osób z zaległością</strong>
-      <small>Wiadomości są tylko przygotowane. Program nie wysyła ich automatycznie.</small>
+      <strong>Lista kontaktÄ‚Ĺ‚w do osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦</strong>
+      <small>WiadomoÄąâ€şci sĂ„â€¦ tylko przygotowane. Program nie wysyÄąâ€ša ich automatycznie.</small>
       <div class="fee-contact-list">
         ${rows.map((item) => `
           <div class="fee-contact-entry">
             <span class="fee-contact-name">${escapeHtml(item.name)}</span>
-            <span class="fee-contact-due">zaległość: ${money(item.currentDue)}</span>
+            <span class="fee-contact-due">zalegÄąâ€šoÄąâ€şĂ„â€ˇ: ${money(item.currentDue)}</span>
             <span class="fee-contact-actions">${feeContactLinks(item)}</span>
           </div>
         `).join("")}
@@ -5331,7 +5617,7 @@ function feeContactLinks(item) {
   return `
     ${smsPhone ? `<a class="small-button contact-button" href="sms:${encodeURIComponent(smsPhone)}?body=${encodeURIComponent(text)}">SMS</a>` : '<span class="contact-missing">Brak telefonu</span>'}
     ${whatsAppPhone ? `<a class="small-button contact-button" target="_blank" rel="noopener" href="https://wa.me/${encodeURIComponent(whatsAppPhone)}?text=${encodeURIComponent(text)}">WhatsApp</a>` : '<span class="contact-missing">Brak telefonu</span>'}
-    ${email ? `<a class="small-button contact-button" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Przypomnienie o składce")}&body=${encodeURIComponent(text)}">E-mail</a>` : '<span class="contact-missing">Brak e-maila</span>'}
+    ${email ? `<a class="small-button contact-button" href="mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Przypomnienie o skÄąâ€šadce")}&body=${encodeURIComponent(text)}">E-mail</a>` : '<span class="contact-missing">Brak e-maila</span>'}
   `;
 }
 
@@ -5348,12 +5634,12 @@ function normalizeWhatsAppPhone(phone) {
 function sendFeeSmsReminders() {
   const overdue = feeMemberRows().filter((item) => item.isLate);
   if (!overdue.length) {
-    alert("Brak osób z zaległością na dziś.");
+    alert("Brak osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦ na dziÄąâ€ş.");
     return;
   }
   showFeeContactPanel = !showFeeContactPanel;
   renderFees();
-  showToast(showFeeContactPanel ? "Pokazano listę kontaktów do osób z zaległością" : "Schowano listę kontaktów");
+  showToast(showFeeContactPanel ? "Pokazano listĂ„â„˘ kontaktÄ‚Ĺ‚w do osÄ‚Ĺ‚b z zalegÄąâ€šoÄąâ€şciĂ„â€¦" : "Schowano listĂ„â„˘ kontaktÄ‚Ĺ‚w");
 }
 
 function renderEventOptions() {
@@ -5372,7 +5658,7 @@ function renderFundingSourceSelect(select, selectedId = "") {
   const activeSources = (state.fundingSources || [])
     .filter((source) => isActiveFundingSource(source) || source.id === current)
     .sort((a, b) => a.name.localeCompare(b.name));
-  select.innerHTML = '<option value="">Bez źródła</option>' + activeSources
+  select.innerHTML = '<option value="">Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša</option>' + activeSources
     .map((source) => `<option value="${escapeHtml(source.id)}">${escapeHtml(source.name)}</option>`)
     .join("");
   select.value = activeSources.some((source) => source.id === current) ? current : "";
@@ -5398,7 +5684,7 @@ function renderEventSelect(select) {
 
 function renderInvoiceRentalOptions() {
   const current = elements.invoiceRental.value;
-  elements.invoiceRental.innerHTML = '<option value="">Bez wypożyczenia</option>' + state.rentalLoans
+  elements.invoiceRental.innerHTML = '<option value="">Bez wypoÄąÄ˝yczenia</option>' + state.rentalLoans
     .filter((loan) => loan.id === current || !rentalInvoice(loan.id))
     .map((loan) => `<option value="${escapeHtml(loan.id)}">${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)} - ${formatDate(loan.dateFrom)} - ${money(loan.total)}</option>`)
     .join("");
@@ -5413,8 +5699,8 @@ function fillInvoiceFromRental() {
   form.buyerName.value = "";
   form.buyerAddress.value = "";
   form.buyerNip.value = "";
-  form.source.value = "Wypożyczenie";
-  form.itemName.value = `Wypożyczenie: ${loan.items.map((item) => `${item.name} ${item.quantity} szt.`).join(", ")}`;
+  form.source.value = "WypoÄąÄ˝yczenie";
+  form.itemName.value = `WypoÄąÄ˝yczenie: ${loan.items.map((item) => `${item.name} ${item.quantity} szt.`).join(", ")}`;
   form.quantity.value = 1;
   form.unitPrice.value = Number(loan.total || 0).toFixed(2);
   form.vatRate.value = "23";
@@ -5422,7 +5708,7 @@ function fillInvoiceFromRental() {
   form.paymentMethod.value = "transfer";
   form.paymentDueDate.value = dateOffset(form.date.value || new Date().toISOString().slice(0, 10), 7);
   form.bankAccount.value = "";
-  form.notes.value = `Wypożyczenie od ${formatDate(loan.dateFrom)} do ${formatDate(loan.dateTo)}. Telefon: ${loan.phone}.`;
+  form.notes.value = `WypoÄąÄ˝yczenie od ${formatDate(loan.dateFrom)} do ${formatDate(loan.dateTo)}. Telefon: ${loan.phone}.`;
 }
 
 document.querySelector('#invoiceForm input[name="date"]').addEventListener("change", (event) => {
@@ -5431,19 +5717,19 @@ document.querySelector('#invoiceForm input[name="date"]').addEventListener("chan
 });
 
 function rows(items, template) {
-  if (!items.length) return '<div class="row"><small>Brak wpisów pasujących do wyszukiwania.</small></div>';
+  if (!items.length) return '<div class="row"><small>Brak wpisÄ‚Ĺ‚w pasujĂ„â€¦cych do wyszukiwania.</small></div>';
   return items.map((item) => `<div class="row">${template(item)}</div>`).join("");
 }
 
 function moneyRow(item) {
   const eventText = item.eventName ? ` - Wydarzenie: ${escapeHtml(item.eventName)}` : "";
-  const fundingText = item.fundingSourceName ? ` - Źródło: ${escapeHtml(item.fundingSourceName)}` : "";
+  const fundingText = item.fundingSourceName ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${escapeHtml(item.fundingSourceName)}` : "";
   const typeLabel = moneyTypeLabel(item.type);
   return `
     <div class="row">
       <div>
-        <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
-        <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${eventText}${fundingText}</small>
+        <strong>${escapeHtml(item.title)} Ă‚Â· ${money(item.amount)}</strong>
+        <small>${formatDate(item.date)} Ă‚Â· ${escapeHtml(item.category || "Bez kategorii")} Ă‚Â· <span class="badge ${item.type}">${typeLabel}</span>${eventText}${fundingText}</small>
       </div>
     </div>
   `;
@@ -5451,18 +5737,18 @@ function moneyRow(item) {
 
 function moneyRowWithDelete(item) {
   const eventText = item.eventName ? ` - Wydarzenie: ${escapeHtml(item.eventName)}` : "";
-  const fundingText = item.fundingSourceName ? ` - Źródło: ${escapeHtml(item.fundingSourceName)}` : "";
+  const fundingText = item.fundingSourceName ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${escapeHtml(item.fundingSourceName)}` : "";
   const typeLabel = moneyTypeLabel(item.type);
   const cancelled = !isActiveMoney(item);
   const statusLabel = cancelled ? ' <span class="badge neutral">Anulowany</span>' : "";
   return `
     <div>
-      <strong>${escapeHtml(item.title)} · ${money(item.amount)}</strong>
-      <small>${formatDate(item.date)} · ${escapeHtml(item.category || "Bez kategorii")} · <span class="badge ${item.type}">${typeLabel}</span>${statusLabel}${eventText}${fundingText}</small>
+      <strong>${escapeHtml(item.title)} Ă‚Â· ${money(item.amount)}</strong>
+      <small>${formatDate(item.date)} Ă‚Â· ${escapeHtml(item.category || "Bez kategorii")} Ă‚Â· <span class="badge ${item.type}">${typeLabel}</span>${statusLabel}${eventText}${fundingText}</small>
     </div>
     <div class="row-actions">
       ${canCorrect() ? `<button class="small-button" onclick="editMoney('${item.id}')">Edytuj</button>` : ""}
-      ${canCorrect() && !cancelled ? `<button class="delete-button" onclick="removeItem('money', '${item.id}')">Usuń</button>` : ""}
+      ${canCorrect() && !cancelled ? `<button class="delete-button" onclick="removeItem('money', '${item.id}')">UsuÄąâ€ž</button>` : ""}
     </div>
   `;
 }
@@ -5482,7 +5768,7 @@ function editMoney(id) {
   form.fundingSourceId.value = entry.fundingSourceId || "";
   form.amount.value = Number(entry.amount || 0);
   form.date.value = entry.date || new Date().toISOString().slice(0, 10);
-  elements.moneyFormTitle.textContent = "Edytuj operację";
+  elements.moneyFormTitle.textContent = "Edytuj operacjĂ„â„˘";
   form.querySelector('button[type="submit"]').textContent = "Zapisz zmiany";
   elements.cancelMoneyEdit.classList.remove("hidden");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -5498,7 +5784,7 @@ function resetMoneyForm(form) {
   form.id.value = "";
   form.date.valueAsDate = new Date();
   form.fundingSourceId.value = "";
-  elements.moneyFormTitle.textContent = "Dodaj wpływ lub wydatek";
+  elements.moneyFormTitle.textContent = "Dodaj wpÄąâ€šyw lub wydatek";
   form.querySelector('button[type="submit"]').textContent = "Zapisz";
   elements.cancelMoneyEdit.classList.add("hidden");
   renderEventOptions();
@@ -5510,30 +5796,30 @@ function eventRow(item) {
     <div class="row">
       <div>
         <strong>${escapeHtml(item.name)}</strong>
-        <small>${formatDate(item.date)} · ${escapeHtml(item.place || "Brak miejsca")}</small>
+        <small>${formatDate(item.date)} Ă‚Â· ${escapeHtml(item.place || "Brak miejsca")}</small>
       </div>
     </div>
   `;
 }
 
 function moneyTypeLabel(type) {
-  if (type === "income") return "Wpływ";
+  if (type === "income") return "WpÄąâ€šyw";
   if (type === "donation") return "Darowizna";
   return "Wydatek";
 }
 
 function moneyLogAction(type) {
-  return isExpenseType(type) ? "Dodanie wydatku" : "Dodanie wpływu";
+  return isExpenseType(type) ? "Dodanie wydatku" : "Dodanie wpÄąâ€šywu";
 }
 
 function moneyLogSummary(entry) {
   const sourceName = fundingSourceName(entry.fundingSourceId);
-  return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
+  return `${entry.title || "Wpis finansowy"} - ${money(Number(entry.amount || 0))}${sourceName !== "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša" ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${sourceName}` : ""}`;
 }
 
 function fundingSourceName(id) {
-  if (!id) return "Bez źródła";
-  return state.fundingSources.find((source) => source.id === id)?.name || "Bez źródła";
+  if (!id) return "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša";
+  return state.fundingSources.find((source) => source.id === id)?.name || "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša";
 }
 
 function isExpenseType(type) {
@@ -5557,7 +5843,7 @@ async function addEventNote(id) {
       .update({ notes: updatedNotes })
       .eq("id", id);
     if (error) {
-      alert(`Nie udało się dopisać notatki do wydarzenia: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ dopisaĂ„â€ˇ notatki do wydarzenia: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -5572,10 +5858,10 @@ async function addEventNote(id) {
 
 async function resetMemberFees(name) {
   if (!canCorrect()) {
-    alert("Reset wpłat jest dostępny tylko dla osób z uprawnieniami.");
+    alert("Reset wpÄąâ€šat jest dostĂ„â„˘pny tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
-  const confirmed = confirm(`Wyzerować wpłaty składek dla: ${name} w roku ${FEE_YEAR}? Członek zostanie na liście, usunięte będą tylko jego wpłaty z tego roku.`);
+  const confirmed = confirm(`WyzerowaĂ„â€ˇ wpÄąâ€šaty skÄąâ€šadek dla: ${name} w roku ${FEE_YEAR}? CzÄąâ€šonek zostanie na liÄąâ€şcie, usuniĂ„â„˘te bĂ„â„˘dĂ„â€¦ tylko jego wpÄąâ€šaty z tego roku.`);
   if (!confirmed) return;
   const member = state.members.find((entry) => entry.name === name);
   if (supabaseClient && currentRole && member) {
@@ -5585,10 +5871,10 @@ async function resetMemberFees(name) {
       .eq("member_id", member.id)
       .eq("year", FEE_YEAR);
     if (error) {
-      alert(`Nie udało się wyzerować składek w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ wyzerowaĂ„â€ˇ skÄąâ€šadek w Supabase: ${error.message}`);
       return;
     }
-    await logActivity("Składki", "Reset wpłat", { summary: `${name} - ${FEE_YEAR}` });
+    await logActivity("SkÄąâ€šadki", "Reset wpÄąâ€šat", { summary: `${name} - ${FEE_YEAR}` });
     await refreshSupabaseData();
     return;
   }
@@ -5596,12 +5882,12 @@ async function resetMemberFees(name) {
   state.fees = state.fees.filter((fee) => !(fee.member === name && feeYear(fee.year || fee.period) === FEE_YEAR));
   saveState();
   render();
-  logActivity("Składki", "Reset wpłat", { summary: `${name} - ${FEE_YEAR}` });
+  logActivity("SkÄąâ€šadki", "Reset wpÄąâ€šat", { summary: `${name} - ${FEE_YEAR}` });
 }
 
 function deleteAction(collection, id) {
   if (!canCorrect()) return "";
-  return `<div class="row-actions"><button class="delete-button" onclick="removeItem('${collection}', '${id}')">Usuń</button></div>`;
+  return `<div class="row-actions"><button class="delete-button" onclick="removeItem('${collection}', '${id}')">UsuÄąâ€ž</button></div>`;
 }
 
 async function updateInventory(id, field, value) {
@@ -5625,7 +5911,7 @@ async function updateInventory(id, field, value) {
       .update({ [column]: normalizedValue })
       .eq("id", id);
     if (error) {
-      alert(`Nie udało się zmienić magazynu w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zmieniĂ„â€ˇ magazynu w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -5648,7 +5934,7 @@ async function handleInventoryAdd(event) {
   const replacementValue = String(data.replacementValue || "").trim() === "" ? null : Math.max(0, Number(data.replacementValue) || 0);
 
   if (!name) {
-    alert("Wpisz nazwę przedmiotu.");
+    alert("Wpisz nazwĂ„â„˘ przedmiotu.");
     return;
   }
 
@@ -5660,11 +5946,11 @@ async function handleInventoryAdd(event) {
       replacement_value: replacementValue
     });
     if (error) {
-      alert(`Nie udało się dodać przedmiotu do magazynu w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ przedmiotu do magazynu w Supabase: ${error.message}`);
       return;
     }
     event.target.reset();
-    await logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
+    await logActivity("WypoÄąÄ˝yczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
     await refreshSupabaseData();
     showToast("Dodano przedmiot do magazynu");
     return;
@@ -5681,7 +5967,7 @@ async function handleInventoryAdd(event) {
   event.target.reset();
   saveState();
   renderRentals();
-  logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
+  logActivity("WypoÄąÄ˝yczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
   showToast("Dodano przedmiot do magazynu");
 }
 
@@ -5695,7 +5981,7 @@ async function returnRental(id) {
   const damageCost = returnCondition === "ok" ? 0 : Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
   const tableclothFee = tableclothReturnFeeFromInputs(loan);
   if (!tableclothFee.ok) {
-    alert("Liczba obrusów do prania lub z plamami nie może być większa niż liczba wypożyczonych obrusów.");
+    alert("Liczba obrusÄ‚Ĺ‚w do prania lub z plamami nie moÄąÄ˝e byĂ„â€ˇ wiĂ„â„˘ksza niÄąÄ˝ liczba wypoÄąÄ˝yczonych obrusÄ‚Ĺ‚w.");
     return;
   }
   const returnExtraFee = damageCost + Number(tableclothFee.total || 0);
@@ -5715,7 +6001,7 @@ async function returnRental(id) {
     const { error: rentalError } = await supabaseClient
       .from("rentals")
       .update({
-        status: "Zwrócone",
+        status: "ZwrÄ‚Ĺ‚cone",
         returned_at: new Date().toISOString().slice(0, 10),
         return_notes: returnNotes || null,
         damage_cost: returnExtraFee,
@@ -5725,7 +6011,7 @@ async function returnRental(id) {
       })
       .eq("id", id);
     if (rentalError) {
-      alert(`Nie udało się zapisać zwrotu w Supabase: ${rentalError.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ zwrotu w Supabase: ${rentalError.message}`);
       return;
     }
 
@@ -5740,7 +6026,7 @@ async function returnRental(id) {
         })
         .eq("id", item.lineId);
       if (lineError) {
-        alert(`Zwrot zapisany częściowo, ale jedna pozycja ma błąd: ${lineError.message}`);
+        alert(`Zwrot zapisany czĂ„â„˘Äąâ€şciowo, ale jedna pozycja ma bÄąâ€šĂ„â€¦d: ${lineError.message}`);
         return;
       }
     }
@@ -5748,17 +6034,17 @@ async function returnRental(id) {
     const paymentResult = await addRentalPaymentToSupabase(loan, paymentStatus);
     if (!paymentResult.ok) return;
 
-    await logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
+    await logActivity("WypoÄąÄ˝yczalnia", "PrzyjĂ„â„˘cie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
     if (returnExtraFee > 0) {
-      await logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
+      await logActivity("WypoÄąÄ˝yczalnia", "PotrĂ„â€¦cenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
     }
     lastReturnedRentalId = id;
     await refreshSupabaseData();
-    showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
+    showToast("Zwrot zapisany. MoÄąÄ˝esz teraz wydrukowaĂ„â€ˇ protokÄ‚Ĺ‚Äąâ€š zwrotu.");
     return;
   }
   rememberUndo();
-  loan.status = "Zwrócone";
+  loan.status = "ZwrÄ‚Ĺ‚cone";
   loan.returnedAt = new Date().toISOString().slice(0, 10);
   loan.returnNotes = returnNotes;
   loan.damageCost = returnExtraFee;
@@ -5770,11 +6056,11 @@ async function returnRental(id) {
   saveState();
   lastReturnedRentalId = id;
   render();
-  logActivity("Wypożyczalnia", "Przyjęcie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
+  logActivity("WypoÄąÄ˝yczalnia", "PrzyjĂ„â„˘cie zwrotu", { summary: `${loan.firstName} ${loan.lastName}` });
   if (returnExtraFee > 0) {
-    logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
+    logActivity("WypoÄąÄ˝yczalnia", "PotrĂ„â€¦cenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
   }
-  showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
+  showToast("Zwrot zapisany. MoÄąÄ˝esz teraz wydrukowaĂ„â€ˇ protokÄ‚Ĺ‚Äąâ€š zwrotu.");
 }
 
 function printRental(id) {
@@ -5806,9 +6092,9 @@ function closeFeePrintModal() {
 
 async function printFeesReport() {
   const scopes = {
-    all: { key: "all", label: "Wszystkie składki" },
-    late: { key: "late", label: "Tylko zaległe" },
-    paid: { key: "paid", label: "Tylko opłacone" },
+    all: { key: "all", label: "Wszystkie skÄąâ€šadki" },
+    late: { key: "late", label: "Tylko zalegÄąâ€še" },
+    paid: { key: "paid", label: "Tylko opÄąâ€šacone" },
     visible: { key: "visible", label: "Aktualnie widoczna lista" }
   };
   const selected = document.querySelector('input[name="feePrintScope"]:checked')?.value || "all";
@@ -5816,7 +6102,7 @@ async function printFeesReport() {
   const rows = feeRowsForPrint(scope.key);
   elements.printSheet.innerHTML = feesReportHtml(rows, scope.label);
   closeFeePrintModal();
-  await logActivity("Składki", "Druk listy składek", { summary: scope.label });
+  await logActivity("SkÄąâ€šadki", "Druk listy skÄąâ€šadek", { summary: scope.label });
   window.print();
 }
 
@@ -5824,7 +6110,7 @@ async function printFundingSettlement(id) {
   const source = state.fundingSources.find((entry) => entry.id === id);
   if (!source) return;
   elements.printSheet.innerHTML = fundingSettlementPrintHtml(source);
-  await logActivity("Źródła finansowania", "Druk rozliczenia", { summary: source.name });
+  await logActivity("ÄąÄ…rÄ‚Ĺ‚dÄąâ€ša finansowania", "Druk rozliczenia", { summary: source.name });
   window.print();
 }
 
@@ -5855,7 +6141,7 @@ async function editInvoiceRequest(id) {
     buyerPhone: prompt("Telefon:", request.buyerPhone || "") ?? request.buyerPhone,
     itemDescription: prompt("Opis zakupu:", request.itemDescription || "") ?? request.itemDescription,
     gross: request.gross,
-    paymentMethod: prompt("Forma płatności:", request.paymentMethod || "") ?? request.paymentMethod,
+    paymentMethod: prompt("Forma pÄąâ€šatnoÄąâ€şci:", request.paymentMethod || "") ?? request.paymentMethod,
     notes: prompt("Uwagi:", request.notes || "") ?? request.notes,
     status: prompt(`Status (${statusOptions}):`, request.status || "do_wystawienia") ?? request.status
   };
@@ -5863,13 +6149,13 @@ async function editInvoiceRequest(id) {
   if (amountInput !== null) {
     const amount = Number(String(amountInput).replace(",", "."));
     if (!Number.isFinite(amount) || amount < 0) {
-      alert("Podaj poprawną kwotę brutto.");
+      alert("Podaj poprawnĂ„â€¦ kwotĂ„â„˘ brutto.");
       return;
     }
     updated.gross = amount;
   }
   if (!["do_wystawienia", "w_trakcie", "wystawiona", "anulowana"].includes(updated.status)) {
-    alert(`Status musi mieć jedną z wartości: ${statusOptions}.`);
+    alert(`Status musi mieĂ„â€ˇ jednĂ„â€¦ z wartoÄąâ€şci: ${statusOptions}.`);
     return;
   }
 
@@ -5892,21 +6178,21 @@ async function editInvoiceRequest(id) {
       .update(payload)
       .eq("id", id);
     if (error) {
-      console.error("Nie udało się edytować zgłoszenia ze stoiska.", { id, payload, error });
-      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      console.error("Nie udaÄąâ€šo siĂ„â„˘ edytowaĂ„â€ˇ zgÄąâ€šoszenia ze stoiska.", { id, payload, error });
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ zmian: ${error.message}`);
       return;
     }
-    await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+    await logActivity("Faktury", "Edycja zgÄąâ€šoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
     await refreshSupabaseData();
-    showToast("Zapisano zmiany w zgłoszeniu");
+    showToast("Zapisano zmiany w zgÄąâ€šoszeniu");
     return;
   }
 
   Object.assign(request, updated);
   saveState();
   render();
-  await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
-  showToast("Zapisano zmiany w zgłoszeniu");
+  await logActivity("Faktury", "Edycja zgÄąâ€šoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+  showToast("Zapisano zmiany w zgÄąâ€šoszeniu");
 }
 
 function cancelInvoiceRequestEdit() {
@@ -5921,7 +6207,7 @@ async function saveInvoiceRequestEdit(event, id) {
   const data = formData(event.target);
   const amount = Number(String(data.gross || 0).replace(",", "."));
   if (!Number.isFinite(amount) || amount < 0) {
-    alert("Podaj poprawną kwotę brutto.");
+    alert("Podaj poprawnĂ„â€¦ kwotĂ„â„˘ brutto.");
     return;
   }
   const updated = {
@@ -5955,14 +6241,14 @@ async function saveInvoiceRequestEdit(event, id) {
       .update(payload)
       .eq("id", id);
     if (error) {
-      console.error("Nie udało się edytować zgłoszenia ze stoiska.", { id, payload, error });
-      alert(`Nie udało się zapisać zmian: ${error.message}`);
+      console.error("Nie udaÄąâ€šo siĂ„â„˘ edytowaĂ„â€ˇ zgÄąâ€šoszenia ze stoiska.", { id, payload, error });
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zapisaĂ„â€ˇ zmian: ${error.message}`);
       return;
     }
     editingInvoiceRequestId = "";
-    await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+    await logActivity("Faktury", "Edycja zgÄąâ€šoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
     await refreshSupabaseData();
-    showToast("Zapisano zmiany w zgłoszeniu");
+    showToast("Zapisano zmiany w zgÄąâ€šoszeniu");
     return;
   }
 
@@ -5970,15 +6256,15 @@ async function saveInvoiceRequestEdit(event, id) {
   editingInvoiceRequestId = "";
   saveState();
   render();
-  await logActivity("Faktury", "Edycja zgłoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
-  showToast("Zapisano zmiany w zgłoszeniu");
+  await logActivity("Faktury", "Edycja zgÄąâ€šoszenia ze stoiska", { summary: `${updated.buyerName || "Brak nabywcy"} - ${money(updated.gross)}` });
+  showToast("Zapisano zmiany w zgÄąâ€šoszeniu");
 }
 
 function prepareInvoiceFromRequest(id) {
   const request = state.invoiceRequests.find((entry) => entry.id === id);
   if (!request) return;
   if (request.status === "wystawiona") {
-    alert("To zgłoszenie jest już oznaczone jako wystawione. Nie można utworzyć drugiej faktury z tego samego zgłoszenia.");
+    alert("To zgÄąâ€šoszenie jest juÄąÄ˝ oznaczone jako wystawione. Nie moÄąÄ˝na utworzyĂ„â€ˇ drugiej faktury z tego samego zgÄąâ€šoszenia.");
     return;
   }
   const form = document.querySelector("#invoiceForm");
@@ -5994,8 +6280,8 @@ function prepareInvoiceFromRequest(id) {
   form.buyerName.value = request.buyerName || "";
   form.buyerAddress.value = request.buyerAddress || "";
   form.buyerNip.value = request.buyerNip || "";
-  form.source.value = "Sprzedaż";
-  form.itemName.value = request.itemDescription || "Sprzedaż ze stoiska";
+  form.source.value = "SprzedaÄąÄ˝";
+  form.itemName.value = request.itemDescription || "SprzedaÄąÄ˝ ze stoiska";
   form.quantity.value = 1;
   form.unitPrice.value = net.toFixed(2);
   form.vatRate.value = String(vatRate);
@@ -6005,19 +6291,19 @@ function prepareInvoiceFromRequest(id) {
   form.notes.value = [
     request.buyerEmail ? `E-mail: ${request.buyerEmail}` : "",
     request.buyerPhone ? `Telefon: ${request.buyerPhone}` : "",
-    request.notes ? `Uwagi zgłoszenia: ${request.notes}` : ""
+    request.notes ? `Uwagi zgÄąâ€šoszenia: ${request.notes}` : ""
   ].filter(Boolean).join("\n");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
   form.number.focus();
-  showToast("Uzupełniono formularz faktury danymi ze zgłoszenia");
+  showToast("UzupeÄąâ€šniono formularz faktury danymi ze zgÄąâ€šoszenia");
 }
 
 async function printInvoiceRequest(id) {
   const request = state.invoiceRequests.find((entry) => entry.id === id);
   if (!request) return;
-  document.title = "Zgłoszenie danych do faktury";
+  document.title = "ZgÄąâ€šoszenie danych do faktury";
   elements.printSheet.innerHTML = invoiceRequestPrintHtml(request);
-  await logActivity("Faktury", "Druk zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
+  await logActivity("Faktury", "Druk zgÄąâ€šoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
   window.print();
 }
 
@@ -6025,18 +6311,18 @@ async function prepareInvoiceRequestEmail(id) {
   const request = state.invoiceRequests.find((entry) => entry.id === id);
   if (!request) return;
   if (!request.buyerEmail) {
-    alert("Brak adresu e-mail w zgłoszeniu.");
+    alert("Brak adresu e-mail w zgÄąâ€šoszeniu.");
     return;
   }
-  const subject = "Przyjęcie danych do faktury - KGiGW we Włosani";
+  const subject = "PrzyjĂ„â„˘cie danych do faktury - KGiGW we WÄąâ€šosani";
   const body = [
-    "Dzień dobry,",
-    "potwierdzamy przyjęcie danych do wystawienia faktury.",
+    "DzieÄąâ€ž dobry,",
+    "potwierdzamy przyjĂ„â„˘cie danych do wystawienia faktury.",
     "Faktura zostanie przygotowana po sprawdzeniu danych.",
     "",
-    "KGiGW we Włosani"
+    "KGiGW we WÄąâ€šosani"
   ].join("\n");
-  await logActivity("Faktury", "Przygotowanie e-maila do zgłoszenia", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
+  await logActivity("Faktury", "Przygotowanie e-maila do zgÄąâ€šoszenia", { summary: `${request.buyerName || "Brak nabywcy"} - ${money(request.gross)}` });
   window.location.href = `mailto:${encodeURIComponent(request.buyerEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -6044,31 +6330,31 @@ async function markInvoicePaid(id) {
   const invoice = state.invoices.find((entry) => entry.id === id);
   if (!invoice) return;
   if (isInvoicePaid(invoice.paymentStatus)) {
-    showToast("Faktura jest już oznaczona jako zapłacona");
+    showToast("Faktura jest juÄąÄ˝ oznaczona jako zapÄąâ€šacona");
     return;
   }
   const loan = invoice.rentalId ? state.rentalLoans.find((entry) => entry.id === invoice.rentalId) : null;
   if (rentalAlreadyPaid(loan)) {
-    alert("To wypożyczenie było już rozliczone w Finansach. Faktura nie zostanie zaksięgowana drugi raz.");
+    alert("To wypoÄąÄ˝yczenie byÄąâ€šo juÄąÄ˝ rozliczone w Finansach. Faktura nie zostanie zaksiĂ„â„˘gowana drugi raz.");
     return;
   }
 
-  const choice = prompt("Wybierz płatność:\n1 - Opłacona gotówką\n2 - Opłacona przelewem", "2");
+  const choice = prompt("Wybierz pÄąâ€šatnoÄąâ€şĂ„â€ˇ:\n1 - OpÄąâ€šacona gotÄ‚Ĺ‚wkĂ„â€¦\n2 - OpÄąâ€šacona przelewem", "2");
   if (!choice) return;
   const normalizedChoice = choice.trim().toLowerCase();
   let paymentStatus = "";
   if (normalizedChoice === "1" || normalizedChoice.includes("got")) paymentStatus = "cash";
   if (normalizedChoice === "2" || normalizedChoice.includes("przelew")) paymentStatus = "transfer";
   if (!paymentStatus) {
-    alert("Wybierz 1 dla gotówki albo 2 dla przelewu.");
+    alert("Wybierz 1 dla gotÄ‚Ĺ‚wki albo 2 dla przelewu.");
     return;
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const paidAt = prompt("Data płatności (RRRR-MM-DD):", today);
+  const paidAt = prompt("Data pÄąâ€šatnoÄąâ€şci (RRRR-MM-DD):", today);
   if (!paidAt) return;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) {
-    alert("Podaj datę w formacie RRRR-MM-DD, np. 2026-05-26.");
+    alert("Podaj datĂ„â„˘ w formacie RRRR-MM-DD, np. 2026-05-26.");
     return;
   }
 
@@ -6082,9 +6368,9 @@ async function markInvoicePaid(id) {
   if (supabaseClient && currentRole) {
     const result = await addInvoicePaymentToSupabase(paidInvoice);
     if (!result.ok) return;
-    await logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
+    await logActivity("Faktury", "Oznaczenie faktury jako opÄąâ€šaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
     await refreshSupabaseData();
-    showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
+    showToast("Faktura oznaczona jako zapÄąâ€šacona i dodana do FinansÄ‚Ĺ‚w");
     return;
   }
 
@@ -6094,8 +6380,8 @@ async function markInvoicePaid(id) {
   addInvoicePaymentLocal(invoice);
   saveState();
   render();
-  logActivity("Faktury", "Oznaczenie faktury jako opłaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
-  showToast("Faktura oznaczona jako zapłacona i dodana do Finansów");
+  logActivity("Faktury", "Oznaczenie faktury jako opÄąâ€šaconej", { summary: `${invoice.number} - ${invoice.buyerName}` });
+  showToast("Faktura oznaczona jako zapÄąâ€šacona i dodana do FinansÄ‚Ĺ‚w");
 }
 
 async function updateInvoiceRequestStatus(id, status) {
@@ -6103,7 +6389,7 @@ async function updateInvoiceRequestStatus(id, status) {
   if (!request) return;
   const label = invoiceRequestStatusLabel(status);
   if (status === "anulowana") {
-    const confirmed = confirm("Anulować to zgłoszenie ze stoiska?");
+    const confirmed = confirm("AnulowaĂ„â€ˇ to zgÄąâ€šoszenie ze stoiska?");
     if (!confirmed) return;
   }
 
@@ -6113,21 +6399,21 @@ async function updateInvoiceRequestStatus(id, status) {
       .update({ status })
       .eq("id", id);
     if (error) {
-      console.error("Nie udało się zmienić statusu zgłoszenia ze stoiska.", { id, status, error });
-      alert(`Nie udało się zmienić statusu zgłoszenia: ${error.message}`);
+      console.error("Nie udaÄąâ€šo siĂ„â„˘ zmieniĂ„â€ˇ statusu zgÄąâ€šoszenia ze stoiska.", { id, status, error });
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ zmieniĂ„â€ˇ statusu zgÄąâ€šoszenia: ${error.message}`);
       return;
     }
-    await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
+    await logActivity("Faktury", "Zmiana statusu zgÄąâ€šoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
     await refreshSupabaseData();
-    showToast(`Zmieniono status zgłoszenia: ${label}`);
+    showToast(`Zmieniono status zgÄąâ€šoszenia: ${label}`);
     return;
   }
 
   request.status = status;
   saveState();
   render();
-  await logActivity("Faktury", "Zmiana statusu zgłoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
-  showToast(`Zmieniono status zgłoszenia: ${label}`);
+  await logActivity("Faktury", "Zmiana statusu zgÄąâ€šoszenia ze stoiska", { summary: `${request.buyerName || "Brak nabywcy"} - ${label}` });
+  showToast(`Zmieniono status zgÄąâ€šoszenia: ${label}`);
 }
 
 async function openDocumentAttachment(id) {
@@ -6141,7 +6427,7 @@ async function openDocumentAttachment(id) {
   const previewable = isPreviewableDocument(doc);
   const previewWindow = previewable ? window.open("", "_blank") : null;
   if (previewable && !previewWindow) {
-    alert("Przeglądarka zablokowała otwarcie pliku. Zezwól na wyskakujące okna dla tej strony.");
+    alert("PrzeglĂ„â€¦darka zablokowaÄąâ€ša otwarcie pliku. ZezwÄ‚Ĺ‚l na wyskakujĂ„â€¦ce okna dla tej strony.");
     return;
   }
   let url = doc.attachment?.dataUrl || "";
@@ -6151,14 +6437,14 @@ async function openDocumentAttachment(id) {
       .createSignedUrl(doc.filePath, 60);
     if (error) {
       if (previewWindow) previewWindow.close();
-      alert(`Nie udało się otworzyć pliku: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ otworzyĂ„â€ˇ pliku: ${error.message}`);
       return;
     }
     url = data.signedUrl;
   }
   if (!url) {
     if (previewWindow) previewWindow.close();
-    alert("Nie udało się otworzyć pliku.");
+    alert("Nie udaÄąâ€šo siĂ„â„˘ otworzyĂ„â€ˇ pliku.");
     return;
   }
   if (previewable) {
@@ -6177,12 +6463,12 @@ async function openDocumentAttachment(id) {
 
 async function removeItem(collection, id) {
   if (!canCorrect()) {
-    alert("Usuwanie wpisów jest dostępne tylko dla osób z uprawnieniami.");
+    alert("Usuwanie wpisÄ‚Ĺ‚w jest dostĂ„â„˘pne tylko dla osÄ‚Ĺ‚b z uprawnieniami.");
     return;
   }
   if (collection === "members") {
     const member = state.members.find((entry) => entry.id === id);
-    const confirmed = confirm(`Archiwizować członka: ${member?.name || "wybrany członek"}? Rekord zostanie w bazie, a historia składek nie zostanie usunięta.`);
+    const confirmed = confirm(`ArchiwizowaĂ„â€ˇ czÄąâ€šonka: ${member?.name || "wybrany czÄąâ€šonek"}? Rekord zostanie w bazie, a historia skÄąâ€šadek nie zostanie usuniĂ„â„˘ta.`);
     if (!confirmed) return;
     if (supabaseClient && currentRole) {
       const { error } = await supabaseClient
@@ -6190,12 +6476,12 @@ async function removeItem(collection, id) {
         .update({ status: "Nieaktywny" })
         .eq("id", id);
       if (error) {
-        alert(`Nie udało się zarchiwizować członka w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ zarchiwizowaĂ„â€ˇ czÄąâ€šonka w Supabase: ${error.message}`);
         return;
       }
-      await logActivity("Członkowie", "Archiwizacja członka", { summary: member?.name || id });
+      await logActivity("CzÄąâ€šonkowie", "Archiwizacja czÄąâ€šonka", { summary: member?.name || id });
       await refreshSupabaseData();
-      showToast("Członek został zarchiwizowany");
+      showToast("CzÄąâ€šonek zostaÄąâ€š zarchiwizowany");
       return;
     }
     if (member) {
@@ -6203,18 +6489,18 @@ async function removeItem(collection, id) {
       member.status = "Nieaktywny";
       saveState();
       render();
-      logActivity("Członkowie", "Archiwizacja członka", { summary: member.name });
-      showToast("Członek został zarchiwizowany");
+      logActivity("CzÄąâ€šonkowie", "Archiwizacja czÄąâ€šonka", { summary: member.name });
+      showToast("CzÄąâ€šonek zostaÄąâ€š zarchiwizowany");
     }
     return;
   }
   if (["docs", "invoices"].includes(collection) && !isAdmin()) {
-    alert("Dokumenty i faktury może usuwać tylko Administrator.");
+    alert("Dokumenty i faktury moÄąÄ˝e usuwaĂ„â€ˇ tylko Administrator.");
     return;
   }
   if (collection === "money") {
     const entry = state.money.find((item) => item.id === id);
-    const confirmed = confirm("Anulować ten wpis w Finansach? Wpis zostanie w historii, ale nie będzie liczony do salda.");
+    const confirmed = confirm("AnulowaĂ„â€ˇ ten wpis w Finansach? Wpis zostanie w historii, ale nie bĂ„â„˘dzie liczony do salda.");
     if (!confirmed) return;
     if (supabaseClient && currentRole) {
       const { error } = await supabaseClient
@@ -6226,12 +6512,12 @@ async function removeItem(collection, id) {
         })
         .eq("id", id);
       if (error) {
-        alert(`Nie udało się anulować operacji kasowej w Supabase: ${error.message}`);
+        alert(`Nie udaÄąâ€šo siĂ„â„˘ anulowaĂ„â€ˇ operacji kasowej w Supabase: ${error.message}`);
         return;
       }
       await logActivity("Finanse", "Anulowanie wpisu finansowego", { summary: entry ? moneyLogSummary(entry) : id });
       await refreshSupabaseData();
-      showToast("Wpis w Finansach został anulowany");
+      showToast("Wpis w Finansach zostaÄąâ€š anulowany");
       return;
     }
     if (entry) {
@@ -6242,29 +6528,29 @@ async function removeItem(collection, id) {
       saveState();
       render();
       logActivity("Finanse", "Anulowanie wpisu finansowego", { summary: moneyLogSummary(entry) });
-      showToast("Wpis w Finansach został anulowany");
+      showToast("Wpis w Finansach zostaÄąâ€š anulowany");
     }
     return;
   }
   const feeToDelete = collection === "fees" ? state.fees.find((fee) => fee.id === id) : null;
   const confirmed = collection === "fees"
-    ? confirm(`Usunąć tę konkretną wpłatę: ${feeToDelete ? `${feeToDelete.member || "członek"} - ${money(feeToDelete.amount)} (${feeToDelete.period || feeToDelete.year || FEE_YEAR})` : "wybrana wpłata"}?`)
-    : confirm("Czy na pewno usunąć ten wpis? Tej operacji nie da się cofnąć.");
+    ? confirm(`UsunĂ„â€¦Ă„â€ˇ tĂ„â„˘ konkretnĂ„â€¦ wpÄąâ€šatĂ„â„˘: ${feeToDelete ? `${feeToDelete.member || "czÄąâ€šonek"} - ${money(feeToDelete.amount)} (${feeToDelete.period || feeToDelete.year || FEE_YEAR})` : "wybrana wpÄąâ€šata"}?`)
+    : confirm("Czy na pewno usunĂ„â€¦Ă„â€ˇ ten wpis? Tej operacji nie da siĂ„â„˘ cofnĂ„â€¦Ă„â€ˇ.");
   if (!confirmed) return;
   if (supabaseClient && currentRole && collection === "fees") {
     const { error } = await supabaseClient.from("fees").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć wpisu w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ wpisu w Supabase: ${error.message}`);
       return;
     }
-    await logActivity("Składki", "Usunięcie wpłaty", { summary: feeToDelete ? `${feeToDelete.member} - ${money(feeToDelete.amount)}` : id });
+    await logActivity("SkÄąâ€šadki", "UsuniĂ„â„˘cie wpÄąâ€šaty", { summary: feeToDelete ? `${feeToDelete.member} - ${money(feeToDelete.amount)}` : id });
     await refreshSupabaseData();
     return;
   }
   if (supabaseClient && currentRole && collection === "rentalLoans") {
     const { error } = await supabaseClient.from("rentals").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć wypożyczenia w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ wypoÄąÄ˝yczenia w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -6273,7 +6559,7 @@ async function removeItem(collection, id) {
   if (supabaseClient && currentRole && collection === "rentalInventory") {
     const { error } = await supabaseClient.from("rental_inventory").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć przedmiotu z magazynu w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ przedmiotu z magazynu w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -6282,7 +6568,7 @@ async function removeItem(collection, id) {
   if (supabaseClient && currentRole && collection === "events") {
     const { error } = await supabaseClient.from("events").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć wydarzenia w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ wydarzenia w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -6295,7 +6581,7 @@ async function removeItem(collection, id) {
     }
     const { error } = await supabaseClient.from("documents").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć dokumentu w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ dokumentu w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -6304,7 +6590,7 @@ async function removeItem(collection, id) {
   if (supabaseClient && currentRole && collection === "invoices") {
     const { error } = await supabaseClient.from("invoices").delete().eq("id", id);
     if (error) {
-      alert(`Nie udało się usunąć faktury w Supabase: ${error.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ usunĂ„â€¦Ă„â€ˇ faktury w Supabase: ${error.message}`);
       return;
     }
     await refreshSupabaseData();
@@ -6324,7 +6610,7 @@ function availableQuantity(itemId) {
 
 function borrowedQuantity(itemId) {
   return state.rentalLoans
-    .filter((loan) => loan.status !== "Zwrócone")
+    .filter((loan) => loan.status !== "ZwrÄ‚Ĺ‚cone")
     .flatMap((loan) => Array.isArray(loan.items) ? loan.items : [])
     .filter((entry) => entry && entry.id === itemId)
     .reduce((sum, entry) => sum + Number(entry.quantity || 0), 0);
@@ -6332,7 +6618,7 @@ function borrowedQuantity(itemId) {
 
 function returnedQuantity(itemId) {
   return state.rentalLoans
-    .filter((loan) => loan.status === "Zwrócone")
+    .filter((loan) => loan.status === "ZwrÄ‚Ĺ‚cone")
     .flatMap((loan) => Array.isArray(loan.returnItems)
       ? loan.returnItems
       : Array.isArray(loan.items)
@@ -6414,17 +6700,17 @@ function rentalSettlementHtml(loan) {
   const settlement = rentalFinalSettlement(loan);
   const resultRow = settlement.refundToClient > 0
     ? `<small>Do zwrotu klientowi: ${money(settlement.refundToClient)}</small>`
-    : `<small>Do zapłaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
+    : `<small>Do zapÄąâ€šaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
   return `
     <div class="finance-summary">
       <strong>Rozliczenie zwrotu</strong>
-      <small>Kwota wypożyczenia po rabacie: ${money(settlement.plannedCost)}</small>
+      <small>Kwota wypoÄąÄ˝yczenia po rabacie: ${money(settlement.plannedCost)}</small>
       <small>Dodatkowe doby po terminie: ${settlement.lateDays}</small>
-      <small>Dopłata za opóźnienie: ${money(settlement.lateFee)}</small>
-      <small>Pranie obrusów: ${money(settlement.tablecloth.washing)}</small>
+      <small>DopÄąâ€šata za opÄ‚Ĺ‚ÄąĹźnienie: ${money(settlement.lateFee)}</small>
+      <small>Pranie obrusÄ‚Ĺ‚w: ${money(settlement.tablecloth.washing)}</small>
       <small>Uporczywe plamy: ${money(settlement.tablecloth.stainFee)}</small>
       <small>Braki/uszkodzenia: ${money(settlement.manualDamage)}</small>
-      <small>Razem należność: ${money(settlement.finalDue)}</small>
+      <small>Razem naleÄąÄ˝noÄąâ€şĂ„â€ˇ: ${money(settlement.finalDue)}</small>
       <small>Kaucja pobrana przy wydaniu: ${money(settlement.deposit)}</small>
       ${resultRow}
     </div>
@@ -6471,12 +6757,12 @@ function tableclothReturnFeeFromInputs(loan) {
 function tableclothReturnNotes(fee) {
   if (!fee?.total) return "";
   return [
-    "Dodatkowe opłaty za obrusy:",
-    `Liczba obrusów do prania: ${fee.wash}`,
-    `Liczba obrusów z uporczywymi plamami: ${fee.stains}`,
-    `Pranie obrusów: ${money(fee.washing)}`,
+    "Dodatkowe opÄąâ€šaty za obrusy:",
+    `Liczba obrusÄ‚Ĺ‚w do prania: ${fee.wash}`,
+    `Liczba obrusÄ‚Ĺ‚w z uporczywymi plamami: ${fee.stains}`,
+    `Pranie obrusÄ‚Ĺ‚w: ${money(fee.washing)}`,
     `Uporczywe plamy: ${money(fee.stainFee)}`,
-    `Razem opłaty za obrusy: ${money(fee.total)}`
+    `Razem opÄąâ€šaty za obrusy: ${money(fee.total)}`
   ].join("\n");
 }
 
@@ -6521,15 +6807,15 @@ function tableclothReturnFormHtml(loan) {
   if (!issued) return "";
   return `
     <div class="notice compact-notice">
-      <strong>Dodatkowe opłaty za obrusy</strong>
-      <small>Domyślnie 0 zł. Wpisz tylko wtedy, gdy obrus wrócił zabrudzony.</small>
+      <strong>Dodatkowe opÄąâ€šaty za obrusy</strong>
+      <small>DomyÄąâ€şlnie 0 zÄąâ€š. Wpisz tylko wtedy, gdy obrus wrÄ‚Ĺ‚ciÄąâ€š zabrudzony.</small>
       <div class="form-grid">
         <label>
-          Liczba obrusów do prania
+          Liczba obrusÄ‚Ĺ‚w do prania
           <input id="returnLaundry-${loan.id}" type="number" min="0" max="${issued}" step="1" value="0" oninput="updateTableclothReturnSummary('${loan.id}')" />
         </label>
         <label>
-          Liczba obrusów z uporczywymi plamami
+          Liczba obrusÄ‚Ĺ‚w z uporczywymi plamami
           <input id="returnStains-${loan.id}" type="number" min="0" max="${issued}" step="1" value="0" oninput="updateTableclothReturnSummary('${loan.id}')" />
         </label>
       </div>
@@ -6546,24 +6832,24 @@ function tableclothReturnSummaryHtml(loan, fee) {
   const settlement = rentalFinalSettlement({ ...loan, damageCost: returnFee, returnNotes: tableclothReturnNotes(fee) }, new Date().toISOString().slice(0, 10));
   const resultRow = settlement.refundToClient > 0
     ? `<small>Do zwrotu klientowi: ${money(settlement.refundToClient)}</small>`
-    : `<small>Do zapłaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
+    : `<small>Do zapÄąâ€šaty przy zwrocie: ${money(settlement.dueAtReturn)}</small>`;
   return `
-    ${fee.total ? "" : "<small>Brak dopłat za pranie.</small>"}
-    <small>Kwota wypożyczenia po rabacie: ${money(settlement.plannedCost)}</small>
-    <small>Pranie obrusów: ${money(fee.washing || 0)}</small>
+    ${fee.total ? "" : "<small>Brak dopÄąâ€šat za pranie.</small>"}
+    <small>Kwota wypoÄąÄ˝yczenia po rabacie: ${money(settlement.plannedCost)}</small>
+    <small>Pranie obrusÄ‚Ĺ‚w: ${money(fee.washing || 0)}</small>
     <small>Uporczywe plamy: ${money(fee.stainFee || 0)}</small>
     <small>Braki/uszkodzenia: ${money(safeManual)}</small>
-    <small>Razem należność: ${money(settlement.finalDue)}</small>
+    <small>Razem naleÄąÄ˝noÄąâ€şĂ„â€ˇ: ${money(settlement.finalDue)}</small>
     <small>Kaucja pobrana przy wydaniu: ${money(settlement.deposit)}</small>
     ${resultRow}
   `;
-  const laundryText = fee.total ? "" : "<small>Brak dopłat za pranie.</small>";
+  const laundryText = fee.total ? "" : "<small>Brak dopÄąâ€šat za pranie.</small>";
   return `
     ${laundryText}
-    <small>Kwota wypożyczenia: ${money(settlement.plannedCost)}</small>
-    <small>Pranie obrusów: ${money(fee.washing || 0)}</small>
+    <small>Kwota wypoÄąÄ˝yczenia: ${money(settlement.plannedCost)}</small>
+    <small>Pranie obrusÄ‚Ĺ‚w: ${money(fee.washing || 0)}</small>
     <small>Uporczywe plamy: ${money(fee.stainFee || 0)}</small>
-    <small>Dopłata przy zwrocie: ${money(returnFee)}</small>
+    <small>DopÄąâ€šata przy zwrocie: ${money(returnFee)}</small>
     <small>Razem: ${money(settlement.total)}</small>
   `;
 }
@@ -6574,7 +6860,7 @@ function updateTableclothReturnSummary(id) {
   if (!loan || !target) return;
   const fee = tableclothReturnFeeFromInputs(loan);
   if (!fee.ok) {
-    target.innerHTML = '<small class="text-danger">Liczba sztuk nie może być większa niż liczba wypożyczonych obrusów.</small>';
+    target.innerHTML = '<small class="text-danger">Liczba sztuk nie moÄąÄ˝e byĂ„â€ˇ wiĂ„â„˘ksza niÄąÄ˝ liczba wypoÄąÄ˝yczonych obrusÄ‚Ĺ‚w.</small>';
     return;
   }
   target.innerHTML = tableclothReturnSummaryHtml(loan, fee);
@@ -6658,7 +6944,7 @@ function rentalMetaFromNotes(notes) {
   try {
     return JSON.parse(text.slice(start + RENTAL_META_START.length, end));
   } catch (error) {
-    console.warn("Nie udało się odczytać metadanych wypożyczenia", error);
+    console.warn("Nie udaÄąâ€šo siĂ„â„˘ odczytaĂ„â€ˇ metadanych wypoÄąÄ˝yczenia", error);
     return null;
   }
 }
@@ -6702,17 +6988,17 @@ function rentalMetaForLoan(loan) {
 
 function rentalIssueSettlementHtml(loan) {
   const meta = rentalMetaForLoan(loan);
-  const discountReason = meta.discountReason ? `<small>Powód rabatu: ${escapeHtml(meta.discountReason)}</small>` : "";
+  const discountReason = meta.discountReason ? `<small>PowÄ‚Ĺ‚d rabatu: ${escapeHtml(meta.discountReason)}</small>` : "";
   return `
     <div class="finance-summary">
       <strong>Rozliczenie wydania</strong>
       <small>Kwota przed rabatem: ${money(meta.baseTotal)}</small>
       <small>Rabat: ${money(meta.discountAmount)}</small>
       ${discountReason}
-      <small>Kwota wypożyczenia po rabacie: ${money(meta.afterDiscount)}</small>
+      <small>Kwota wypoÄąÄ˝yczenia po rabacie: ${money(meta.afterDiscount)}</small>
       <small>Kaucja pobrana przy wydaniu: ${money(meta.depositAmount)}</small>
       <small>Do pobrania przy wydaniu: ${money(meta.collectedAtIssue)}</small>
-      <small>Rozliczenie wypożyczenia nastąpi przy zwrocie.</small>
+      <small>Rozliczenie wypoÄąÄ˝yczenia nastĂ„â€¦pi przy zwrocie.</small>
     </div>
   `;
 }
@@ -6722,11 +7008,11 @@ function rentalReturnDepositHtml(loan) {
   if (!finalSettlement.deposit && !finalSettlement.finalDue) return "";
   const finalResult = finalSettlement.refundToClient > 0
     ? `<strong>Do zwrotu klientowi:</strong> ${money(finalSettlement.refundToClient)}`
-    : `<strong>Do zapłaty przy zwrocie:</strong> ${money(finalSettlement.dueAtReturn)}`;
+    : `<strong>Do zapÄąâ€šaty przy zwrocie:</strong> ${money(finalSettlement.dueAtReturn)}`;
   return `
     <section>
       <h3>Rozliczenie kaucji</h3>
-      <p><strong>Razem należność:</strong> ${money(finalSettlement.finalDue)}<br>
+      <p><strong>Razem naleÄąÄ˝noÄąâ€şĂ„â€ˇ:</strong> ${money(finalSettlement.finalDue)}<br>
       <strong>Kaucja pobrana przy wydaniu:</strong> ${money(finalSettlement.deposit)}<br>
       ${finalResult}</p>
     </section>
@@ -6740,11 +7026,11 @@ function rentalReturnDepositHtml(loan) {
   if (!deposit && !deductions) return "";
   return `
     <section>
-      <h3>Kaucja i potrącenia</h3>
+      <h3>Kaucja i potrĂ„â€¦cenia</h3>
       <p><strong>Kaucja pobrana przy wydaniu:</strong> ${money(deposit)}<br>
-      <strong>Potrącenia za braki/uszkodzenia/pranie:</strong> ${money(deductions)}<br>
+      <strong>PotrĂ„â€¦cenia za braki/uszkodzenia/pranie:</strong> ${money(deductions)}<br>
       <strong>Kaucja do zwrotu:</strong> ${money(returnedDeposit)}<br>
-      <strong>Dopłata klienta po rozliczeniu kaucji:</strong> ${money(extraDue)}</p>
+      <strong>DopÄąâ€šata klienta po rozliczeniu kaucji:</strong> ${money(extraDue)}</p>
     </section>
   `;
 }
@@ -6762,28 +7048,28 @@ function isInvoicePaid(status) {
 }
 
 function rentalPaymentMethod(status) {
-  if (status === "cash") return "Gotówka";
+  if (status === "cash") return "GotÄ‚Ĺ‚wka";
   if (status === "transfer") return "Przelew";
-  if (status === "invoice_later") return "Faktura / płatność później";
+  if (status === "invoice_later") return "Faktura / pÄąâ€šatnoÄąâ€şĂ„â€ˇ pÄ‚Ĺ‚ÄąĹźniej";
   return "";
 }
 
 function invoicePaymentMethod(status) {
-  if (status === "cash") return "Gotówka";
+  if (status === "cash") return "GotÄ‚Ĺ‚wka";
   if (status === "transfer") return "Przelew";
   return "";
 }
 
 function invoicePaymentMethodLabel(method) {
-  if (method === "cash" || method === "Gotówka") return "Gotówka";
+  if (method === "cash" || method === "GotÄ‚Ĺ‚wka") return "GotÄ‚Ĺ‚wka";
   if (method === "transfer" || method === "Przelew") return "Przelew";
-  if (method === "other") return "Płatność on-line / inna";
-  return method || "—";
+  if (method === "other") return "PÄąâ€šatnoÄąâ€şĂ„â€ˇ on-line / inna";
+  return method || "Ă˘â‚¬â€ť";
 }
 
 function invoicePaymentStatusLabel(status) {
-  if (status === "cash" || status === "transfer") return "Zapłacono";
-  return "Nieopłacona";
+  if (status === "cash" || status === "transfer") return "ZapÄąâ€šacono";
+  return "NieopÄąâ€šacona";
 }
 
 function dateOffset(dateValue, days) {
@@ -6793,15 +7079,15 @@ function dateOffset(dateValue, days) {
 }
 
 function rentalPaymentLabel(status) {
-  if (status === "cash") return "Opłacone gotówką";
-  if (status === "transfer") return "Opłacone przelewem";
-  if (status === "invoice_later") return "Faktura / płatność później";
-  return "Nieopłacone";
+  if (status === "cash") return "OpÄąâ€šacone gotÄ‚Ĺ‚wkĂ„â€¦";
+  if (status === "transfer") return "OpÄąâ€šacone przelewem";
+  if (status === "invoice_later") return "Faktura / pÄąâ€šatnoÄąâ€şĂ„â€ˇ pÄ‚Ĺ‚ÄąĹźniej";
+  return "NieopÄąâ€šacone";
 }
 
 function rentalPaymentTitle(loan) {
   const items = (loan.items || []).map((item) => `${item.name} ${item.quantity} szt.`).join(", ");
-  return `Wypożyczenie - ${loan.firstName} ${loan.lastName} - ${items}`;
+  return `WypoÄąÄ˝yczenie - ${loan.firstName} ${loan.lastName} - ${items}`;
 }
 
 function rentalAlreadyPaid(loan) {
@@ -6833,7 +7119,7 @@ async function addRentalPaymentToSupabase(loan, paymentStatus) {
       .eq("status", "active")
       .limit(1);
     if (existingError) {
-      alert(`Nie udało się sprawdzić płatności w Finansach: ${existingError.message}`);
+      alert(`Nie udaÄąâ€šo siĂ„â„˘ sprawdziĂ„â€ˇ pÄąâ€šatnoÄąâ€şci w Finansach: ${existingError.message}`);
       return { ok: false };
     }
     existing = existingRows?.[0] ? { id: existingRows[0].id } : null;
@@ -6857,7 +7143,7 @@ async function addRentalPaymentToSupabase(loan, paymentStatus) {
     .insert({
       type: "income",
       title: rentalPaymentTitle(loan),
-      category: "Wypożyczenie",
+      category: "WypoÄąÄ˝yczenie",
       amount: grossFromNet(loan.total, 23),
       transaction_date: paidAt,
       source_type: "rental_payment",
@@ -6866,7 +7152,7 @@ async function addRentalPaymentToSupabase(loan, paymentStatus) {
     .select("id")
     .single();
   if (error) {
-    alert(`Wypożyczenie zapisane, ale nie udało się dodać wpływu do Finansów: ${error.message}`);
+    alert(`WypoÄąÄ˝yczenie zapisane, ale nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ wpÄąâ€šywu do FinansÄ‚Ĺ‚w: ${error.message}`);
     return { ok: false };
   }
 
@@ -6880,7 +7166,7 @@ async function addRentalPaymentToSupabase(loan, paymentStatus) {
     })
     .eq("id", loan.id);
   if (updateError) {
-    alert(`Wpływ dodany do Finansów, ale nie udało się powiązać go z wypożyczeniem: ${updateError.message}`);
+    alert(`WpÄąâ€šyw dodany do FinansÄ‚Ĺ‚w, ale nie udaÄąâ€šo siĂ„â„˘ powiĂ„â€¦zaĂ„â€ˇ go z wypoÄąÄ˝yczeniem: ${updateError.message}`);
     return { ok: false };
   }
 
@@ -6900,7 +7186,7 @@ function addRentalPaymentLocal(loan, paymentStatus) {
     id: paymentId,
     type: "income",
     title: rentalPaymentTitle(loan),
-    category: "Wypożyczenie",
+    category: "WypoÄąÄ˝yczenie",
     amount: grossFromNet(loan.total, 23),
     date: loan.paidAt || new Date().toISOString().slice(0, 10),
     status: "active",
@@ -6925,7 +7211,7 @@ async function addInvoicePaymentToSupabase(invoice) {
     .eq("status", "active")
     .limit(1);
   if (existingError) {
-    alert(`Nie udało się sprawdzić płatności faktury w Finansach: ${existingError.message}`);
+    alert(`Nie udaÄąâ€šo siĂ„â„˘ sprawdziĂ„â€ˇ pÄąâ€šatnoÄąâ€şci faktury w Finansach: ${existingError.message}`);
     return { ok: false };
   }
 
@@ -6938,7 +7224,7 @@ async function addInvoicePaymentToSupabase(invoice) {
       .insert({
         type: "income",
         title: `Faktura ${invoice.number} - ${invoice.buyerName}`,
-        category: "Faktura / Wypożyczenie",
+        category: "Faktura / WypoÄąÄ˝yczenie",
         amount: Number(invoice.gross || 0),
         transaction_date: paidAt,
         source_type: "invoice_payment",
@@ -6947,7 +7233,7 @@ async function addInvoicePaymentToSupabase(invoice) {
       .select("id")
       .single();
     if (error) {
-      alert(`Faktura zapisana, ale nie udało się dodać wpływu do Finansów: ${error.message}`);
+      alert(`Faktura zapisana, ale nie udaÄąâ€šo siĂ„â„˘ dodaĂ„â€ˇ wpÄąâ€šywu do FinansÄ‚Ĺ‚w: ${error.message}`);
       return { ok: false };
     }
     paymentId = savedPayment.id;
@@ -6963,7 +7249,7 @@ async function addInvoicePaymentToSupabase(invoice) {
     })
     .eq("id", invoice.id);
   if (updateError) {
-    alert(`Wpływ dodany do Finansów, ale nie udało się powiązać go z fakturą: ${updateError.message}`);
+    alert(`WpÄąâ€šyw dodany do FinansÄ‚Ĺ‚w, ale nie udaÄąâ€šo siĂ„â„˘ powiĂ„â€¦zaĂ„â€ˇ go z fakturĂ„â€¦: ${updateError.message}`);
     return { ok: false };
   }
   return { ok: true };
@@ -6986,7 +7272,7 @@ function addInvoicePaymentLocal(invoice) {
     id: paymentId,
     type: "income",
     title: `Faktura ${invoice.number} - ${invoice.buyerName}`,
-    category: "Faktura / Wypożyczenie",
+    category: "Faktura / WypoÄąÄ˝yczenie",
     amount: Number(invoice.gross || 0),
     date: invoice.paidAt || new Date().toISOString().slice(0, 10),
     status: "active",
@@ -7006,7 +7292,7 @@ function prepareInvoiceFromRental(id) {
   const existing = rentalInvoice(id);
   if (existing) {
     switchView("invoices");
-    showToast(`Faktura ${existing.number} jest już zapisana`);
+    showToast(`Faktura ${existing.number} jest juÄąÄ˝ zapisana`);
     return;
   }
 
@@ -7022,7 +7308,7 @@ function prepareInvoiceFromRental(id) {
   form.buyerAddress.value = "";
   form.buyerNip.value = "";
   form.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast("Przygotowano formularz faktury. Uzupełnij dane i kliknij Zapisz fakturę.");
+  showToast("Przygotowano formularz faktury. UzupeÄąâ€šnij dane i kliknij Zapisz fakturĂ„â„˘.");
 }
 
 function safeFileName(name) {
@@ -7135,7 +7421,7 @@ function docHasFile(doc) {
 
 function docLogSummary(doc) {
   const sourceName = fundingSourceName(doc.fundingSourceId);
-  return `${doc.title || "Dokument"} - Sekcja: ${normalizeDocSection(doc.section)}${sourceName !== "Bez źródła" ? ` - Źródło: ${sourceName}` : ""}`;
+  return `${doc.title || "Dokument"} - Sekcja: ${normalizeDocSection(doc.section)}${sourceName !== "Bez ÄąĹźrÄ‚Ĺ‚dÄąâ€ša" ? ` - ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo: ${sourceName}` : ""}`;
 }
 
 function readPdfAttachment(file) {
@@ -7145,7 +7431,7 @@ function readPdfAttachment(file) {
       return;
     }
     if (file.size > 3 * 1024 * 1024) {
-      const ok = confirm("Ten plik ma ponad 3 MB. Zapis w przeglądarce może działać wolniej. Dodać mimo to?");
+      const ok = confirm("Ten plik ma ponad 3 MB. Zapis w przeglĂ„â€¦darce moÄąÄ˝e dziaÄąâ€šaĂ„â€ˇ wolniej. DodaĂ„â€ˇ mimo to?");
       if (!ok) {
         resolve(null);
         return;
@@ -7174,7 +7460,7 @@ function rentalPrintHtml(loan) {
 
   return `
     ${organizationHeaderHtml()}
-    <h2>Protokół wypożyczenia</h2>
+    <h2>ProtokÄ‚Ĺ‚Äąâ€š wypoÄąÄ˝yczenia</h2>
     <p><strong>Wypozyczajacy:</strong> ${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</p>
     <p><strong>Telefon:</strong> ${escapeHtml(loan.phone)}</p>
     <p><strong>Okres:</strong> ${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)} (${loan.days} dni)</p>
@@ -7195,10 +7481,10 @@ function rentalPrintHtml(loan) {
     ${rentalIssueSettlementHtml(loan)}
     <p><strong>Uwagi:</strong> ${escapeHtml(rentalUserNotes(loan.notes) || "Brak")}</p>
     <section style="margin-top: 8mm;">
-      <h3>Oświadczenie</h3>
-      <p>Wypożyczający potwierdza odbiór sprzętu w stanie kompletnym i zobowiązuje się do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrócenia sprzętu może zostać obciążony kosztem odtworzenia według poniższych wartości.</p>
-      <p>W przypadku zwrotu sprzętu po ustalonym terminie zostanie naliczona opłata za każdą rozpoczętą dodatkową dobę według stawek wypożyczenia sprzętu.</p>
-      <p><strong>Wartości odtworzeniowe wypożyczonego sprzętu:</strong><br>${replacementValues}</p>
+      <h3>OÄąâ€şwiadczenie</h3>
+      <p>WypoÄąÄ˝yczajĂ„â€¦cy potwierdza odbiÄ‚Ĺ‚r sprzĂ„â„˘tu w stanie kompletnym i zobowiĂ„â€¦zuje siĂ„â„˘ do zwrotu w stanie niepogorszonym. W przypadku uszkodzenia, braku lub niezwrÄ‚Ĺ‚cenia sprzĂ„â„˘tu moÄąÄ˝e zostaĂ„â€ˇ obciĂ„â€¦ÄąÄ˝ony kosztem odtworzenia wedÄąâ€šug poniÄąÄ˝szych wartoÄąâ€şci.</p>
+      <p>W przypadku zwrotu sprzĂ„â„˘tu po ustalonym terminie zostanie naliczona opÄąâ€šata za kaÄąÄ˝dĂ„â€¦ rozpoczĂ„â„˘tĂ„â€¦ dodatkowĂ„â€¦ dobĂ„â„˘ wedÄąâ€šug stawek wypoÄąÄ˝yczenia sprzĂ„â„˘tu.</p>
+      <p><strong>WartoÄąâ€şci odtworzeniowe wypoÄąÄ˝yczonego sprzĂ„â„˘tu:</strong><br>${replacementValues}</p>
     </section>
     <div class="print-signatures">
       <div class="signature-line">Podpis wypozyczajacego</div>
@@ -7211,10 +7497,10 @@ function rentalReplacementValuesText(items = []) {
   const values = items.map((item) => {
     const inventoryItem = state.rentalInventory.find((entry) => entry.id === item.id);
     const replacementValue = item.replacementValue ?? inventoryItem?.replacementValue;
-    const valueText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "—";
+    const valueText = Number(replacementValue || 0) > 0 ? `${money(replacementValue)} / szt.` : "Ă˘â‚¬â€ť";
     return `${escapeHtml(item.name)}: ${valueText}`;
   });
-  return values.join(" | ") || "—";
+  return values.join(" | ") || "Ă˘â‚¬â€ť";
 }
 
 function returnPrintHtml(loan) {
@@ -7237,7 +7523,7 @@ function returnPrintHtml(loan) {
 
   return `
     ${organizationHeaderHtml()}
-    <h2>Protokół zwrotu</h2>
+    <h2>ProtokÄ‚Ĺ‚Äąâ€š zwrotu</h2>
     <p><strong>Wypozyczajacy:</strong> ${escapeHtml(loan.firstName)} ${escapeHtml(loan.lastName)}</p>
     <p><strong>Telefon:</strong> ${escapeHtml(loan.phone)}</p>
     <p><strong>Okres wypozyczenia:</strong> ${formatDate(loan.dateFrom)} - ${formatDate(loan.dateTo)}</p>
@@ -7247,7 +7533,7 @@ function returnPrintHtml(loan) {
         <tr>
           <th>Przedmiot</th>
           <th>Wydano</th>
-          <th>Wróciło</th>
+          <th>WrÄ‚Ĺ‚ciÄąâ€šo</th>
           <th>Uszkodzone</th>
           <th>Brak</th>
         </tr>
@@ -7260,20 +7546,20 @@ function returnPrintHtml(loan) {
       <p><strong>Rzeczywista data zwrotu:</strong> ${formatDate(loan.returnedAt)}</p>
       <p><strong>Koszt za planowany okres:</strong> ${money(settlement.plannedCost)}</p>
       <p><strong>Dodatkowe doby po terminie:</strong> ${settlement.lateDays}</p>
-      <p><strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}</p>
-      <p><strong>Dopłata za braki/uszkodzenia:</strong> ${money(settlement.damage)}</p>
+      <p><strong>DopÄąâ€šata za opÄ‚Ĺ‚ÄąĹźnienie:</strong> ${money(settlement.lateFee)}</p>
+      <p><strong>DopÄąâ€šata za braki/uszkodzenia:</strong> ${money(settlement.damage)}</p>
       <p><strong>Razem do rozliczenia:</strong> ${money(settlement.total)}</p>
     </section>
     <section>
-      <h3>Rozliczenie końcowe</h3>
-      <p><strong>Kwota wypożyczenia po rabacie:</strong> ${money(settlement.plannedCost)}</p>
-      <p><strong>Dopłata za opóźnienie:</strong> ${money(settlement.lateFee)}</p>
-      <p><strong>Pranie obrusów:</strong> ${money(settlement.tablecloth.washing)}</p>
+      <h3>Rozliczenie koÄąâ€žcowe</h3>
+      <p><strong>Kwota wypoÄąÄ˝yczenia po rabacie:</strong> ${money(settlement.plannedCost)}</p>
+      <p><strong>DopÄąâ€šata za opÄ‚Ĺ‚ÄąĹźnienie:</strong> ${money(settlement.lateFee)}</p>
+      <p><strong>Pranie obrusÄ‚Ĺ‚w:</strong> ${money(settlement.tablecloth.washing)}</p>
       <p><strong>Uporczywe plamy:</strong> ${money(settlement.tablecloth.stainFee)}</p>
       <p><strong>Braki/uszkodzenia:</strong> ${money(settlement.manualDamage)}</p>
-      <p><strong>Razem należność:</strong> ${money(settlement.finalDue)}</p>
+      <p><strong>Razem naleÄąÄ˝noÄąâ€şĂ„â€ˇ:</strong> ${money(settlement.finalDue)}</p>
       <p><strong>Kaucja pobrana przy wydaniu:</strong> ${money(settlement.deposit)}</p>
-      <p><strong>${settlement.refundToClient > 0 ? "Do zwrotu klientowi" : "Do zapłaty przy zwrocie"}:</strong> ${money(settlement.refundToClient > 0 ? settlement.refundToClient : settlement.dueAtReturn)}</p>
+      <p><strong>${settlement.refundToClient > 0 ? "Do zwrotu klientowi" : "Do zapÄąâ€šaty przy zwrocie"}:</strong> ${money(settlement.refundToClient > 0 ? settlement.refundToClient : settlement.dueAtReturn)}</p>
     </section>
     <p><strong>Uwagi do zwrotu:</strong> ${escapeHtml(loan.returnNotes || "Brak")}</p>
     <div class="print-signatures">
@@ -7321,8 +7607,8 @@ function moneyReportHtml(items = filteredMoneyItems()) {
 
   return `
     ${organizationHeaderHtml()}
-    <h2>Zestawienie Finansów</h2>
-    <p><strong>Wpływy:</strong> ${money(income)} &nbsp; <strong>Wydatki:</strong> ${money(expenses)} &nbsp; <strong>Stan:</strong> ${money(income - expenses)}</p>
+    <h2>Zestawienie FinansÄ‚Ĺ‚w</h2>
+    <p><strong>WpÄąâ€šywy:</strong> ${money(income)} &nbsp; <strong>Wydatki:</strong> ${money(expenses)} &nbsp; <strong>Stan:</strong> ${money(income - expenses)}</p>
     <table>
       <thead>
         <tr>
@@ -7334,24 +7620,24 @@ function moneyReportHtml(items = filteredMoneyItems()) {
           <th>Kwota</th>
         </tr>
       </thead>
-      <tbody>${rowsHtml || '<tr><td colspan="6">Brak wpisów</td></tr>'}</tbody>
+      <tbody>${rowsHtml || '<tr><td colspan="6">Brak wpisÄ‚Ĺ‚w</td></tr>'}</tbody>
     </table>
-    <h2>Podsumowanie według wydarzeń</h2>
+    <h2>Podsumowanie wedÄąâ€šug wydarzeÄąâ€ž</h2>
     <table>
       <thead>
         <tr>
           <th>Wydarzenie</th>
           <th>Data</th>
-          <th>Wpływy</th>
+          <th>WpÄąâ€šywy</th>
           <th>Wydatki</th>
           <th>Bilans</th>
         </tr>
       </thead>
-      <tbody>${eventRows || '<tr><td colspan="5">Brak wpisów przypisanych do wydarzeń</td></tr>'}</tbody>
+      <tbody>${eventRows || '<tr><td colspan="5">Brak wpisÄ‚Ĺ‚w przypisanych do wydarzeÄąâ€ž</td></tr>'}</tbody>
     </table>
     <div class="print-signatures">
-      <div class="signature-line">Sporządził/a</div>
-      <div class="signature-line">Zatwierdził/a</div>
+      <div class="signature-line">SporzĂ„â€¦dziÄąâ€š/a</div>
+      <div class="signature-line">ZatwierdziÄąâ€š/a</div>
     </div>
   `;
 }
@@ -7377,27 +7663,27 @@ function feesReportHtml(rows, scopeLabel) {
       <td>${money(row.required || ANNUAL_FEE)}</td>
       <td>${money(row.paid || 0)}</td>
       <td>${money(row.currentDue || 0)}</td>
-      <td>${row.latestPaymentDate ? formatDate(row.latestPaymentDate) : "—"}</td>
-      <td>${row.currentDue > 0 ? "Zaległość" : "Opłacone"}</td>
+      <td>${row.latestPaymentDate ? formatDate(row.latestPaymentDate) : "Ă˘â‚¬â€ť"}</td>
+      <td>${row.currentDue > 0 ? "ZalegÄąâ€šoÄąâ€şĂ„â€ˇ" : "OpÄąâ€šacone"}</td>
     </tr>
   `).join("");
 
   return `
     <div class="fees-print-document">
-    <h1>KGiGW we Włosani</h1>
-    <h2>Lista składek członkowskich</h2>
+    <h1>KGiGW we WÄąâ€šosani</h1>
+    <h2>Lista skÄąâ€šadek czÄąâ€šonkowskich</h2>
     <p><strong>Data wydruku:</strong> ${new Intl.DateTimeFormat("pl-PL").format(new Date())}</p>
     <p><strong>Zakres wydruku:</strong> ${escapeHtml(scopeLabel)}</p>
     <table>
       <thead>
         <tr>
           <th>Lp.</th>
-          <th>Członek</th>
+          <th>CzÄąâ€šonek</th>
           <th>Typ</th>
-          <th>Należne</th>
-          <th>Zapłacono</th>
-          <th>Zaległość</th>
-          <th>Data wpłaty</th>
+          <th>NaleÄąÄ˝ne</th>
+          <th>ZapÄąâ€šacono</th>
+          <th>ZalegÄąâ€šoÄąâ€şĂ„â€ˇ</th>
+          <th>Data wpÄąâ€šaty</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -7405,12 +7691,12 @@ function feesReportHtml(rows, scopeLabel) {
     </table>
     <h3>Podsumowanie</h3>
     <p><strong>Liczba pozycji:</strong> ${rows.length}</p>
-    <p><strong>Suma należna:</strong> ${money(totals.due)}</p>
-    <p><strong>Suma zapłacono:</strong> ${money(totals.paid)}</p>
-    <p><strong>Suma zaległości:</strong> ${money(totals.late)}</p>
+    <p><strong>Suma naleÄąÄ˝na:</strong> ${money(totals.due)}</p>
+    <p><strong>Suma zapÄąâ€šacono:</strong> ${money(totals.paid)}</p>
+    <p><strong>Suma zalegÄąâ€šoÄąâ€şci:</strong> ${money(totals.late)}</p>
     <div class="print-signatures">
-      <div class="signature-line">Sporządził/a</div>
-      <div class="signature-line">Sprawdził/a</div>
+      <div class="signature-line">SporzĂ„â€¦dziÄąâ€š/a</div>
+      <div class="signature-line">SprawdziÄąâ€š/a</div>
     </div>
     </div>
   `;
@@ -7430,8 +7716,8 @@ function fundingSettlementPrintHtml(source) {
 
   return `
     ${organizationHeaderHtml()}
-    <h2>Rozliczenie źródła finansowania</h2>
-    <p><strong>Nazwa źródła:</strong> ${escapeHtml(source.name)}</p>
+    <h2>Rozliczenie ÄąĹźrÄ‚Ĺ‚dÄąâ€ša finansowania</h2>
+    <p><strong>Nazwa ÄąĹźrÄ‚Ĺ‚dÄąâ€ša:</strong> ${escapeHtml(source.name)}</p>
     <p><strong>Typ:</strong> ${escapeHtml(source.type || "Inne")} &nbsp; <strong>Status:</strong> ${escapeHtml(source.status || "aktywne")}</p>
     <p><strong>Kwota planowana / przyznana:</strong> ${money(source.plannedAmount || 0)}</p>
     <p><strong>Okres:</strong> ${source.dateFrom ? formatDate(source.dateFrom) : "brak daty"} - ${source.dateTo ? formatDate(source.dateTo) : "brak daty"}</p>
@@ -7441,25 +7727,25 @@ function fundingSettlementPrintHtml(source) {
     <h3>Podsumowanie</h3>
     <table>
       <tbody>
-        <tr><th>Suma wpływów</th><td>${money(income)}</td></tr>
-        <tr><th>Suma wydatków</th><td>${money(expenses)}</td></tr>
+        <tr><th>Suma wpÄąâ€šywÄ‚Ĺ‚w</th><td>${money(income)}</td></tr>
+        <tr><th>Suma wydatkÄ‚Ĺ‚w</th><td>${money(expenses)}</td></tr>
         <tr><th>Saldo</th><td>${money(income - expenses)}</td></tr>
-        <tr><th>Liczba dokumentów</th><td>${docs.length}</td></tr>
+        <tr><th>Liczba dokumentÄ‚Ĺ‚w</th><td>${docs.length}</td></tr>
       </tbody>
     </table>
 
-    <h3>Wpływy</h3>
-    ${fundingSettlementMoneyTable(incomeItems, "Brak wpływów dla tego źródła.")}
+    <h3>WpÄąâ€šywy</h3>
+    ${fundingSettlementMoneyTable(incomeItems, "Brak wpÄąâ€šywÄ‚Ĺ‚w dla tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.")}
 
     <h3>Wydatki</h3>
-    ${fundingSettlementMoneyTable(expenseItems, "Brak wydatków dla tego źródła.")}
+    ${fundingSettlementMoneyTable(expenseItems, "Brak wydatkÄ‚Ĺ‚w dla tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.")}
 
     <h3>Dokumenty</h3>
     ${fundingSettlementDocsTable(docs)}
 
     <div class="print-signatures">
-      <div class="signature-line">Sporządził/a: ____________________</div>
-      <div class="signature-line">Sprawdził/a: ____________________</div>
+      <div class="signature-line">SporzĂ„â€¦dziÄąâ€š/a: ____________________</div>
+      <div class="signature-line">SprawdziÄąâ€š/a: ____________________</div>
     </div>
   `;
 }
@@ -7491,13 +7777,13 @@ function fundingSettlementMoneyTable(items, emptyText) {
 }
 
 function fundingSettlementDocsTable(docs) {
-  if (!docs.length) return "<p>Brak dokumentów dla tego źródła.</p>";
+  if (!docs.length) return "<p>Brak dokumentÄ‚Ĺ‚w dla tego ÄąĹźrÄ‚Ĺ‚dÄąâ€ša.</p>";
   return `
     <table>
       <thead>
         <tr>
           <th>Data</th>
-          <th>Tytuł</th>
+          <th>TytuÄąâ€š</th>
           <th>Typ</th>
           <th>Nadawca</th>
           <th>Kwota</th>
@@ -7508,7 +7794,7 @@ function fundingSettlementDocsTable(docs) {
         ${docs.map((doc) => `
           <tr>
             <td>${formatDate(doc.date)}</td>
-            <td>${escapeHtml(doc.title || "Bez tytułu")}</td>
+            <td>${escapeHtml(doc.title || "Bez tytuÄąâ€šu")}</td>
             <td>${escapeHtml(doc.category || "Dokument")}</td>
             <td>${escapeHtml(doc.sender || "Brak nadawcy")}</td>
             <td>${escapeHtml(documentAmountText(doc) || "brak")}</td>
@@ -7524,7 +7810,7 @@ function organizationHeaderHtml() {
   return `
     <img class="print-logo" src="${escapeHtml(ORGANIZATION.logo)}" alt="Logo KGiGW">
     <h1>${escapeHtml(ORGANIZATION.name)}</h1>
-    <p>${escapeHtml(ORGANIZATION.street)}<br>${escapeHtml(ORGANIZATION.city)}<br>NIP: ${escapeHtml(ORGANIZATION.nip)} · REGON: ${escapeHtml(ORGANIZATION.regon)}</p>
+    <p>${escapeHtml(ORGANIZATION.street)}<br>${escapeHtml(ORGANIZATION.city)}<br>NIP: ${escapeHtml(ORGANIZATION.nip)} Ă‚Â· REGON: ${escapeHtml(ORGANIZATION.regon)}</p>
   `;
 }
 
@@ -7592,7 +7878,7 @@ function invoicePrintHtml(invoice) {
         <tr>
           <th>Lp.</th>
           <th>Nazwa</th>
-          <th>Ilość</th>
+          <th>IloÄąâ€şĂ„â€ˇ</th>
           <th>Cena netto</th>
           <th>Netto</th>
           <th>VAT</th>
@@ -7605,41 +7891,41 @@ function invoicePrintHtml(invoice) {
     <table>
       <tbody>
         <tr>
-          <th colspan="2">Płatność</th>
+          <th colspan="2">PÄąâ€šatnoÄąâ€şĂ„â€ˇ</th>
         </tr>
         <tr>
-          <td>Forma płatności</td>
+          <td>Forma pÄąâ€šatnoÄąâ€şci</td>
           <td>${escapeHtml(paymentMethod)}</td>
         </tr>
         <tr>
-          <td>Termin płatności</td>
-          <td>${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "—"}</td>
+          <td>Termin pÄąâ€šatnoÄąâ€şci</td>
+          <td>${invoice.paymentDueDate ? formatDate(invoice.paymentDueDate) : "Ă˘â‚¬â€ť"}</td>
         </tr>
         <tr>
-          <td>Status płatności</td>
+          <td>Status pÄąâ€šatnoÄąâ€şci</td>
           <td>${escapeHtml(invoicePaymentStatusLabel(invoice.paymentStatus))}</td>
         </tr>
         ${showBankAccount ? `
         <tr>
           <td>Numer konta</td>
-          <td>${escapeHtml(invoice.bankAccount || "—")}</td>
+          <td>${escapeHtml(invoice.bankAccount || "Ă˘â‚¬â€ť")}</td>
         </tr>
         ` : ""}
         <tr>
-          <td>Kwota opłacona</td>
+          <td>Kwota opÄąâ€šacona</td>
           <td>${money(paidAmount)}</td>
         </tr>
         <tr>
-          <td>Do zapłaty</td>
+          <td>Do zapÄąâ€šaty</td>
           <td>${money(amountDue)}</td>
         </tr>
       </tbody>
     </table>
-    ${invoice.rentalLabel ? `<p><strong>Powiązane wypożyczenie:</strong> ${escapeHtml(invoice.rentalLabel)}</p>` : ""}
+    ${invoice.rentalLabel ? `<p><strong>PowiĂ„â€¦zane wypoÄąÄ˝yczenie:</strong> ${escapeHtml(invoice.rentalLabel)}</p>` : ""}
     <p><strong>Uwagi:</strong> ${escapeHtml(invoice.notes || "Brak")}</p>
     <div class="print-signatures">
-      <div class="signature-line">Wystawił/a</div>
-      <div class="signature-line">Odebrał/a</div>
+      <div class="signature-line">WystawiÄąâ€š/a</div>
+      <div class="signature-line">OdebraÄąâ€š/a</div>
     </div>
   `;
 }
@@ -7647,11 +7933,11 @@ function invoicePrintHtml(invoice) {
 function invoiceRequestPrintHtml(request) {
   return `
     ${organizationHeaderHtml()}
-    <h1>Zgłoszenie danych do faktury ze stoiska</h1>
-    <p><strong>To jest zgłoszenie danych do faktury, a nie faktura.</strong></p>
+    <h1>ZgÄąâ€šoszenie danych do faktury ze stoiska</h1>
+    <p><strong>To jest zgÄąâ€šoszenie danych do faktury, a nie faktura.</strong></p>
     <table>
       <tbody>
-        <tr><th>Data zgłoszenia</th><td>${formatDate(request.date)}</td></tr>
+        <tr><th>Data zgÄąâ€šoszenia</th><td>${formatDate(request.date)}</td></tr>
         <tr><th>Nabywca</th><td>${escapeHtml(request.buyerName || "brak")}</td></tr>
         <tr><th>NIP</th><td>${escapeHtml(request.buyerNip || "brak")}</td></tr>
         <tr><th>Adres</th><td>${escapeHtml(request.buyerAddress || "brak")}</td></tr>
@@ -7659,14 +7945,14 @@ function invoiceRequestPrintHtml(request) {
         <tr><th>Telefon</th><td>${escapeHtml(request.buyerPhone || "brak")}</td></tr>
         <tr><th>Opis zakupu</th><td>${escapeHtml(request.itemDescription || "brak")}</td></tr>
         <tr><th>Kwota brutto</th><td>${money(request.gross)}</td></tr>
-        <tr><th>Forma płatności</th><td>${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}</td></tr>
+        <tr><th>Forma pÄąâ€šatnoÄąâ€şci</th><td>${escapeHtml(invoiceRequestPaymentLabel(request.paymentMethod))}</td></tr>
         <tr><th>Status</th><td>${escapeHtml(invoiceRequestStatusLabel(request.status))}</td></tr>
         <tr><th>Uwagi</th><td>${escapeHtml(request.notes || "brak")}</td></tr>
       </tbody>
     </table>
     <div class="print-signatures">
-      <div class="signature-line">Podpis / zgłaszający</div>
-      <div class="signature-line">Sprawdził/a</div>
+      <div class="signature-line">Podpis / zgÄąâ€šaszajĂ„â€¦cy</div>
+      <div class="signature-line">SprawdziÄąâ€š/a</div>
     </div>
   `;
 }
@@ -7728,7 +8014,7 @@ function exportAdminData(kind) {
       board: boardMembers()
     };
     downloadTextFile(`kgigw-pelna-kopia-${today}.json`, JSON.stringify(data, null, 2), "application/json;charset=utf-8");
-    logActivity("Administracja", "Eksport danych", { summary: "Eksport pełny JSON" });
+    logActivity("Administracja", "Eksport danych", { summary: "Eksport peÄąâ€šny JSON" });
     return;
   }
 
@@ -7776,35 +8062,35 @@ function adminExportConfig() {
   return {
     members: {
       file: "czlonkowie",
-      log: "Eksport członków CSV",
+      log: "Eksport czÄąâ€šonkÄ‚Ĺ‚w CSV",
       rows: () => state.members,
       columns: [
-        { label: "Imię i nazwisko", value: (item) => item.name },
+        { label: "ImiĂ„â„˘ i nazwisko", value: (item) => item.name },
         { label: "Telefon", value: (item) => item.phone, type: "phone" },
         { label: "E-mail", value: (item) => item.email },
         { label: "Status", value: (item) => item.status },
-        { label: "Typ członkostwa", value: (item) => item.membershipType || "Zwyczajny" },
+        { label: "Typ czÄąâ€šonkostwa", value: (item) => item.membershipType || "Zwyczajny" },
         { label: "Funkcja w kole", value: (item) => item.boardRole },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     fees: {
       file: "skladki",
-      log: "Eksport składek CSV",
+      log: "Eksport skÄąâ€šadek CSV",
       rows: () => state.fees,
       columns: [
-        { label: "Członek", value: (item) => item.member },
+        { label: "CzÄąâ€šonek", value: (item) => item.member },
         { label: "Rok", value: (item) => item.year || item.period },
         { label: "Kwota", value: (item) => item.amount, type: "money" },
-        { label: "Data wpłaty", value: (item) => item.paidAt, type: "date" },
+        { label: "Data wpÄąâ€šaty", value: (item) => item.paidAt, type: "date" },
         { label: "Notatka", value: (item) => item.note },
-        { label: "ID członka", value: (item) => item.memberId, type: "id" },
+        { label: "ID czÄąâ€šonka", value: (item) => item.memberId, type: "id" },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     money: {
       file: "finanse",
-      log: "Eksport finansów CSV",
+      log: "Eksport finansÄ‚Ĺ‚w CSV",
       rows: () => state.money,
       columns: [
         { label: "Typ", value: (item) => moneyTypeLabel(item.type) },
@@ -7814,8 +8100,8 @@ function adminExportConfig() {
         { label: "Data", value: (item) => item.date, type: "date" },
         { label: "Wydarzenie", value: (item) => item.eventName },
         { label: "Status", value: (item) => isActiveMoney(item) ? "Aktywny" : "Anulowany" },
-        { label: "Źródło", value: (item) => item.sourceType },
-        { label: "ID źródła", value: (item) => item.sourceId, type: "id" },
+        { label: "ÄąÄ…rÄ‚Ĺ‚dÄąâ€šo", value: (item) => item.sourceType },
+        { label: "ID ÄąĹźrÄ‚Ĺ‚dÄąâ€ša", value: (item) => item.sourceId, type: "id" },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
@@ -7825,30 +8111,30 @@ function adminExportConfig() {
       rows: () => state.rentalInventory,
       columns: [
         { label: "Nazwa", value: (item) => item.name },
-        { label: "Stan całkowity", value: (item) => item.quantity },
-        { label: "Dostępne", value: (item) => availableQuantity(item.id) },
-        { label: "Wypożyczone", value: (item) => borrowedQuantity(item.id) },
-        { label: "Zwrócone", value: (item) => returnedQuantity(item.id) },
-        { label: "Cena za dobę", value: (item) => item.price, type: "money" },
-        { label: "Wartość odtworzeniowa", value: (item) => item.replacementValue, type: "money" },
+        { label: "Stan caÄąâ€škowity", value: (item) => item.quantity },
+        { label: "DostĂ„â„˘pne", value: (item) => availableQuantity(item.id) },
+        { label: "WypoÄąÄ˝yczone", value: (item) => borrowedQuantity(item.id) },
+        { label: "ZwrÄ‚Ĺ‚cone", value: (item) => returnedQuantity(item.id) },
+        { label: "Cena za dobĂ„â„˘", value: (item) => item.price, type: "money" },
+        { label: "WartoÄąâ€şĂ„â€ˇ odtworzeniowa", value: (item) => item.replacementValue, type: "money" },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     rentals: {
       file: "wypozyczenia",
-      log: "Eksport wypożyczeń CSV",
+      log: "Eksport wypoÄąÄ˝yczeÄąâ€ž CSV",
       rows: () => state.rentalLoans,
       columns: [
-        { label: "Imię", value: (item) => item.firstName },
+        { label: "ImiĂ„â„˘", value: (item) => item.firstName },
         { label: "Nazwisko", value: (item) => item.lastName },
         { label: "Telefon", value: (item) => item.phone, type: "phone" },
         { label: "Od", value: (item) => item.dateFrom, type: "date" },
         { label: "Do", value: (item) => item.dateTo, type: "date" },
         { label: "Dni", value: (item) => item.days },
-        { label: "Wartość netto", value: (item) => item.total, type: "money" },
-        { label: "Wartość brutto", value: (item) => grossFromNet(item.total, 23), type: "money" },
+        { label: "WartoÄąâ€şĂ„â€ˇ netto", value: (item) => item.total, type: "money" },
+        { label: "WartoÄąâ€şĂ„â€ˇ brutto", value: (item) => grossFromNet(item.total, 23), type: "money" },
         { label: "Status", value: (item) => item.status },
-        { label: "Płatność", value: (item) => rentalPaymentLabel(item.paymentStatus) },
+        { label: "PÄąâ€šatnoÄąâ€şĂ„â€ˇ", value: (item) => rentalPaymentLabel(item.paymentStatus) },
         { label: "Pozycje", value: (item) => rentalItemsText(item.items) },
         { label: "Data zwrotu", value: (item) => item.returnedAt, type: "date" },
         { label: "Uwagi zwrotu", value: (item) => item.returnNotes },
@@ -7868,25 +8154,25 @@ function adminExportConfig() {
         { label: "Netto", value: (item) => item.net, type: "money" },
         { label: "VAT", value: (item) => item.vat, type: "money-currency" },
         { label: "Brutto", value: (item) => item.gross, type: "money" },
-        { label: "Status płatności", value: (item) => invoicePaymentStatusLabel(item.paymentStatus) },
-        { label: "Forma płatności", value: (item) => invoicePaymentMethodLabel(item.paymentMethod) },
-        { label: "Termin płatności", value: (item) => item.paymentDueDate, type: "date" },
-        { label: "ID wypożyczenia", value: (item) => item.rentalId, type: "id" },
+        { label: "Status pÄąâ€šatnoÄąâ€şci", value: (item) => invoicePaymentStatusLabel(item.paymentStatus) },
+        { label: "Forma pÄąâ€šatnoÄąâ€şci", value: (item) => invoicePaymentMethodLabel(item.paymentMethod) },
+        { label: "Termin pÄąâ€šatnoÄąâ€şci", value: (item) => item.paymentDueDate, type: "date" },
+        { label: "ID wypoÄąÄ˝yczenia", value: (item) => item.rentalId, type: "id" },
         { label: "Uwagi", value: (item) => item.notes },
         { label: "ID techniczne", value: (item) => item.id, type: "id" }
       ]
     },
     documents: {
       file: "dokumenty",
-      log: "Eksport dokumentów CSV",
+      log: "Eksport dokumentÄ‚Ĺ‚w CSV",
       rows: () => state.docs,
       columns: [
-        { label: "Tytuł", value: (item) => item.title },
+        { label: "TytuÄąâ€š", value: (item) => item.title },
         { label: "Nadawca", value: (item) => item.sender },
         { label: "Typ", value: (item) => item.category },
         { label: "Sekcja", value: (item) => normalizeDocSection(item.section) },
         { label: "Data", value: (item) => item.date, type: "date" },
-        { label: "Kwota wpływ", value: (item) => item.incomeAmount, type: "money" },
+        { label: "Kwota wpÄąâ€šyw", value: (item) => item.incomeAmount, type: "money" },
         { label: "Kwota wydatek", value: (item) => item.expenseAmount, type: "money" },
         { label: "Wydarzenie", value: (item) => item.eventName },
         { label: "Plik", value: (item) => item.fileName },
@@ -7897,7 +8183,7 @@ function adminExportConfig() {
     },
     events: {
       file: "wydarzenia",
-      log: "Eksport wydarzeń CSV",
+      log: "Eksport wydarzeÄąâ€ž CSV",
       rows: () => state.events,
       columns: [
         { label: "Nazwa", value: (item) => item.name },
@@ -7930,7 +8216,7 @@ function importData(event) {
       saveState();
       render();
     } catch {
-      alert("Nie udało się wczytać pliku z danymi.");
+      alert("Nie udaÄąâ€šo siĂ„â„˘ wczytaĂ„â€ˇ pliku z danymi.");
     }
   };
   reader.readAsText(file);
@@ -7943,7 +8229,7 @@ function toggleMemberExportPanel() {
 function exportMembersCsv() {
   const selectedFields = [...document.querySelectorAll(".member-export-field:checked")].map((input) => input.value);
   if (!selectedFields.length) {
-    alert("Zaznacz przynajmniej jedną kolumnę do eksportu.");
+    alert("Zaznacz przynajmniej jednĂ„â€¦ kolumnĂ„â„˘ do eksportu.");
     return;
   }
 
@@ -7968,16 +8254,16 @@ function exportMembersCsv() {
 
 function memberCsvColumns() {
   return [
-    { key: "name", label: "Imię i nazwisko", value: (member) => member.name },
+    { key: "name", label: "ImiĂ„â„˘ i nazwisko", value: (member) => member.name },
     { key: "phone", label: "Telefon", value: (member) => member.phone },
     { key: "email", label: "E-mail", value: (member) => member.email },
     { key: "status", label: "Status", value: (member) => member.status || "Aktywny" },
-    { key: "membershipType", label: "Typ członkostwa", value: (member) => member.membershipType || "Zwyczajny" },
+    { key: "membershipType", label: "Typ czÄąâ€šonkostwa", value: (member) => member.membershipType || "Zwyczajny" },
     { key: "boardRole", label: "Funkcja w kole", value: (member) => member.boardRole || "Brak" },
-    { key: "feePaid", label: "Suma wpłat w bieżącym roku", value: (member, feeRow) => money(feeRow?.paid || 0) },
-    { key: "feeStatus", label: "Status składek", value: (member, feeRow) => feeRow?.isLate ? "Zaległość" : "Opłacone" },
-    { key: "paidUntil", label: "Opłacone do", value: (member, feeRow) => feeRow?.paid >= ANNUAL_FEE ? "Końca roku" : feeRow?.paidUntil || "Brak wpłat" },
-    { key: "currentDue", label: "Zaległość", value: (member, feeRow) => money(feeRow?.currentDue || 0) }
+    { key: "feePaid", label: "Suma wpÄąâ€šat w bieÄąÄ˝Ă„â€¦cym roku", value: (member, feeRow) => money(feeRow?.paid || 0) },
+    { key: "feeStatus", label: "Status skÄąâ€šadek", value: (member, feeRow) => feeRow?.isLate ? "ZalegÄąâ€šoÄąâ€şĂ„â€ˇ" : "OpÄąâ€šacone" },
+    { key: "paidUntil", label: "OpÄąâ€šacone do", value: (member, feeRow) => feeRow?.paid >= ANNUAL_FEE ? "KoÄąâ€žca roku" : feeRow?.paidUntil || "Brak wpÄąâ€šat" },
+    { key: "currentDue", label: "ZalegÄąâ€šoÄąâ€şĂ„â€ˇ", value: (member, feeRow) => money(feeRow?.currentDue || 0) }
   ];
 }
 
@@ -7988,14 +8274,14 @@ function csvValue(value) {
 function adminExcelValue(value, type = "text") {
   if (["date", "phone", "id", "text-forced"].includes(type)) return excelCellValue(excelForcedText(excelDateOrText(value, type)));
   if (type === "money") return excelCellValue(excelForcedText(excelMoney(value)));
-  if (type === "money-currency") return excelCellValue(excelForcedText(`${excelMoney(value)} zł`));
+  if (type === "money-currency") return excelCellValue(excelForcedText(`${excelMoney(value)} zÄąâ€š`));
   if (type === "percent") return excelCellValue(excelForcedText(`${excelMoney(value)}%`));
   return excelCellValue(value);
 }
 
 function excelCellValue(value) {
   return String(value ?? "")
-    .replaceAll("—", "brak")
+    .replaceAll("Ă˘â‚¬â€ť", "brak")
     .replaceAll("\t", " ")
     .replaceAll("\r", " ")
     .replaceAll("\n", " ")
