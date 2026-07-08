@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-42";
+const APP_VERSION = "2026.06.04-43";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -5076,15 +5076,14 @@ function rentalLifecycleStatus(loan) {
 
 function rentalReturnedWithIssues(loan) {
   if (Number(loan.damageCost || 0) > 0) return true;
+  if ((loan.items || []).some((item) => Number(item.damaged || 0) > 0 || Number(item.missing || 0) > 0)) return true;
   const notes = String(loan.returnNotes || "").trim();
   if (!notes) return false;
   const normalized = normalizeText(notes);
   if (normalized.includes("stan po zwrocie uszkodzony")) return true;
   if (normalized.includes("stan po zwrocie brak elementow")) return true;
   if (normalized.includes("stan po zwrocie inne")) return true;
-  const withoutOkState = normalized.replace(/^stan po zwrocie ok\s*-?\s*/, "").trim();
-  if (!withoutOkState) return false;
-  return true;
+  return false;
 }
 
 function renderReturnConfirmation() {
@@ -6661,13 +6660,35 @@ async function handleInventoryAdd(event) {
   showToast("Dodano przedmiot do magazynu");
 }
 
+function returnItemsFromForm(loan) {
+  return (loan.items || []).map((item, index) => ({
+    lineId: item.lineId,
+    id: item.id,
+    name: item.name,
+    issued: item.quantity,
+    returned: Number(document.querySelector(`#returnQty-${loan.id}-${index}`)?.value || 0),
+    damaged: Number(document.querySelector(`#returnDamaged-${loan.id}-${index}`)?.value || 0),
+    missing: Number(document.querySelector(`#returnMissing-${loan.id}-${index}`)?.value || 0)
+  }));
+}
+
+function hasReturnItemIssues(items = []) {
+  return items.some((item) => Number(item.damaged || 0) > 0 || Number(item.missing || 0) > 0);
+}
+
 async function returnRental(id) {
   const loan = state.rentalLoans.find((entry) => entry.id === id);
   if (!loan) return;
   const confirmed = confirm("Oznaczyc to wypozyczenie jako zwrocone?");
   if (!confirmed) return;
   const notes = document.querySelector(`#returnNotes-${id}`)?.value || "";
-  const returnCondition = document.querySelector(`#returnCondition-${id}`)?.value || "ok";
+  let returnCondition = document.querySelector(`#returnCondition-${id}`)?.value || "ok";
+  const returnItems = returnItemsFromForm(loan);
+  if (hasReturnItemIssues(returnItems)) {
+    returnCondition = "damaged";
+    const select = document.querySelector(`#returnCondition-${id}`);
+    if (select) select.value = returnCondition;
+  }
   const damageCost = returnCondition === "ok" ? 0 : Number(document.querySelector(`#returnDamage-${id}`)?.value || 0);
   const tableclothFee = tableclothReturnFeeFromInputs(loan);
   if (!tableclothFee.ok) {
@@ -6678,15 +6699,6 @@ async function returnRental(id) {
   const conditionNote = returnCondition === "ok" ? "Stan po zwrocie: OK" : "Stan po zwrocie: Uszkodzony";
   const returnNotes = [conditionNote, notes, tableclothReturnNotes(tableclothFee)].filter(Boolean).join("\n\n");
   const paymentStatus = document.querySelector(`#returnPayment-${id}`)?.value || loan.paymentStatus || "unpaid";
-  const returnItems = loan.items.map((item, index) => ({
-    lineId: item.lineId,
-    id: item.id,
-    name: item.name,
-    issued: item.quantity,
-    returned: Number(document.querySelector(`#returnQty-${id}-${index}`)?.value || 0),
-    damaged: Number(document.querySelector(`#returnDamaged-${id}-${index}`)?.value || 0),
-    missing: Number(document.querySelector(`#returnMissing-${id}-${index}`)?.value || 0)
-  }));
   if (supabaseClient && currentRole) {
     const { error: rentalError } = await supabaseClient
       .from("rentals")
@@ -7559,18 +7571,16 @@ function updateTableclothReturnSummary(id) {
 function toggleMainReturnDamageField(id) {
   const condition = document.querySelector(`#returnCondition-${id}`)?.value || "ok";
   const wrap = document.querySelector(`#returnDamageWrap-${id}`);
-  const input = document.querySelector(`#returnDamage-${id}`);
   const isOk = condition === "ok";
   wrap?.classList.toggle("hidden", isOk);
-  if (isOk && input) input.value = "0";
 }
 
-function autoFlagReturnDamaged(loanId, inputId) {
-  const value = Number(document.querySelector(`#${inputId}`)?.value || 0);
-  if (value <= 0) return;
+function autoFlagReturnDamaged(loanId) {
+  const loan = state.rentalLoans.find((entry) => entry.id === loanId);
+  if (!loan) return;
+  const hasIssues = hasReturnItemIssues(returnItemsFromForm(loan));
   const select = document.querySelector(`#returnCondition-${loanId}`);
-  if (!select || select.value === "damaged") return;
-  select.value = "damaged";
+  if (select) select.value = hasIssues ? "damaged" : "ok";
   toggleMainReturnDamageField(loanId);
   updateTableclothReturnSummary(loanId);
 }
