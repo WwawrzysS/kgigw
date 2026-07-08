@@ -1,7 +1,12 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-43";
+const APP_VERSION = "2026.06.04-44";
 const VERSION_KEY = "kgigw-app-version";
+const VERSION_MANIFEST_URL = "version.json";
+const UPDATE_LOG_PREFIX = "[KGiGW UPDATE]";
+const UPDATE_ATTEMPT_PREFIX = "kgigw-update-attempts:";
+const UPDATE_VISIBILITY_THROTTLE_MS = 60000;
+const UPDATE_PERIODIC_CHECK_MS = 12 * 60 * 1000;
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
 const FEE_YEAR = new Date().getFullYear();
@@ -129,6 +134,12 @@ let isRentalRefreshing = false;
 let rentalRefreshPromise = null;
 let rentalSyncError = "";
 let runtimeLoadingMode = "";
+let pendingStartupRetryAction = null;
+let isAppUpdateCheckRunning = false;
+let lastAppUpdateCheckAt = 0;
+let appUpdateTimer = null;
+let appUpdateBanner = null;
+let appUpdateWatchersStarted = false;
 const startupProgressState = {
   active: false,
   label: "\u0141adowanie",
@@ -404,7 +415,15 @@ if (elements.appVersion) elements.appVersion.textContent = APP_VERSION;
 if (currentRole) showStartupScreenMode("Uruchamianie KGiGW");
 else showLoginScreenMode();
 elements.loginForm.addEventListener("submit", handleLogin);
-elements.startupRetryButton?.addEventListener("click", () => startSupabaseDataLoad({ reason: "startup-retry", force: true, gate: true }));
+elements.startupRetryButton?.addEventListener("click", () => {
+  if (pendingStartupRetryAction) {
+    const retryAction = pendingStartupRetryAction;
+    pendingStartupRetryAction = null;
+    retryAction();
+    return;
+  }
+  startSupabaseDataLoad({ reason: "startup-retry", force: true, gate: true });
+});
 elements.startupLogoutButton?.addEventListener("click", logout);
 elements.appLoadingRetryButton?.addEventListener("click", () => {
   if (runtimeLoadingMode === "rentals") {
@@ -586,8 +605,8 @@ document.querySelectorAll("[data-admin-export]").forEach((button) => {
 });
 elements.standInvoiceForm?.addEventListener("submit", handleStandInvoiceSettings);
 elements.openStandInvoicePage?.addEventListener("click", () => window.open(STAND_INVOICE_URL, "_blank", "noopener"));
-document.querySelector("#refreshProgram")?.addEventListener("click", refreshProgram);
-document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgram);
+document.querySelector("#refreshProgram")?.addEventListener("click", refreshProgramWithUpdateCheck);
+document.querySelector("#sidebarRefreshProgram").addEventListener("click", refreshProgramWithUpdateCheck);
 document.querySelector("#showMailboxInfo").addEventListener("click", () => {
   elements.mailboxInfo.classList.toggle("hidden");
 });
@@ -596,6 +615,7 @@ document.addEventListener("click", handleCopyLinkClick);
 document.addEventListener("click", closeMobileMenuFromPage);
 document.addEventListener("submit", blockSubmitDuringDataLoad, true);
 document.addEventListener("visibilitychange", handleVisibilityRentalSync);
+document.addEventListener("visibilitychange", handleVisibilityAppUpdateCheck);
 
 elements.navItems.forEach((button) => {
   button.addEventListener("click", () => {
@@ -664,11 +684,7 @@ document.querySelector('#rentalForm input[name="dateFrom"]').valueAsDate = new D
 document.querySelector('#rentalForm input[name="dateTo"]').valueAsDate = new Date();
 
 applyRole();
-if (currentRole) {
-  startSupabaseDataLoad({ reason: "startup", gate: true });
-} else {
-  render();
-}
+void initializeApplication({ reason: "startup" });
 
 async function handleLogin(event) {
   event.preventDefault();
@@ -713,6 +729,8 @@ async function handleLogin(event) {
   event.target.reset();
   applyRole();
   showStartupScreenMode("Uruchamianie KGiGW");
+  const updateStatus = await checkForAppUpdate({ phase: "login", autoReload: true, blockOnError: true, retries: 2 });
+  if (updateStatus === "reload" || updateStatus === "blocked" || updateStatus === "error") return;
   await startSupabaseDataLoad({ reason: "login", force: true, gate: true });
 }
 
@@ -872,6 +890,241 @@ function rentalSyncWarn(message, details = undefined) {
     console.warn(`${RENTAL_SYNC_LOG_PREFIX} ${message}`);
   } else {
     console.warn(`${RENTAL_SYNC_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function updateLog(message, details = undefined) {
+  if (details === undefined) {
+    console.info(`${UPDATE_LOG_PREFIX} ${message}`);
+  } else {
+    console.info(`${UPDATE_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function updateWarn(message, details = undefined) {
+  if (details === undefined) {
+    console.warn(`${UPDATE_LOG_PREFIX} ${message}`);
+  } else {
+    console.warn(`${UPDATE_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function updateError(message, details = undefined) {
+  if (details === undefined) {
+    console.error(`${UPDATE_LOG_PREFIX} ${message}`);
+  } else {
+    console.error(`${UPDATE_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function appUpdateAttemptKey(version) {
+  return `${UPDATE_ATTEMPT_PREFIX}${version}`;
+}
+
+function appUpdateUrl(version) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("appVersion", version);
+  url.searchParams.set("t", String(Date.now()));
+  return url.toString();
+}
+
+async function fetchServerAppVersion() {
+  const url = new URL(VERSION_MANIFEST_URL, window.location.href);
+  url.searchParams.set("t", String(Date.now()));
+  updateLog("Pobieram version.json.", { localVersion: APP_VERSION, url: url.toString(), checkedAt: new Date().toISOString() });
+  const response = await fetch(url.toString(), { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`version.json HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  const version = String(payload?.version || "").trim();
+  if (!version) {
+    throw new Error("version.json nie zawiera pola version.");
+  }
+  return version;
+}
+
+async function fetchServerAppVersionWithRetry(totalAttempts = 2) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      const version = await fetchServerAppVersion();
+      updateLog("Odczytano wersje z serwera.", { localVersion: APP_VERSION, serverVersion: version, attempt });
+      return version;
+    } catch (error) {
+      lastError = error;
+      updateError("Blad pobrania version.json.", { localVersion: APP_VERSION, attempt, error });
+      if (attempt < totalAttempts) await delay(1000);
+    }
+  }
+  throw lastError;
+}
+
+function showStartupUpdateError(message) {
+  pendingStartupRetryAction = () => initializeApplication({ reason: "version-retry" });
+  showStartupScreenMode("Aktualizacja programu");
+  setStartupProgress("Blad aktualizacji", message, 0, { percent: 0, module: "Program", error: true, resetTimer: true });
+}
+
+function showAppUpdateBanner(serverVersion) {
+  if (appUpdateBanner) appUpdateBanner.remove();
+  appUpdateBanner = document.createElement("div");
+  appUpdateBanner.setAttribute("role", "dialog");
+  appUpdateBanner.setAttribute("aria-live", "polite");
+  appUpdateBanner.style.cssText = [
+    "position:fixed",
+    "left:16px",
+    "right:16px",
+    "bottom:16px",
+    "z-index:9999",
+    "max-width:680px",
+    "margin:0 auto",
+    "padding:16px",
+    "border-radius:14px",
+    "border:1px solid rgba(31,122,63,.25)",
+    "background:#ffffff",
+    "box-shadow:0 16px 42px rgba(15,23,42,.18)",
+    "color:#172033",
+    "display:grid",
+    "gap:12px"
+  ].join(";");
+  const text = document.createElement("div");
+  const title = document.createElement("strong");
+  title.textContent = `Dostępna jest nowa wersja programu: ${serverVersion}`;
+  const note = document.createElement("p");
+  note.textContent = "Możesz zaktualizować teraz albo dokończyć bieżącą pracę i zrobić to później.";
+  note.style.cssText = "margin:6px 0 0;color:#526070;";
+  text.append(title, note);
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:10px;flex-wrap:wrap;";
+  const updateButton = document.createElement("button");
+  updateButton.type = "button";
+  updateButton.className = "small-button";
+  updateButton.textContent = "Aktualizuj teraz";
+  updateButton.addEventListener("click", () => {
+    forceAppUpdate(serverVersion, { source: "runtime-banner" });
+  });
+  const laterButton = document.createElement("button");
+  laterButton.type = "button";
+  laterButton.className = "small-button secondary";
+  laterButton.textContent = "Później";
+  laterButton.addEventListener("click", () => {
+    appUpdateBanner?.remove();
+    appUpdateBanner = null;
+  });
+  actions.append(updateButton, laterButton);
+  appUpdateBanner.append(text, actions);
+  document.body.append(appUpdateBanner);
+}
+
+function showUpdatePublishingMessage(serverVersion) {
+  const message = "Nowa wersja jest jeszcze publikowana. Spróbuj ponownie za chwilę.";
+  updateWarn("Zatrzymano automatyczna aktualizacje po przekroczeniu limitu prob.", { localVersion: APP_VERSION, serverVersion });
+  if (startupGateActive) {
+    pendingStartupRetryAction = () => forceAppUpdate(serverVersion, { source: "startup-retry-button" });
+    setStartupProgress("Blad aktualizacji", message, 0, { percent: 0, module: "Program", error: true, resetTimer: true });
+  } else {
+    showToast(message, "error");
+    showAppUpdateBanner(serverVersion);
+  }
+}
+
+function forceAppUpdate(serverVersion, options = {}) {
+  const key = appUpdateAttemptKey(serverVersion);
+  const attempt = Number(sessionStorage.getItem(key) || 0) + 1;
+  if (attempt > 2) {
+    showUpdatePublishingMessage(serverVersion);
+    return false;
+  }
+  sessionStorage.setItem(key, String(attempt));
+  const nextUrl = appUpdateUrl(serverVersion);
+  updateLog("Rozpoczynam aktualizacje programu.", {
+    localVersion: APP_VERSION,
+    serverVersion,
+    attempt,
+    source: options.source || "unknown",
+    nextUrl
+  });
+  window.location.replace(nextUrl);
+  return true;
+}
+
+async function checkForAppUpdate(options = {}) {
+  const now = Date.now();
+  if (options.throttled && now - lastAppUpdateCheckAt < UPDATE_VISIBILITY_THROTTLE_MS) {
+    updateLog("Pomijam sprawdzanie wersji - aktywny limit czasu.", { localVersion: APP_VERSION, phase: options.phase || "" });
+    return "skipped";
+  }
+  if (isAppUpdateCheckRunning) {
+    updateLog("Sprawdzanie wersji juz trwa - pomijam rownolegle wywolanie.", { localVersion: APP_VERSION, phase: options.phase || "" });
+    return "skipped";
+  }
+  isAppUpdateCheckRunning = true;
+  lastAppUpdateCheckAt = now;
+  try {
+    const serverVersion = await fetchServerAppVersionWithRetry(options.retries || 2);
+    updateLog("Porownanie wersji.", {
+      localVersion: APP_VERSION,
+      serverVersion,
+      checkedAt: new Date().toISOString(),
+      phase: options.phase || "manual"
+    });
+    if (serverVersion === APP_VERSION) {
+      sessionStorage.removeItem(appUpdateAttemptKey(serverVersion));
+      updateLog("Wersja aktualna.", { localVersion: APP_VERSION, serverVersion });
+      return "current";
+    }
+    updateWarn("Wykryto nowa wersje programu.", { localVersion: APP_VERSION, serverVersion, phase: options.phase || "manual" });
+    if (options.autoReload) {
+      if (startupGateActive) {
+        showStartupScreenMode("Aktualizacja programu");
+        setStartupProgress("Aktualizacja", `Aktualizowanie do wersji ${serverVersion}...`, 0, { percent: 0, module: "Program", resetTimer: true });
+      }
+      return forceAppUpdate(serverVersion, { source: options.phase || "auto" }) ? "reload" : "blocked";
+    }
+    showAppUpdateBanner(serverVersion);
+    return "available";
+  } catch (error) {
+    updateError("Nie udalo sie sprawdzic wersji programu.", { localVersion: APP_VERSION, phase: options.phase || "manual", error });
+    if (options.blockOnError) {
+      showStartupUpdateError("Nie udało się sprawdzić aktualizacji programu. Spróbuj ponownie.");
+    } else if (options.showError) {
+      showToast("Nie udało się sprawdzić aktualizacji programu. Spróbuj ponownie za chwilę.", "error");
+    }
+    return "error";
+  } finally {
+    isAppUpdateCheckRunning = false;
+  }
+}
+
+function startAppUpdateWatchers() {
+  if (appUpdateWatchersStarted) return;
+  appUpdateWatchersStarted = true;
+  appUpdateTimer = window.setInterval(() => {
+    if (document.hidden) return;
+    void checkForAppUpdate({ phase: "periodic", throttled: true });
+  }, UPDATE_PERIODIC_CHECK_MS);
+}
+
+function handleVisibilityAppUpdateCheck() {
+  if (document.hidden) return;
+  void checkForAppUpdate({ phase: "visibilitychange", throttled: true });
+}
+
+async function initializeApplication(options = {}) {
+  if (currentRole) showStartupScreenMode("Uruchamianie KGiGW");
+  const updateStatus = await checkForAppUpdate({
+    phase: options.reason || "startup",
+    autoReload: true,
+    blockOnError: Boolean(currentRole),
+    retries: 2
+  });
+  if (updateStatus === "reload" || updateStatus === "blocked") return;
+  startAppUpdateWatchers();
+  if (currentRole) {
+    startSupabaseDataLoad({ reason: "startup", gate: true });
+  } else {
+    render();
   }
 }
 
@@ -1935,7 +2188,6 @@ function saveState() {
 function prepareLocalVersion() {
   const savedVersion = localStorage.getItem(VERSION_KEY);
   if (savedVersion !== APP_VERSION) {
-    localStorage.removeItem(STORAGE_KEY);
     localStorage.setItem(VERSION_KEY, APP_VERSION);
   }
 }
@@ -1944,10 +2196,30 @@ async function refreshProgram() {
   const confirmed = confirm("Odświeżyć program i wyczyścić lokalną pamięć tej przeglądarki? Dane w Supabase zostaną bez zmian.");
   if (!confirmed) return;
   await logActivity("Program", "Odświeżenie programu", { summary: "Odświeżenie programu" });
-  localStorage.removeItem(STORAGE_KEY);
   localStorage.setItem(VERSION_KEY, APP_VERSION);
   await startSupabaseDataLoad({ reason: "manual-refresh", force: true });
   showToast("Pobieranie danych od\u015bwie\u017cone.");
+}
+
+async function refreshProgramWithUpdateCheck() {
+  const refreshButtons = [document.querySelector("#refreshProgram"), document.querySelector("#sidebarRefreshProgram")].filter(Boolean);
+  const previousLabels = refreshButtons.map((button) => button.textContent);
+  refreshButtons.forEach((button) => {
+    button.disabled = true;
+    button.textContent = "Sprawdzanie aktualizacji...";
+  });
+  const updateStatus = await checkForAppUpdate({ phase: "manual-refresh", autoReload: true, showError: true, retries: 2 });
+  refreshButtons.forEach((button, index) => {
+    button.disabled = false;
+    button.textContent = previousLabels[index] || "Odśwież program";
+  });
+  if (updateStatus === "reload" || updateStatus === "blocked" || updateStatus === "error") return;
+  const confirmed = confirm("Odświeżyć dane programu? Dane w Supabase zostaną bez zmian.");
+  if (!confirmed) return;
+  await logActivity("Program", "Odświeżenie programu", { summary: "Odświeżenie programu" });
+  localStorage.setItem(VERSION_KEY, APP_VERSION);
+  await startSupabaseDataLoad({ reason: "manual-refresh", force: true });
+  showToast("Pobieranie danych odświeżone.");
 }
 
 async function handleStandInvoiceSettings(event) {
