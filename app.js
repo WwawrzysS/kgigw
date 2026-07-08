@@ -1,6 +1,6 @@
 const STORAGE_KEY = "kgw-panel-data-v2-clean";
 const AUTH_KEY = "kgigw-active-role";
-const APP_VERSION = "2026.06.04-41";
+const APP_VERSION = "2026.06.04-42";
 const VERSION_KEY = "kgigw-app-version";
 const ANNUAL_FEE = 120;
 const QUARTER_FEE = 30;
@@ -100,7 +100,10 @@ let storageLoadStatus = "idle";
 let storageLoadError = "";
 const START_LOG_PREFIX = "[KGiGW START]";
 const LOAD_LOG_PREFIX = "[KGiGW LOAD]";
+const RENTAL_SYNC_LOG_PREFIX = "[KGiGW RENTAL SYNC]";
 const DATA_RETRY_DELAYS = [0, 1000, 2000, 4000];
+const RENTAL_SYNC_FRESH_MS = 15000;
+const RENTAL_SYNC_VISIBILITY_MS = 45000;
 const START_PROGRESS_MODULE_KEYS = ["members", "fees", "rentalInventory", "rentals", "events", "kitchenEvents", "fundingSources", "money", "docs", "invoices", "invoiceRequests", "settings"];
 const START_PROGRESS_TOTAL = START_PROGRESS_MODULE_KEYS.length + 5;
 const START_PROGRESS_MODULE_LABELS = {
@@ -121,6 +124,11 @@ let startupProgressHideTimer = null;
 let startupElapsedTimer = null;
 let startupStageStartedAt = 0;
 let startupGateActive = Boolean(currentRole);
+let lastRentalSyncAt = 0;
+let isRentalRefreshing = false;
+let rentalRefreshPromise = null;
+let rentalSyncError = "";
+let runtimeLoadingMode = "";
 const startupProgressState = {
   active: false,
   label: "\u0141adowanie",
@@ -321,6 +329,7 @@ const elements = {
   rentalItemsForm: document.querySelector("#rentalItemsForm"),
   rentalDays: document.querySelector("#rentalDays"),
   rentalTotal: document.querySelector("#rentalTotal"),
+  refreshRentalsData: document.querySelector("#refreshRentalsData"),
   rentalDiscount: document.querySelector("#rentalDiscount"),
   rentalAfterDiscount: document.querySelector("#rentalAfterDiscount"),
   rentalDeposit: document.querySelector("#rentalDeposit"),
@@ -397,7 +406,13 @@ else showLoginScreenMode();
 elements.loginForm.addEventListener("submit", handleLogin);
 elements.startupRetryButton?.addEventListener("click", () => startSupabaseDataLoad({ reason: "startup-retry", force: true, gate: true }));
 elements.startupLogoutButton?.addEventListener("click", logout);
-elements.appLoadingRetryButton?.addEventListener("click", () => startSupabaseDataLoad({ reason: "runtime-retry", force: true, gate: false }));
+elements.appLoadingRetryButton?.addEventListener("click", () => {
+  if (runtimeLoadingMode === "rentals") {
+    refreshRentalsModule({ reason: "runtime-retry", force: true });
+    return;
+  }
+  startSupabaseDataLoad({ reason: "runtime-retry", force: true, gate: false });
+});
 document.querySelector("#logoutButton").addEventListener("click", logout);
 document.querySelector("#mobileMenuButton").addEventListener("click", toggleMobileMenu);
 document.querySelector("#memberForm").addEventListener("submit", handleMember);
@@ -488,6 +503,7 @@ document.querySelectorAll("[data-inventory-category]").forEach((button) => {
 });
 document.querySelector("#rentalForm").addEventListener("submit", handleRental);
 document.querySelector("#rentalForm").addEventListener("input", updateRentalSummary);
+elements.refreshRentalsData?.addEventListener("click", () => refreshRentalsModule({ reason: "manual-button", force: true }));
 document.querySelector("#docForm").addEventListener("submit", handleDoc);
 document.querySelector("#cancelDocEdit").addEventListener("click", cancelDocEdit);
 elements.docEditForm?.addEventListener("submit", handleLargeDocEdit);
@@ -579,12 +595,14 @@ document.querySelector("#openMailboxWindow")?.addEventListener("click", openMail
 document.addEventListener("click", handleCopyLinkClick);
 document.addEventListener("click", closeMobileMenuFromPage);
 document.addEventListener("submit", blockSubmitDuringDataLoad, true);
+document.addEventListener("visibilitychange", handleVisibilityRentalSync);
 
 elements.navItems.forEach((button) => {
   button.addEventListener("click", () => {
     if (blockNavigationDuringDataLoad(button.dataset.view || "menu")) return;
     if (button.dataset.subnav) {
       toggleSubnav(button.dataset.subnav);
+      if (button.dataset.view === "rentals") void maybeRefreshRentalsModule("rentals-parent-click");
       return;
     }
     switchView(button.dataset.view);
@@ -841,6 +859,22 @@ function loadWarn(message, details = undefined) {
   }
 }
 
+function rentalSyncLog(message, details = undefined) {
+  if (details === undefined) {
+    console.info(`${RENTAL_SYNC_LOG_PREFIX} ${message}`);
+  } else {
+    console.info(`${RENTAL_SYNC_LOG_PREFIX} ${message}`, details);
+  }
+}
+
+function rentalSyncWarn(message, details = undefined) {
+  if (details === undefined) {
+    console.warn(`${RENTAL_SYNC_LOG_PREFIX} ${message}`);
+  } else {
+    console.warn(`${RENTAL_SYNC_LOG_PREFIX} ${message}`, details);
+  }
+}
+
 function setLoginBusy(isBusy) {
   elements.loginForm?.classList.toggle("is-busy", Boolean(isBusy));
   elements.loginForm?.querySelectorAll("input, button[type='submit']").forEach((item) => {
@@ -906,6 +940,8 @@ function renderStartupProgress() {
 function isRuntimeLoadingOverlayVisible() {
   if (startupGateActive || !currentRole) return false;
   if (isDataLoading && startupProgressState.active) return true;
+  if (isRentalRefreshing && startupProgressState.active) return true;
+  if (runtimeLoadingMode === "rentals" && startupProgressState.error) return true;
   if (startupProgressState.error && dataLoadStatus === "error" && supabaseDataReady) return true;
   return false;
 }
@@ -919,15 +955,17 @@ function renderAppLoadingOverlay() {
   const moduleName = startupProgressState.module || titles[activeView] || "program";
   const percent = startupProgressState.error ? "" : `${startupProgressState.percent}%`;
   const title = startupProgressState.error
-    ? "Nie udało się pobrać danych"
+    ? (runtimeLoadingMode === "rentals" ? "Nie udało się odświeżyć danych Wypożyczalni" : "Nie udało się pobrać danych")
     : startupProgressState.label === "Gotowe"
       ? "Gotowe — 100%"
-      : `Ładowanie modułu ${moduleName} — ${startupProgressState.percent}%`;
+      : runtimeLoadingMode === "rentals"
+        ? `Aktualizowanie Wypożyczalni — ${startupProgressState.percent}%`
+        : `Ładowanie modułu ${moduleName} — ${startupProgressState.percent}%`;
   if (elements.appLoadingTitle) elements.appLoadingTitle.textContent = title;
   if (elements.appLoadingPercent) elements.appLoadingPercent.textContent = percent;
   if (elements.appLoadingBar) elements.appLoadingBar.style.width = `${startupProgressState.percent}%`;
   if (elements.appLoadingStage) elements.appLoadingStage.textContent = startupProgressState.error
-    ? "Nie pokazuję pustych danych jako gotowych."
+    ? (rentalSyncError || "Nie pokazuję pustych danych jako gotowych.")
     : (startupProgressState.detail || "Pobieranie danych");
   if (elements.appLoadingModule) elements.appLoadingModule.textContent = startupProgressState.module ? `Moduł: ${startupProgressState.module}` : "";
   if (elements.appLoadingElapsed) elements.appLoadingElapsed.textContent = `Oczekiwanie: ${startupProgressState.elapsedSeconds || 0} s`;
@@ -1065,8 +1103,10 @@ async function startSupabaseDataLoad(options = {}) {
     return dataLoadPromise;
   }
   if (useStartupGate) {
+    runtimeLoadingMode = "";
     showStartupScreenMode(options.title || "Uruchamianie KGiGW");
   } else {
+    runtimeLoadingMode = "all";
     loadLog("Uruchamiam pobieranie danych w trakcie pracy.", {
       reason: options.reason || "unknown",
       activeView,
@@ -1105,6 +1145,7 @@ async function loadSupabaseDataWithRetry(options = {}) {
       startLog("Proba pobrania danych.", { attempt: attemptIndex + 1, reason });
       const success = await refreshSupabaseData({ fromStartupFlow: true, attempt: attemptIndex + 1, reason });
       if (success) {
+        runtimeLoadingMode = "";
         dataLoadStatus = "ready";
         storageLoadStatus = dataModuleStatus.docs === "error" ? "error" : "ready";
         storageLoadError = dataModuleErrors.docs || "";
@@ -1130,6 +1171,7 @@ async function loadSupabaseDataWithRetry(options = {}) {
       }
       if (attemptIndex === DATA_RETRY_DELAYS.length - 1) {
         dataLoadStatus = "error";
+        runtimeLoadingMode = "all";
         dataLoadError = "Nie uda\u0142o si\u0119 pobra\u0107 danych. Sprawd\u017a po\u0142\u0105czenie i spr\u00f3buj ponownie.";
         storageLoadStatus = storageLoadStatus === "ready" ? "ready" : "error";
         storageLoadError = dataLoadError;
@@ -1149,6 +1191,211 @@ async function refreshDataAfterChange(reason = "post-write-refresh") {
     showToast("Nie udało się odświeżyć danych. Użyj opcji Ponów pobieranie.", "error");
   }
   return success;
+}
+
+function rentalInventoryFromSupabase(item) {
+  return {
+    id: item.id,
+    name: item.name,
+    quantity: Number(item.quantity || 0),
+    price: Number(item.price_per_day || 0),
+    replacementValue: item.replacement_value === null || item.replacement_value === undefined ? null : Number(item.replacement_value || 0)
+  };
+}
+
+function rentalLoanFromSupabase(rental) {
+  const lines = rental.rental_lines || [];
+  const items = lines.map((line) => ({
+    lineId: line.id,
+    id: line.inventory_id,
+    name: line.item_name,
+    quantity: Number(line.quantity || 0),
+    price: Number(line.price_per_day || 0)
+  }));
+  const returnItems = lines.map((line) => ({
+    lineId: line.id,
+    id: line.inventory_id,
+    name: line.item_name,
+    issued: Number(line.quantity || 0),
+    returned: Number(line.returned || 0),
+    damaged: Number(line.damaged || 0),
+    missing: Number(line.missing || 0)
+  }));
+  return {
+    id: rental.id,
+    firstName: rental.first_name,
+    lastName: rental.last_name,
+    phone: rental.phone || "",
+    dateFrom: rental.date_from,
+    dateTo: rental.date_to,
+    days: Number(rental.days || 1),
+    total: Number(rental.total || 0),
+    status: rental.status || "Wypożyczone",
+    notes: rental.notes || "",
+    returnedAt: rental.returned_at,
+    returnNotes: rental.return_notes || "",
+    damageCost: Number(rental.damage_cost || 0),
+    createdAt: rental.created_at || "",
+    paymentStatus: rental.payment_status || "unpaid",
+    paymentMethod: rental.payment_method || "",
+    paidAt: rental.paid_at || "",
+    paymentTransactionId: rental.payment_transaction_id || "",
+    items,
+    returnItems
+  };
+}
+
+async function loadRentalModuleResults() {
+  let inventoryResult = await loadSupabaseResult("rental_inventory module", supabaseClient
+    .from("rental_inventory")
+    .select("id, name, quantity, price_per_day, replacement_value")
+    .order("name", { ascending: true }));
+
+  let rentalsResult = await loadSupabaseResult("rentals module", supabaseClient
+    .from("rentals")
+    .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, payment_status, payment_method, paid_at, payment_transaction_id, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
+    .order("date_from", { ascending: false }));
+
+  if (inventoryResult.error) {
+    rentalSyncWarn("Nie udalo sie pobrac magazynu z replacement_value. Proba fallback.", { message: inventoryResult.error?.message || String(inventoryResult.error) });
+    const fallbackInventory = await loadSupabaseResult("rental_inventory module fallback", supabaseClient
+      .from("rental_inventory")
+      .select("id, name, quantity, price_per_day")
+      .order("name", { ascending: true }));
+    if (!fallbackInventory.error) inventoryResult = fallbackInventory;
+  }
+
+  if (rentalsResult.error) {
+    rentalSyncWarn("Nie udalo sie pobrac wypozyczen z polami platnosci. Proba fallback.", { message: rentalsResult.error?.message || String(rentalsResult.error) });
+    const fallbackRentals = await loadSupabaseResult("rentals module fallback", supabaseClient
+      .from("rentals")
+      .select("id, first_name, last_name, phone, date_from, date_to, days, total, status, notes, returned_at, return_notes, damage_cost, created_at, rental_lines(id, inventory_id, item_name, quantity, price_per_day, returned, damaged, missing)")
+      .order("date_from", { ascending: false }));
+    if (!fallbackRentals.error) rentalsResult = fallbackRentals;
+  }
+
+  return { inventoryResult, rentalsResult };
+}
+
+function applyRentalModuleResults(inventoryResult, rentalsResult) {
+  state.rentalInventory = (inventoryResult.data || []).map(rentalInventoryFromSupabase);
+  state.rentalLoans = (rentalsResult.data || []).map(rentalLoanFromSupabase);
+  dataModuleStatus.rentalInventory = "ready";
+  dataModuleStatus.rentals = "ready";
+  dataModuleErrors.rentalInventory = "";
+  dataModuleErrors.rentals = "";
+  lastRentalSyncAt = Date.now();
+  saveState();
+}
+
+async function refreshRentalsModule(options = {}) {
+  const reason = options.reason || "rentals-sync";
+  const force = Boolean(options.force);
+  const now = Date.now();
+  const ageMs = lastRentalSyncAt ? now - lastRentalSyncAt : Number.POSITIVE_INFINITY;
+  rentalSyncLog("Wejscie do synchronizacji Wypozyczalni.", {
+    reason,
+    force,
+    ageMs: Number.isFinite(ageMs) ? ageMs : null,
+    activeView
+  });
+
+  if (!supabaseClient || !currentRole) {
+    rentalSyncWarn("Pominieto synchronizacje - brak sesji lub klienta Supabase.");
+    return false;
+  }
+  if (isDataLoading) {
+    rentalSyncWarn("Pominieto synchronizacje Wypozyczalni, bo trwa pelne pobieranie.", { reason });
+    renderAppLoadingOverlay();
+    return false;
+  }
+  if (!force && ageMs < RENTAL_SYNC_FRESH_MS) {
+    rentalSyncLog("Uzywam danych Wypozyczalni ze state.", {
+      ageMs,
+      inventoryRecords: state.rentalInventory?.length || 0,
+      rentalRecords: state.rentalLoans?.length || 0
+    });
+    return false;
+  }
+  if (isRentalRefreshing && rentalRefreshPromise) {
+    rentalSyncWarn("Zablokowano rownolegla probe synchronizacji Wypozyczalni.", { reason });
+    return rentalRefreshPromise;
+  }
+
+  rentalRefreshPromise = (async () => {
+    const startedAt = Date.now();
+    isRentalRefreshing = true;
+    runtimeLoadingMode = "rentals";
+    rentalSyncError = "";
+    startupProgressState.total = 4;
+    setStartupProgress("Ładowanie", "Pobieranie najnowszych danych Wypożyczalni", 0, { percent: 0, module: "Wypożyczalnia", resetTimer: true });
+    rentalSyncLog("Start pobierania danych Wypozyczalni.", { reason });
+
+    try {
+      const { inventoryResult, rentalsResult } = await loadRentalModuleResults();
+      completeStartupStep("Magazyn wypożyczalni");
+      completeStartupStep("Wypożyczenia i pozycje");
+
+      if (inventoryResult.error || rentalsResult.error) {
+        const failed = inventoryResult.error ? "Magazyn wypożyczalni" : "Wypożyczenia";
+        const message = inventoryResult.error?.message || rentalsResult.error?.message || "Nieznany błąd pobierania Wypożyczalni.";
+        const error = new Error(message);
+        error.failedModule = failed;
+        throw error;
+      }
+
+      applyRentalModuleResults(inventoryResult, rentalsResult);
+      renderRentals();
+      renderInvoiceRentalOptions();
+      renderDashboard();
+      rentalSyncLog("Dane Wypozyczalni pobrane poprawnie.", {
+        durationMs: Date.now() - startedAt,
+        inventoryRecords: state.rentalInventory.length,
+        rentalRecords: state.rentalLoans.length
+      });
+      setStartupProgress("Gotowe", "100%", startupProgressState.total, { percent: 100, module: "Wypożyczalnia" });
+      await delay(500);
+      hideStartupProgress();
+      runtimeLoadingMode = "";
+      return true;
+    } catch (error) {
+      rentalSyncError = "Nie udało się odświeżyć danych Wypożyczalni";
+      dataModuleStatus.rentalInventory = "error";
+      dataModuleStatus.rentals = "error";
+      dataModuleErrors.rentalInventory = error?.message || rentalSyncError;
+      dataModuleErrors.rentals = error?.message || rentalSyncError;
+      rentalSyncWarn("Blad synchronizacji Wypozyczalni. Zachowuje ostatnie poprawne dane.", {
+        durationMs: Date.now() - startedAt,
+        failedModule: error?.failedModule || "Wypożyczalnia",
+        message: error?.message || String(error)
+      });
+      failStartupProgress(error?.failedModule || "Wypożyczalnia");
+      showToast("Nie udało się odświeżyć danych Wypożyczalni", "error");
+      return false;
+    } finally {
+      isRentalRefreshing = false;
+      rentalRefreshPromise = null;
+      renderAppLoadingOverlay();
+    }
+  })();
+
+  return rentalRefreshPromise;
+}
+
+function maybeRefreshRentalsModule(reason = "enter-rentals") {
+  return refreshRentalsModule({ reason, force: false });
+}
+
+function handleVisibilityRentalSync() {
+  if (document.visibilityState !== "visible") return;
+  if (activeView !== "rentals") return;
+  const ageMs = lastRentalSyncAt ? Date.now() - lastRentalSyncAt : Number.POSITIVE_INFINITY;
+  if (ageMs < RENTAL_SYNC_VISIBILITY_MS) {
+    rentalSyncLog("Powrot do karty - dane Wypozyczalni sa nadal swieze.", { ageMs });
+    return;
+  }
+  rentalSyncLog("Powrot do karty - odswiezam Wypozyczalnie.", { ageMs });
+  void refreshRentalsModule({ reason: "visibility-return", force: false });
 }
 
 async function refreshSupabaseData(options = {}) {
@@ -1362,55 +1609,10 @@ async function refreshSupabaseData(options = {}) {
     };
   });
 
-  if (!inventoryResult.error) state.rentalInventory = (inventoryResult.data || []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    quantity: Number(item.quantity || 0),
-    price: Number(item.price_per_day || 0),
-    replacementValue: item.replacement_value === null || item.replacement_value === undefined ? null : Number(item.replacement_value || 0)
-  }));
+  if (!inventoryResult.error) state.rentalInventory = (inventoryResult.data || []).map(rentalInventoryFromSupabase);
 
-  if (!rentalsResult.error) state.rentalLoans = (rentalsResult.data || []).map((rental) => {
-    const lines = rental.rental_lines || [];
-    const items = lines.map((line) => ({
-      lineId: line.id,
-      id: line.inventory_id,
-      name: line.item_name,
-      quantity: Number(line.quantity || 0),
-      price: Number(line.price_per_day || 0)
-    }));
-    const returnItems = lines.map((line) => ({
-      lineId: line.id,
-      id: line.inventory_id,
-      name: line.item_name,
-      issued: Number(line.quantity || 0),
-      returned: Number(line.returned || 0),
-      damaged: Number(line.damaged || 0),
-      missing: Number(line.missing || 0)
-    }));
-    return {
-      id: rental.id,
-      firstName: rental.first_name,
-      lastName: rental.last_name,
-      phone: rental.phone || "",
-      dateFrom: rental.date_from,
-      dateTo: rental.date_to,
-      days: Number(rental.days || 1),
-      total: Number(rental.total || 0),
-      status: rental.status || "Wypożyczone",
-      notes: rental.notes || "",
-      returnedAt: rental.returned_at,
-      returnNotes: rental.return_notes || "",
-      damageCost: Number(rental.damage_cost || 0),
-      createdAt: rental.created_at || "",
-      paymentStatus: rental.payment_status || "unpaid",
-      paymentMethod: rental.payment_method || "",
-      paidAt: rental.paid_at || "",
-      paymentTransactionId: rental.payment_transaction_id || "",
-      items,
-      returnItems
-    };
-  });
+  if (!rentalsResult.error) state.rentalLoans = (rentalsResult.data || []).map(rentalLoanFromSupabase);
+  if (!inventoryResult.error && !rentalsResult.error) lastRentalSyncAt = Date.now();
 
   if (!eventsResult.error) state.events = (eventsResult.data || []).map((event) => ({
     id: event.id,
@@ -1896,7 +2098,7 @@ function stateCountForView(view) {
 }
 
 function blockNavigationDuringDataLoad(target) {
-  if (!isDataLoading || startupGateActive) return false;
+  if ((!isDataLoading && !isRentalRefreshing) || startupGateActive) return false;
   loadWarn("Zablokowano przejscie podczas pobierania.", {
     target,
     activeView,
@@ -1925,6 +2127,7 @@ function switchView(view) {
   if (view === "rentals") switchRentalTab("new");
   if (view === "docs") switchDocTab("documents");
   if (view === "info") switchInfoTab("board");
+  if (view === "rentals") void maybeRefreshRentalsModule("enter-rentals");
   render();
 }
 
@@ -2555,7 +2758,7 @@ async function handleRental(event) {
     if (meta.depositAmount > 0) {
       await logActivity("Wypożyczalnia", "Kaucja przy wypożyczeniu", { summary: `${data.firstName} ${data.lastName} - ${money(meta.depositAmount)}` });
     }
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "rental-saved", force: true });
     showToast("Wypożyczenie zapisane");
     return;
   }
@@ -6401,7 +6604,7 @@ async function updateInventory(id, field, value) {
       alert(`Nie udało się zmienić magazynu w Supabase: ${error.message}`);
       return;
     }
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "inventory-updated", force: true });
     return;
   }
   rememberUndo();
@@ -6438,7 +6641,7 @@ async function handleInventoryAdd(event) {
     }
     event.target.reset();
     await logActivity("Wypożyczalnia", "Dodanie przedmiotu w Magazynie", { summary: `${name} - ${quantity} szt. - ${money(price)}` });
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "inventory-added", force: true });
     showToast("Dodano przedmiot do magazynu");
     return;
   }
@@ -6526,7 +6729,7 @@ async function returnRental(id) {
       await logActivity("Wypożyczalnia", "Potrącenia przy zwrocie", { summary: `${loan.firstName} ${loan.lastName} - ${money(returnExtraFee)}` });
     }
     lastReturnedRentalId = id;
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "rental-returned", force: true });
     showToast("Zwrot zapisany. Możesz teraz wydrukować protokół zwrotu.");
     return;
   }
@@ -7040,7 +7243,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć wypożyczenia w Supabase: ${error.message}`);
       return;
     }
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "rental-deleted", force: true });
     return;
   }
   if (supabaseClient && currentRole && collection === "rentalInventory") {
@@ -7049,7 +7252,7 @@ async function removeItem(collection, id) {
       alert(`Nie udało się usunąć przedmiotu z magazynu w Supabase: ${error.message}`);
       return;
     }
-    await refreshDataAfterChange();
+    await refreshRentalsModule({ reason: "inventory-deleted", force: true });
     return;
   }
   if (supabaseClient && currentRole && collection === "events") {
